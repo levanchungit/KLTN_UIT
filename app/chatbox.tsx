@@ -2,7 +2,7 @@ import {
   listCategories,
   seedCategoryDefaults,
   type Category,
-} from "@/src/repos/categoryRepo";
+} from "@/repos/categoryRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";

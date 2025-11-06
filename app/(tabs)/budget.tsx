@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import BudgetSetupScreen from "./budget/setup";
+import BudgetSetupScreen from "../budget/setup";
 
 export default function Budget() {
   return (

@@ -1,5 +1,5 @@
 import VenmoTabBar from "@/components/VenmoTabBar";
-import { UserProvider } from "@/src/userContext";
+import { UserProvider } from "@/context/userContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
@@ -51,7 +51,6 @@ export default function TabsLayout() {
         {/* Ẩn các route phụ (bar custom tự bỏ qua chúng) */}
         <Tabs.Screen name="budget/setup" options={{ href: null }} />
         <Tabs.Screen name="budget/suggest" options={{ href: null }} />
-        <Tabs.Screen name="chatbox" options={{ href: null }} />
       </Tabs>
     </UserProvider>
   );

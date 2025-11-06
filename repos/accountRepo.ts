@@ -1,4 +1,4 @@
-import { openDb } from "@/src/db";
+import { openDb } from "@/db";
 
 export type Account = {
   id: string;

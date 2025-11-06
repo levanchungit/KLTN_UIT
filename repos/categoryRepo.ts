@@ -1,5 +1,5 @@
 // categoryRepo.ts
-import { openDb } from "@/src/db";
+import { openDb } from "@/db";
 
 /** ===== Types ===== */
 export type Category = {
