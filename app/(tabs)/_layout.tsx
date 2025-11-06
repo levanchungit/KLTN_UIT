@@ -1,59 +1,58 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import VenmoTabBar from "@/components/VenmoTabBar";
+import { UserProvider } from "@/src/userContext";
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import React from "react";
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-        }}
-      />
-    </Tabs>
+    <UserProvider>
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <VenmoTabBar {...props} />}
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Trang chủ",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="home-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="transactions"
+          options={{
+            title: "Giao dịch",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="trending-up-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="budget"
+          options={{
+            title: "Ngân sách",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="wallet-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="setting"
+          options={{
+            title: "Cài đặt",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="settings-outline" size={size} color={color} />
+            ),
+          }}
+        />
+
+        {/* Ẩn các route phụ (bar custom tự bỏ qua chúng) */}
+        <Tabs.Screen name="budget/setup" options={{ href: null }} />
+        <Tabs.Screen name="budget/suggest" options={{ href: null }} />
+        <Tabs.Screen name="chatbox" options={{ href: null }} />
+      </Tabs>
+    </UserProvider>
   );
 }
