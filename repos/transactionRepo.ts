@@ -1,4 +1,4 @@
-import { db, openDb } from "../db";
+import { db, openDb } from "@/db";
 
 export type TxDetailRow = {
   id: string;
@@ -9,6 +9,7 @@ export type TxDetailRow = {
   account_name: string;
   category_name: string | null;
   category_icon: string | null;
+  type?: "expense" | "income";
 };
 
 export async function totalInRange(
@@ -194,21 +195,30 @@ export async function addIncome({
 
 export async function listByDay(day: Date) {
   await openDb();
+
   const start = new Date(day);
+  if (!isFinite(start.getTime())) return []; // ⬅️ guard
+
   start.setHours(0, 0, 0, 0);
   const s = Math.floor(start.getTime() / 1000);
   const e = s + 86400;
-  return db.getAllAsync<any>(
-    `
-    SELECT t.*, a.name account_name, c.name category_name, c.icon category_icon
-    FROM transactions t
-    JOIN accounts a ON a.id=t.account_id
-    LEFT JOIN categories c ON c.id=t.category_id
-    WHERE t.user_id='u_demo' AND t.occurred_at>=? AND t.occurred_at<?
-    ORDER BY t.occurred_at DESC
-  `,
-    [s, e]
-  );
+
+  try {
+    return await db.getAllAsync<any>(
+      `
+      SELECT t.*, a.name account_name, c.name category_name, c.icon category_icon
+      FROM transactions t
+      JOIN accounts a ON a.id=t.account_id
+      LEFT JOIN categories c ON c.id=t.category_id
+      WHERE t.user_id='u_demo' AND t.occurred_at>=? AND t.occurred_at<?
+      ORDER BY t.occurred_at DESC
+      `,
+      [s, e] // ⬅️ đảm bảo luôn là số
+    );
+  } catch (err) {
+    console.warn("listByDay error", err, { s, e }); // ⬅️ log để debug
+    return [];
+  }
 }
 
 export async function listTxByCategory(params: {
@@ -344,5 +354,27 @@ export async function getTxById(id: string) {
     WHERE t.user_id='u_demo' AND t.id=?
     `,
     [id]
+  );
+}
+
+export async function listBetween(
+  fromSec: number,
+  toSec: number
+): Promise<TxDetailRow[]> {
+  await openDb();
+  return db.getAllAsync<TxDetailRow>(
+    `
+    SELECT t.id, t.amount, t.note, t.occurred_at, t.updated_at, t.type,
+           a.name AS account_name,
+           c.name AS category_name,
+           c.icon AS category_icon
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE t.user_id='u_demo'
+      AND t.occurred_at>=? AND t.occurred_at<?
+    ORDER BY t.occurred_at DESC
+    `,
+    [fromSec, toSec]
   );
 }
