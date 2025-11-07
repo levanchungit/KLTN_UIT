@@ -1,8 +1,10 @@
+import { listAccounts } from "@/repos/accountRepo";
 import {
   listCategories,
   seedCategoryDefaults,
   type Category,
 } from "@/repos/categoryRepo";
+import { addExpense, addIncome } from "@/repos/transactionRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
@@ -157,8 +159,8 @@ const parseAmountVN = (text: string): number | null => {
     unit.startsWith("k") || unit.startsWith("ng")
       ? 1e3
       : unit.startsWith("tr") || unit.startsWith("tri")
-      ? 1e6
-      : 1;
+        ? 1e6
+        : 1;
   return Math.round(n * factor);
 };
 const detectInOut = (text: string): "IN" | "OUT" => {
@@ -231,11 +233,11 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
     io === "IN" && /thu nhap|luong/.test(normalizeVN(cat.name))
       ? 0.2
       : io === "OUT" &&
-        /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang)/.test(
-          normalizeVN(cat.name)
-        )
-      ? 0.1
-      : 0;
+          /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang)/.test(
+            normalizeVN(cat.name)
+          )
+        ? 0.1
+        : 0;
   return 0.45 * A + 0.25 * B + 0.2 * C + 0.1 * D;
 };
 
@@ -297,15 +299,41 @@ function mapMLToUserCategory(
 }
 
 /* ---------------- Create transaction (plug your API) ---------------- */
+// ⬇️ Thay thế hoàn toàn hàm createTransaction cũ:
 async function createTransaction(draft: {
   amount: number | null;
   io: "IN" | "OUT";
-  categoryId?: string;
+  categoryId?: string; // cần có để tạo; nếu chưa có hãy dùng pendingPick
   note: string;
 }) {
-  // TODO: thay bằng API backend thật
-  await new Promise((r) => setTimeout(r, 250));
-  return { id: Date.now().toString(), ...draft };
+  if (!draft.amount || draft.amount <= 0) {
+    throw new Error("Số tiền chưa hợp lệ.");
+  }
+  if (!draft.categoryId) {
+    throw new Error("Chưa có danh mục để tạo giao dịch.");
+  }
+
+  // chọn account mặc định: ưu tiên include_in_total=1 rồi đến account đầu tiên
+  const accounts = await listAccounts().catch(() => []);
+  const acc =
+    accounts.find((a: any) => a.include_in_total === 1) || accounts[0] || null;
+  if (!acc?.id) throw new Error("Chưa có tài khoản để ghi giao dịch.");
+
+  const common = {
+    accountId: acc.id as string,
+    categoryId: draft.categoryId as string,
+    amount: draft.amount,
+    note: draft.note,
+    when: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const id =
+    draft.io === "OUT"
+      ? await addExpense(common as any)
+      : await addIncome(common as any);
+
+  return { id, ...draft, accountId: acc.id };
 }
 
 /* ---------------- Chat types ---------------- */
@@ -426,6 +454,7 @@ export default function Chatbox() {
     return { io, ranked: hs };
   }
 
+  // ⬇️ Trong handleSend, đổi phần “tạo giao dịch” để fallback sang pendingPick khi chưa chắc danh mục:
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
@@ -441,7 +470,6 @@ export default function Chatbox() {
     setMessages((m) => [...m, { role: "typing" }]);
     scrollToEnd();
 
-    // Lấy message ngắn + (có thể) categoryId từ GPT
     const ai = await getEmotionalReplyDirect({
       io,
       categoryName: best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
@@ -449,41 +477,75 @@ export default function Chatbox() {
       note: text,
     });
 
-    // Chọn categoryId cuối cùng: ưu tiên từ GPT, nếu không có thì lấy best
+    // Quyết định danh mục cuối:
     const finalCategoryId = ai.categoryId || best?.categoryId;
     const finalCategoryName =
       items.find((c) => c.id === finalCategoryId)?.name ||
       best?.name ||
       "Chưa rõ";
 
-    // Hiển thị phản hồi 1–2 câu (không JSON)
+    // Hiển thị câu phản hồi ngắn gọn
     setMessages((m) => [
       ...m.filter((x) => x.role !== "typing"),
       { role: "bot", text: ai.message },
     ]);
     scrollToEnd();
 
-    // Tạo giao dịch đúng mã danh mục
-    const txn = await createTransaction({
-      amount: ai.amount,
-      io: ai.io,
-      categoryId: finalCategoryId,
-      note: ai.note,
-    });
+    // Nếu chưa có amount → nhắn nhắc người dùng bổ sung và dừng
+    if (!ai.amount || ai.amount <= 0) {
+      setMessages((m) => [
+        ...m,
+        { role: "bot", text: "Bạn cho mình biết số tiền cụ thể nhé 💬" },
+      ]);
+      scrollToEnd();
+      return;
+    }
 
-    const when = new Date().toLocaleDateString();
-    setMessages((m) => [
-      ...m,
-      {
-        role: "card",
-        amount: txn.amount ?? null,
+    // Nếu chưa có categoryId HOẶC điểm tự tin thấp → bật gợi ý chọn danh mục
+    const lowConfidence = !best || best.score < 0.4; // ngưỡng có thể chỉnh
+    if (!finalCategoryId || lowConfidence) {
+      setPendingPick({
+        text,
+        amount: ai.amount,
         io: ai.io,
-        categoryName: finalCategoryName,
+        choices: ranked.slice(0, 6), // tối đa 6 gợi ý
+      });
+      return; // đợi user chọn trước khi tạo
+    }
+
+    // Đủ dữ kiện → tạo giao dịch
+    try {
+      const txn = await createTransaction({
+        amount: ai.amount,
+        io: ai.io,
+        categoryId: finalCategoryId,
         note: ai.note,
-        when,
-      },
-    ]);
-    scrollToEnd();
+      });
+
+      const when = new Date().toLocaleDateString();
+      setMessages((m) => [
+        ...m,
+        {
+          role: "card",
+          amount: txn.amount ?? null,
+          io: ai.io,
+          categoryName: finalCategoryName,
+          note: ai.note,
+          when,
+        },
+      ]);
+      scrollToEnd();
+    } catch (e: any) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "bot",
+          text:
+            "Tạo giao dịch thất bại. " +
+            (e?.message ? `(${e.message})` : "Vui lòng thử lại."),
+        },
+      ]);
+    }
   };
 
   // ----- Gợi ý khi chưa đủ tự tin -----

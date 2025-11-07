@@ -1,7 +1,6 @@
 import { Link } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-
 export default function BudgetSetupScreen() {
   const [income, setIncome] = useState("");
   const [desc, setDesc] = useState("");
