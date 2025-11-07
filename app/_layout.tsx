@@ -1,3 +1,5 @@
+import { AppThemeProvider } from "@/app/providers/ThemeProvider";
+import { I18nProvider } from "@/i18n/I18nProvider";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
   DarkTheme,
@@ -8,8 +10,17 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { useColorScheme } from "react-native";
-// import { useColorScheme } from '@/components/useColorScheme';
+import { LogBox, Platform, UIManager, useColorScheme } from "react-native";
+import { PaperProvider } from "react-native-paper";
+
+// Suppress warnings in New Architecture
+LogBox.ignoreLogs([/setLayoutAnimationEnabledExperimental/, /No route named/]);
+
+if (Platform.OS === "android") {
+  if (typeof UIManager?.setLayoutAnimationEnabledExperimental === "function") {
+    // Suppress the warning but don't call it in New Architecture
+  }
+}
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -45,7 +56,15 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <I18nProvider>
+      <AppThemeProvider>
+        <PaperProvider>
+          <RootLayoutNav />
+        </PaperProvider>
+      </AppThemeProvider>
+    </I18nProvider>
+  );
 }
 
 function RootLayoutNav() {
@@ -56,6 +75,10 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chatbox" />
+        <Stack.Screen name="budget/setup" />
+        <Stack.Screen name="budget/suggest" />
+        <Stack.Screen name="setting/categories" />
+        <Stack.Screen name="setting/wallet" />
       </Stack>
     </ThemeProvider>
   );

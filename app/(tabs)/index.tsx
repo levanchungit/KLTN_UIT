@@ -1,3 +1,4 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
 import { listAccounts } from "@/repos/accountRepo";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {
@@ -6,7 +7,6 @@ import {
   MaterialIcons,
 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
@@ -54,11 +54,7 @@ function getRange(kind: RangeKind, anchor: Date) {
 
   if (kind === "Ngày") {
     const start = d.getTime() / 1000;
-    return {
-      startSec: start,
-      endSec: start + 86400,
-      label: d.toLocaleDateString(),
-    };
+    return { startSec: start, endSec: start + 86400, label: d.toLocaleDateString() };
   }
   if (kind === "Tuần") {
     const wd = (d.getDay() + 6) % 7;
@@ -93,11 +89,7 @@ function getRange(kind: RangeKind, anchor: Date) {
     };
   }
   const start = d.getTime() / 1000;
-  return {
-    startSec: start,
-    endSec: start + 86400,
-    label: d.toLocaleDateString(),
-  };
+  return { startSec: start, endSec: start + 86400, label: d.toLocaleDateString() };
 }
 
 function isCurrentPeriod(startSec: number, endSec: number) {
@@ -111,16 +103,15 @@ const ICON_SIZE = 28;
 
 function ExpenseDonutChart({
   data,
+  colors,
 }: {
   data: { value: number; color: string; icon?: any; emoji?: string }[];
+  colors: any;
 }) {
   const safe = Array.isArray(data) ? data : [];
   const total = safe.reduce((s, d) => s + (d?.value ?? 0), 0);
   const display = safe.length > 0 ? safe : [{ value: 1, color: "#E5E7EB" }];
-  const R = 100,
-    INNER = 40,
-    SIZE = R * 2 + 10,
-    midR = (R + INNER) / 2 + 4;
+  const R = 100, INNER = 40, SIZE = R * 2 + 10, midR = (R + INNER) / 2 + 4;
   const toRad = (deg: number) => (Math.PI / 180) * deg;
   const polarToXY = (deg: number, radius: number) => {
     const a = toRad(deg - 90);
@@ -138,25 +129,15 @@ function ExpenseDonutChart({
 
   return (
     <View style={{ alignItems: "center", marginHorizontal: 16 }}>
-      <View
-        style={{
-          width: SIZE,
-          height: SIZE,
-          position: "relative",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <View style={{
+        width: SIZE, height: SIZE, position: "relative",
+        alignItems: "center", justifyContent: "center",
+      }}>
         <PieChart
           data={display.map((d) => ({ value: d.value, color: d.color }))}
-          donut
-          radius={R}
-          innerRadius={INNER}
-          strokeWidth={2}
-          strokeColor="#fff"
-          showText={false}
-          isAnimated
-          focusOnPress
+          donut radius={R} innerRadius={INNER}
+          strokeWidth={2} strokeColor={colors.card}
+          showText={false} isAnimated focusOnPress
         />
         {markers.map((m, i) => {
           const size = 28;
@@ -166,61 +147,47 @@ function ExpenseDonutChart({
             <View
               key={i}
               style={{
-                position: "absolute",
-                left,
-                top,
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                backgroundColor: "#fff",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "rgba(0,0,0,0.06)",
-                shadowColor: "#000",
-                shadowOpacity: 0.1,
-                shadowOffset: { width: 0, height: 1 },
-                shadowRadius: 2,
-                elevation: 1,
+                position: "absolute", left, top, width: size, height: size,
+                borderRadius: size / 2, backgroundColor: colors.card,
+                alignItems: "center", justifyContent: "center",
+                borderWidth: 1, borderColor: colors.divider,
+                shadowColor: "#000", shadowOpacity: 0.1,
+                shadowOffset: { width: 0, height: 1 }, shadowRadius: 2, elevation: 1,
               }}
             >
               {m.icon ? (
-                <Image
-                  source={m.icon}
-                  style={{ width: 18, height: 18 }}
-                  resizeMode="contain"
-                />
+                <Image source={m.icon} style={{ width: 18, height: 18 }} resizeMode="contain" />
               ) : (
                 <Text style={{ fontSize: 16 }}>{m.emoji ?? "💸"}</Text>
               )}
             </View>
           );
         })}
+        <View style={{
+          position: "absolute", alignItems: "center", justifyContent: "center",
+        }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>Tổng</Text>
+          <Text style={{ fontWeight: "800", color: colors.text }}>{fmtMoney(total)}</Text>
+        </View>
       </View>
     </View>
   );
 }
 
 function CategoryRow({
-  title,
-  amount,
-  percent,
-  color,
-  emoji = "🍔",
+  title, amount, percent, color, emoji = "🍔", colors,
 }: {
   title: string;
   amount: number;
   percent: string | number;
   color: string;
   emoji?: string;
+  colors: any;
 }) {
   const pctNum =
     typeof percent === "number"
       ? Math.max(0, Math.min(100, percent))
-      : Math.max(
-          0,
-          Math.min(100, parseFloat(String(percent).replace("%", "")) || 0)
-        );
+      : Math.max(0, Math.min(100, parseFloat(String(percent).replace("%", "")) || 0));
   const [barW, setBarW] = React.useState(0);
   const [pillW, setPillW] = React.useState(0);
   const onBarLayout = (e: any) => setBarW(e.nativeEvent.layout.width);
@@ -231,33 +198,88 @@ function CategoryRow({
     return Math.max(half, Math.min(barW - half, x));
   }, [pctNum, barW, pillW]);
 
+  const localStyles = StyleSheet.create({
+    catItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+    },
+    catIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.card,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.divider,
+    },
+    catHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    catTitle: { fontSize: 16, fontWeight: "600", color: colors.text },
+    catAmount: { fontSize: 14, fontWeight: "600", color: colors.text },
+    barContainer: {
+      height: 14,
+      justifyContent: "center",
+    },
+    barTrack: {
+      height: 6,
+      borderRadius: 999,
+      backgroundColor: colors.divider,
+      width: "100%",
+    },
+    barFill: {
+      position: "absolute",
+      left: 0,
+      height: 6,
+      borderRadius: 999,
+    },
+    pill: {
+      position: "absolute",
+      top: -5,
+      transform: [{ translateX: -0.5 }],
+      paddingHorizontal: 10,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.divider,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    pillText: { fontSize: 12, fontWeight: "600", color: colors.text },
+  });
+
   return (
-    <View style={styles.catItem}>
-      <View style={styles.catIcon}>
+    <View style={localStyles.catItem}>
+      <View style={localStyles.catIcon}>
         <Text style={{ fontSize: 18 }}>{emoji}</Text>
       </View>
       <View style={{ flex: 1, marginLeft: 10 }}>
-        <View style={styles.catHeader}>
-          <Text style={styles.catTitle} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.catAmount}>
-            {(amount || 0).toLocaleString("vi-VN")}đ
-          </Text>
+        <View style={localStyles.catHeader}>
+          <Text style={localStyles.catTitle} numberOfLines={1}>{title}</Text>
+          <Text style={localStyles.catAmount}>{(amount || 0).toLocaleString("vi-VN")}đ</Text>
         </View>
-        <View style={styles.barContainer} onLayout={onBarLayout}>
-          <View style={styles.barTrack} />
+        <View style={localStyles.barContainer} onLayout={onBarLayout}>
+          <View style={localStyles.barTrack} />
+          <View style={[
+            localStyles.barFill,
+            { width: `${pctNum}%`, backgroundColor: "#2ED3D9" },
+          ]} />
           <View
-            style={[
-              styles.barFill,
-              { width: `${pctNum}%`, backgroundColor: "#2ED3D9" },
-            ]}
-          />
-          <View
-            style={[styles.pill, { left: pillLeft }]}
+            style={[localStyles.pill, { left: pillLeft }]}
             onLayout={(e) => setPillW(e.nativeEvent.layout.width)}
           >
-            <Text style={styles.pillText}>{pctNum}%</Text>
+            <Text style={localStyles.pillText}>{pctNum}%</Text>
           </View>
         </View>
       </View>
@@ -267,6 +289,9 @@ function CategoryRow({
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, mode } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors), [colors]);
+
   const [activeTab, setActiveTab] = useState<Tab>("Chi phí");
   const [time, setTime] = useState<RangeKind>("Tuần");
   const [anchor, setAnchor] = useState<Date>(new Date());
@@ -278,9 +303,7 @@ export default function DashboardScreen() {
   const [tempAnchor, setTempAnchor] = useState<Date | null>(anchor);
   const [tempYear, setTempYear] = useState<number>(new Date().getFullYear());
   const [tempMonth, setTempMonth] = useState<number>(new Date().getMonth());
-  const [tempOnlyYear, setTempOnlyYear] = useState<number>(
-    new Date().getFullYear()
-  );
+  const [tempOnlyYear, setTempOnlyYear] = useState<number>(new Date().getFullYear());
   const [cashTotal, setCashTotal] = useState<number>(0);
   const [periodExpense, setPeriodExpense] = useState<number>(0);
   const [periodIncome, setPeriodIncome] = useState<number>(0);
@@ -340,14 +363,8 @@ export default function DashboardScreen() {
     const rows = Array.isArray(rawRows) ? rawRows : [];
     const grand = rows.reduce((s, r) => s + ((r.total as number) || 0), 0) || 1;
     const palette = [
-      "#60a5fa",
-      "#34d399",
-      "#f59e0b",
-      "#ef4444",
-      "#a78bfa",
-      "#fb7185",
-      "#22d3ee",
-      "#84cc16",
+      "#60a5fa", "#34d399", "#f59e0b", "#ef4444",
+      "#a78bfa", "#fb7185", "#22d3ee", "#84cc16",
     ];
 
     setChartData(
@@ -378,18 +395,8 @@ export default function DashboardScreen() {
     );
   }, [activeTab, startSec, endSec]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-      return () => {};
-    }, [loadData])
-  );
-
-  // --- Date pickers ---
   const addDays = (d: Date, n: number) => {
     const x = new Date(d);
     x.setDate(x.getDate() + n);
@@ -509,14 +516,10 @@ export default function DashboardScreen() {
 
     return (
       <View style={{ padding: 8 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
+        <View style={{
+          flexDirection: "row", justifyContent: "space-between",
+          alignItems: "center", marginBottom: 12,
+        }}>
           <TouchableOpacity
             onPress={() => {
               const m = tempMonth - 1;
@@ -526,9 +529,9 @@ export default function DashboardScreen() {
               } else setTempMonth(m);
             }}
           >
-            <MaterialIcons name="keyboard-arrow-left" size={28} />
+            <MaterialIcons name="keyboard-arrow-left" size={28} color={colors.icon} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: "700" }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
             {VI_MONTHS[tempMonth]} {tempYear}
           </Text>
           <TouchableOpacity
@@ -545,18 +548,13 @@ export default function DashboardScreen() {
             <MaterialIcons
               name="keyboard-arrow-right"
               size={28}
-              color={canNextMonth ? "#000" : "#AAA"}
+              color={canNextMonth ? colors.icon : colors.divider}
             />
           </TouchableOpacity>
         </View>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            justifyContent: "space-between",
-            rowGap: 10,
-          }}
-        >
+        <View style={{
+          flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10,
+        }}>
           {weeks.map((w, idx) => {
             const isSelected =
               sel && sel.s.getTime() === startOfWeekMon(w.start).getTime();
@@ -564,37 +562,26 @@ export default function DashboardScreen() {
             return (
               <TouchableOpacity
                 key={idx}
-                onPress={() => {
-                  if (!disabled) setTempAnchor(new Date(w.start));
-                }}
+                onPress={() => { if (!disabled) setTempAnchor(new Date(w.start)); }}
                 activeOpacity={0.8}
                 style={{
-                  width: "48%",
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: isSelected ? "#10B981" : "#EEF2F6",
+                  width: "48%", paddingVertical: 12, borderRadius: 12,
+                  backgroundColor: isSelected ? "#10B981" : colors.card,
                   opacity: disabled ? 0.5 : 1,
                   borderWidth: isSelected ? 0 : 1,
-                  borderColor: "#DCE3EE",
-                  alignItems: "center",
+                  borderColor: colors.divider, alignItems: "center",
                 }}
               >
-                <Text
-                  style={{
-                    color: isSelected ? "#fff" : "#111827",
-                    fontWeight: "700",
-                    marginBottom: 4,
-                  }}
-                >
+                <Text style={{
+                  color: isSelected ? "#fff" : colors.text,
+                  fontWeight: "700", marginBottom: 4,
+                }}>
                   Tuần {idx + 1}
                 </Text>
-                <Text
-                  style={{
-                    color: isSelected ? "#fff" : "#4B5563",
-                    fontSize: 12,
-                    fontWeight: "600",
-                  }}
-                >
+                <Text style={{
+                  color: isSelected ? "#fff" : colors.subText,
+                  fontSize: 12, fontWeight: "600",
+                }}>
                   {w.label}
                 </Text>
               </TouchableOpacity>
@@ -607,39 +594,29 @@ export default function DashboardScreen() {
 
   function MonthGridPicker() {
     const months = VI_MONTHS.map((m, idx) => ({
-      label: m.replace("tháng ", "Thg "),
-      idx,
+      label: m.replace("tháng ", "Thg "), idx,
     }));
     return (
       <View style={{ padding: 8 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
+        <View style={{
+          flexDirection: "row", justifyContent: "space-between",
+          alignItems: "center", marginBottom: 12,
+        }}>
           <TouchableOpacity onPress={() => setTempYear((y) => y - 1)}>
-            <Text style={{ fontSize: 18 }}>‹</Text>
+            <Text style={{ fontSize: 18, color: colors.icon }}>‹</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: "700" }}>{tempYear}</Text>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>{tempYear}</Text>
           <TouchableOpacity
             onPress={() =>
               setTempYear((y) => Math.min(y + 1, new Date().getFullYear()))
             }
           >
-            <Text style={{ fontSize: 18 }}>›</Text>
+            <Text style={{ fontSize: 18, color: colors.icon }}>›</Text>
           </TouchableOpacity>
         </View>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 8,
-            justifyContent: "space-between",
-          }}
-        >
+        <View style={{
+          flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between",
+        }}>
           {months.map(({ label, idx }) => {
             const isCur = tempMonth === idx;
             return (
@@ -647,16 +624,12 @@ export default function DashboardScreen() {
                 key={idx}
                 onPress={() => setTempMonth(idx)}
                 style={{
-                  width: "31%",
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  backgroundColor: isCur ? "#10B981" : "#EEF2F6",
+                  width: "31%", paddingVertical: 12, borderRadius: 10,
+                  backgroundColor: isCur ? "#10B981" : colors.card,
                   alignItems: "center",
                 }}
               >
-                <Text
-                  style={{ color: isCur ? "#fff" : "#111", fontWeight: "600" }}
-                >
+                <Text style={{ color: isCur ? "#fff" : colors.text, fontWeight: "600" }}>
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -673,11 +646,9 @@ export default function DashboardScreen() {
       <View style={{ alignItems: "center", paddingVertical: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 24 }}>
           <TouchableOpacity onPress={() => setTempOnlyYear((y) => y - 1)}>
-            <MaterialIcons name="keyboard-arrow-left" size={28} />
+            <MaterialIcons name="keyboard-arrow-left" size={28} color={colors.icon} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 20, fontWeight: "700" }}>
-            {tempOnlyYear}
-          </Text>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>{tempOnlyYear}</Text>
           <TouchableOpacity
             disabled={!canNext}
             onPress={() => setTempOnlyYear((y) => y + 1)}
@@ -685,7 +656,7 @@ export default function DashboardScreen() {
             <MaterialIcons
               name="keyboard-arrow-right"
               size={28}
-              color={canNext ? "#000" : "#AAA"}
+              color={canNext ? colors.icon : colors.divider}
             />
           </TouchableOpacity>
         </View>
@@ -694,7 +665,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.background }}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.shortcutRow}>
@@ -714,26 +685,19 @@ export default function DashboardScreen() {
             </LinearGradient>
           </TouchableOpacity>
           <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={24} color="black" />
-            <Text
-              style={{
-                position: "absolute",
-                top: -4,
-                right: -4,
-                backgroundColor: "red",
-                color: "white",
-                borderRadius: 8,
-                paddingHorizontal: 4,
-                fontSize: 12,
-              }}
-            >
+            <Ionicons name="notifications-outline" size={24} color={colors.icon} />
+            <Text style={{
+              position: "absolute", top: -4, right: -4,
+              backgroundColor: "red", color: "white", borderRadius: 8,
+              paddingHorizontal: 4, fontSize: 12,
+            }}>
               3
             </Text>
           </TouchableOpacity>
         </View>
       </View>
       <ScrollView
-        style={{ flex: 1, backgroundColor: "#fff" }}
+        style={{ flex: 1, backgroundColor: colors.background }}
         contentContainerStyle={{
           paddingBottom: insets.bottom + 80,
           rowGap: 12,
@@ -749,7 +713,7 @@ export default function DashboardScreen() {
               activeOpacity={0.9}
             >
               <View style={styles.editBtn}>
-                <Ionicons name="pencil" size={14} color="#000" />
+                <Ionicons name="pencil" size={14} color={colors.icon} />
               </View>
               <Text style={styles.cardTitle}>Tiền mặt</Text>
               <Text style={styles.amount}>{fmtMoney(cashTotal)}</Text>
@@ -765,9 +729,7 @@ export default function DashboardScreen() {
         </View>
         {/* Bộ lọc thời gian */}
         <View style={{ marginHorizontal: 16 }}>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-evenly" }}
-          >
+          <View style={{ flexDirection: "row", justifyContent: "space-evenly" }}>
             {(
               [
                 "Ngày",
@@ -801,7 +763,7 @@ export default function DashboardScreen() {
                   <Text
                     style={{
                       fontSize: 14,
-                      color: isActive ? "#374151" : "#9CA3AF",
+                      color: isActive ? colors.text : colors.subText,
                       fontWeight: isActive ? "600" : "400",
                     }}
                   >
@@ -813,19 +775,12 @@ export default function DashboardScreen() {
           </View>
           {/* Thanh chọn mốc / khoảng */}
           {time === "Khoảng thời gian" ? (
-            <View
-              style={{
-                width: "100%",
-                height: ICON_SIZE,
-                justifyContent: "center",
-                alignItems: "center",
-                position: "relative",
-              }}
-            >
+            <View style={{
+              width: "100%", height: ICON_SIZE,
+              justifyContent: "center", alignItems: "center", position: "relative",
+            }}>
               <TouchableOpacity onPress={() => setPickerVisible(true)}>
-                <Text
-                  style={{ fontSize: 16, color: "#374151", fontWeight: "600" }}
-                >
+                <Text style={{ fontSize: 16, color: colors.text, fontWeight: "600" }}>
                   {fmt(rangeStart)} - {fmt(rangeEnd)}
                 </Text>
               </TouchableOpacity>
@@ -834,44 +789,33 @@ export default function DashboardScreen() {
                   <MaterialIcons
                     name="calendar-today"
                     size={ICON_SIZE - 4}
-                    color="#4B5563"
+                    color={colors.icon}
                   />
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
-            <View
-              style={{
-                height: ICON_SIZE,
-                justifyContent: "center",
-                alignItems: "center",
-                position: "relative",
-              }}
-            >
+            <View style={{
+              height: ICON_SIZE, justifyContent: "center",
+              alignItems: "center", position: "relative",
+            }}>
               <View style={{ position: "absolute", left: 0 }}>
                 <TouchableOpacity onPress={() => shiftAnchor(-1)}>
                   <MaterialIcons
                     name="keyboard-arrow-left"
                     size={ICON_SIZE}
-                    color="#4B5563"
+                    color={colors.icon}
                   />
                 </TouchableOpacity>
               </View>
               <TouchableOpacity onPress={() => setPickerVisible(true)}>
-                <Text
-                  style={{ fontSize: 16, color: "#374151", fontWeight: "600" }}
-                >
+                <Text style={{ fontSize: 16, color: colors.text, fontWeight: "600" }}>
                   {label}
                 </Text>
               </TouchableOpacity>
-              <View
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
+              <View style={{
+                position: "absolute", right: 0, flexDirection: "row", alignItems: "center",
+              }}>
                 {!atCurrentPeriod && (
                   <TouchableOpacity
                     onPress={goToCurrentPeriod}
@@ -880,7 +824,7 @@ export default function DashboardScreen() {
                     <MaterialCommunityIcons
                       name="fast-forward-outline"
                       size={ICON_SIZE - 2}
-                      color="#4B5563"
+                      color={colors.icon}
                     />
                   </TouchableOpacity>
                 )}
@@ -889,7 +833,7 @@ export default function DashboardScreen() {
                     <MaterialIcons
                       name="keyboard-arrow-right"
                       size={ICON_SIZE}
-                      color="#4B5563"
+                      color={colors.icon}
                     />
                   </TouchableOpacity>
                 ) : null}
@@ -904,9 +848,7 @@ export default function DashboardScreen() {
           end={{ x: 1, y: 0 }}
           style={{ marginHorizontal: 16, padding: 16, borderRadius: 20 }}
         >
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between" }}
-          >
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 16, fontWeight: "600", color: "#fff" }}>
               Thay đổi ròng
             </Text>
@@ -916,12 +858,8 @@ export default function DashboardScreen() {
           </View>
           <View style={{ flexDirection: "row", marginTop: 8, gap: 8 }}>
             <View style={styles.miniStat}>
-              <Text style={{ color: "#e74c3c", fontWeight: "500" }}>
-                Chi phí
-              </Text>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-              >
+              <Text style={{ color: "#333", fontWeight: "500" }}>Chi phí</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <Ionicons name="arrow-down" size={16} color="#e74c3c" />
                 <Text style={{ color: "#e74c3c", fontWeight: "600" }}>
                   {fmtMoney(periodExpense)}
@@ -929,12 +867,8 @@ export default function DashboardScreen() {
               </View>
             </View>
             <View style={styles.miniStat}>
-              <Text style={{ fontWeight: "500", color: "#27ae60" }}>
-                Thu nhập
-              </Text>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-              >
+              <Text style={{ color: "#333", fontWeight: "500" }}>Thu nhập</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <Ionicons name="arrow-up" size={16} color="#27ae60" />
                 <Text style={{ color: "#27ae60", fontWeight: "600" }}>
                   {fmtMoney(periodIncome)}
@@ -944,14 +878,10 @@ export default function DashboardScreen() {
           </View>
         </LinearGradient>
         {/* Tabs Chi phí / Thu nhập */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "center",
-            marginHorizontal: 16,
-            gap: 16,
-          }}
-        >
+        <View style={{
+          flexDirection: "row", justifyContent: "center",
+          marginHorizontal: 16, gap: 16,
+        }}>
           {(["Chi phí", "Thu nhập"] as Tab[]).map((item) => {
             const isActive = item === activeTab;
             return (
@@ -972,23 +902,19 @@ export default function DashboardScreen() {
                       paddingVertical: 8,
                     }}
                   >
-                    <Text
-                      style={{ fontSize: 15, fontWeight: "600", color: "#fff" }}
-                    >
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: "#fff" }}>
                       {item}
                     </Text>
                   </LinearGradient>
                 ) : (
-                  <View
-                    style={{
-                      borderRadius: 20,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      paddingVertical: 8,
-                      backgroundColor: "#E5E7EB",
-                    }}
-                  >
-                    <Text style={{ fontSize: 15, color: "#374151" }}>
+                  <View style={{
+                    borderRadius: 20,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 8,
+                    backgroundColor: colors.divider,
+                  }}>
+                    <Text style={{ fontSize: 15, color: colors.text }}>
                       {item}
                     </Text>
                   </View>
@@ -998,7 +924,7 @@ export default function DashboardScreen() {
           })}
         </View>
         {/* Biểu đồ donut + danh mục */}
-        <ExpenseDonutChart data={chartData} />
+        <ExpenseDonutChart data={chartData} colors={colors} />
         {/* ---------- Danh mục đã xài ---------- */}
         <View style={{ marginHorizontal: 16, marginBottom: 24 }}>
           {listData.map((it, idx) => (
@@ -1008,6 +934,7 @@ export default function DashboardScreen() {
               amount={it.amount}
               percent={it.percent}
               color={it.color}
+              colors={colors}
               emoji={
                 /ăn|uống|food|drink/i.test(it.category)
                   ? "🍔"
@@ -1028,7 +955,7 @@ export default function DashboardScreen() {
           contentContainerStyle={{
             marginHorizontal: 24,
             borderRadius: 16,
-            backgroundColor: "white",
+            backgroundColor: colors.card,
             padding: 12,
             alignSelf: "center",
             width: 360,
@@ -1042,13 +969,9 @@ export default function DashboardScreen() {
           )}
           {time === "Tháng" && <MonthGridPicker />}
           {time === "Năm" && <YearPicker />}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "flex-end",
-              marginTop: 8,
-            }}
-          >
+          <View style={{
+            flexDirection: "row", justifyContent: "flex-end", marginTop: 8,
+          }}>
             <TouchableOpacity
               onPress={() => setPickerVisible(false)}
               style={{ padding: 10 }}
@@ -1083,157 +1006,107 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  header: { paddingHorizontal: 16 },
-  shortcutRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  shadow: {
-    borderRadius: 40,
-    shadowColor: "#2F80ED",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  milestoneBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 40,
-  },
-  text: { color: "#fff", fontSize: 16, fontWeight: "600", letterSpacing: 0.3 },
-  assetOverview: {
-    paddingHorizontal: 16,
-    flexDirection: "column",
-    paddingTop: 8,
-  },
-  cardsRow: { flexDirection: "row", gap: 12 },
-  cardShadow: {
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  assetCard: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#2F80ED",
-    position: "relative",
-  },
-  editBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 24,
-    height: 24,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: "#000",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-  },
-  cardTitle: {
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  amount: {
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-    color: "#000",
-  },
-  newWalletCard: {
-    flex: 1,
-    backgroundColor: "#E7ECF1",
-    padding: 16,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  plus: { fontSize: 28, lineHeight: 28, color: "#6B7280", marginBottom: 6 },
-  newWalletText: { fontSize: 14, color: "#9CA3AF", fontWeight: "600" },
-  miniStat: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    paddingVertical: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-  },
-  catItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  catIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#EAF6FF",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D6E6F7",
-  },
-  catHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  catTitle: { fontSize: 16, color: "#111827", fontWeight: "600" },
-  catAmount: { fontSize: 14, color: "#374151", fontWeight: "600" },
-  barContainer: {
-    height: 14,
-    justifyContent: "center",
-  },
-  barTrack: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "#ECEFF3",
-    width: "100%",
-  },
-  barFill: {
-    position: "absolute",
-    left: 0,
-    height: 6,
-    borderRadius: 999,
-  },
-  pill: {
-    position: "absolute",
-    top: -5,
-    transform: [{ translateX: -0.5 }],
-    paddingHorizontal: 10,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#C7CFDA",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  pillText: { fontSize: 12, color: "#111827", fontWeight: "600" },
-});
+const makeStyles = (c: {
+  background: string;
+  card: string;
+  text: string;
+  subText: string;
+  divider: string;
+  icon: string;
+}) =>
+  StyleSheet.create({
+    header: { paddingHorizontal: 16 },
+    shortcutRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    shadow: {
+      borderRadius: 40,
+      shadowColor: "#2F80ED",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    milestoneBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingHorizontal: 22,
+      paddingVertical: 12,
+      borderRadius: 40,
+    },
+    text: { color: "#fff", fontSize: 16, fontWeight: "600", letterSpacing: 0.3 },
+    assetOverview: {
+      paddingHorizontal: 16,
+      flexDirection: "column",
+      paddingTop: 8,
+    },
+    cardsRow: { flexDirection: "row", gap: 12 },
+    cardShadow: {
+      shadowColor: "#000",
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 6 },
+      shadowRadius: 10,
+      elevation: 3,
+    },
+    assetCard: {
+      flex: 1,
+      backgroundColor: c.card,
+      padding: 16,
+      borderRadius: 20,
+      borderWidth: 2,
+      borderColor: "#2F80ED",
+      position: "relative",
+    },
+    editBtn: {
+      position: "absolute",
+      top: 10,
+      right: 10,
+      width: 24,
+      height: 24,
+      borderRadius: 15,
+      borderWidth: 2,
+      borderColor: c.icon,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.card,
+    },
+    cardTitle: {
+      textAlign: "center",
+      fontSize: 14,
+      fontWeight: "600",
+      color: c.text,
+    },
+    amount: {
+      textAlign: "center",
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+      color: c.text,
+    },
+    newWalletCard: {
+      flex: 1,
+      backgroundColor: c.divider,
+      padding: 16,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    plus: { fontSize: 28, lineHeight: 28, color: c.subText, marginBottom: 6 },
+    newWalletText: { fontSize: 14, color: c.subText, fontWeight: "600" },
+    miniStat: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.8)",
+      paddingVertical: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+    },
+  });

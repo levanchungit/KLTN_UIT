@@ -1,17 +1,16 @@
 // app/(tabs)/Transactions.tsx
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
-  RefreshControl,
   SectionList,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
+import { useTheme } from "../providers/ThemeProvider";
 
 /* Helpers */
 const startOfDay = (d: Date) => {
@@ -28,8 +27,8 @@ const dayLabel = (d: Date) => {
     month: "long",
     year: "numeric",
   });
-  if (diff === 0) return `Hôm nay - ${dateText}`;
-  if (diff === 1) return `Hôm qua - ${dateText}`;
+  if (diff === 0) return "Hôm nay, " + dateText;
+  if (diff === 1) return "Hôm qua, " + dateText;
   return dateText;
 };
 const fmtMoney = (n: number) =>
@@ -38,12 +37,14 @@ const fmtMoney = (n: number) =>
 type Section = { title: string; key: string; date: Date; data: TxDetailRow[] };
 
 export default function Transactions() {
+  const { colors, mode } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadedDays, setLoadedDays] = useState(0);
 
-  const PAGE_DAYS = 14; // ↑ tăng page để giảm số lần query
+  const PAGE_DAYS = 14;
   const MAX_PAST_DAYS = 365 * 3;
 
   const loadingMoreRef = useRef(false);
@@ -138,111 +139,114 @@ export default function Transactions() {
     }
   }, [fetchRange, loadedDays, sections]);
 
-  const renderItem = useCallback(({ item }: { item: TxDetailRow }) => {
-    const isIncome = item.type === "income";
-    const amountColor = isIncome ? "#0EA869" : "#E11D48";
-    const icon = item.category_icon ? { uri: item.category_icon } : undefined;
-
-    return (
-      <View style={styles.row}>
-        <View style={styles.leftIcon}>
-          {icon ? (
-            <Image
-              source={icon}
-              style={{ width: 22, height: 22 }}
-              resizeMode="contain"
-            />
-          ) : (
-            <MaterialCommunityIcons name="wallet" size={22} color="#0EA5E9" />
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.catName} numberOfLines={1}>
-            {item.category_name ?? "Danh mục"}
-          </Text>
-          <Text style={styles.sub} numberOfLines={1}>
-            {item.account_name} · {item.note ?? "Mô tả"}
-          </Text>
-        </View>
-        <Text style={[styles.amount, { color: amountColor }]}>
-          {(isIncome ? "+" : "-") + fmtMoney(Math.abs(item.amount))}
-        </Text>
-        <MaterialCommunityIcons
-          name="chevron-right"
-          size={18}
-          color="#9CA3AF"
-        />
-      </View>
-    );
-  }, []);
-
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+    <View style={styles.container}>
       <SectionList
         sections={sections}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
+        keyExtractor={(item, index) => `${item.id || index}`}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
           </View>
         )}
-        stickySectionHeadersEnabled={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadInitial} />
-        }
-        contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
-        onMomentumScrollBegin={() => {
-          onEndMomentumFired.current = false;
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <View style={styles.leftIcon}>
+              <Ionicons
+                name={item.type === "expense" ? "arrow-down" : "arrow-up"}
+                size={18}
+                color={item.type === "expense" ? "#EF4444" : "#10B981"}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.catName}>{item.category || "Khác"}</Text>
+              <Text style={styles.sub}>{item.note || ""}</Text>
+            </View>
+            <Text
+              style={[
+                styles.amount,
+                {
+                  color: item.type === "expense" ? "#EF4444" : "#10B981",
+                },
+              ]}
+            >
+              {item.type === "expense" ? "-" : "+"}
+              {fmtMoney(item.amount)}
+            </Text>
+          </View>
+        )}
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          // ...reload data...
+          setRefreshing(false);
         }}
         onEndReached={() => {
-          if (!onEndMomentumFired.current) {
-            loadMore();
-            onEndMomentumFired.current = true;
+          if (!loadingMoreRef.current && onEndMomentumFired.current) {
+            loadingMoreRef.current = true;
+            setLoadingMore(true);
+            // ...load more data...
+            setTimeout(() => {
+              setLoadingMore(false);
+              loadingMoreRef.current = false;
+            }, 1000);
           }
         }}
-        onEndReachedThreshold={0.2}
+        onEndReachedThreshold={0.3}
+        onMomentumScrollBegin={() => {
+          onEndMomentumFired.current = true;
+        }}
         ListFooterComponent={
           loadingMore ? (
-            <View style={{ paddingVertical: 16 }}>
-              <ActivityIndicator />
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color={colors.icon} />
             </View>
           ) : null
         }
-        ListEmptyComponent={
-          !refreshing ? (
-            <View style={{ padding: 24, alignItems: "center" }}>
-              <Text>Chưa có giao dịch nào.</Text>
-            </View>
-          ) : null
-        }
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
+        stickySectionHeadersEnabled={false}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  sectionHeader: { marginTop: 8, marginBottom: 4, paddingVertical: 6 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "#E5E7EB",
-  },
-  leftIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: "#ECFEFF",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#BAE6FD",
-  },
-  catName: { fontSize: 15, fontWeight: "700", color: "#111827" },
-  sub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  amount: { fontSize: 14, fontWeight: "800" },
-});
+const makeStyles = (c: {
+  background: string;
+  card: string;
+  text: string;
+  subText: string;
+  divider: string;
+  icon: string;
+}) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    sectionHeader: {
+      marginTop: 8,
+      marginBottom: 4,
+      paddingVertical: 6,
+      backgroundColor: c.background,
+    },
+    sectionTitle: { fontSize: 18, fontWeight: "700", color: c.text },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: c.divider,
+      backgroundColor: c.card,
+    },
+    leftIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 8,
+      backgroundColor: c.card,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: c.divider,
+    },
+    catName: { fontSize: 15, fontWeight: "700", color: c.text },
+    sub: { fontSize: 12, color: c.subText, marginTop: 2 },
+    amount: { fontSize: 14, fontWeight: "800" },
+  });

@@ -6,6 +6,7 @@ import React, { useMemo } from "react";
 import { Dimensions, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import AIBotIcon from "./AIBotIcon";
 
 const BAR_BG = "#ffffff";
 const ACTIVE = "#1D4ED8";
@@ -88,90 +89,179 @@ export default function VenmoTabBar({
         style={{
           flexDirection: "row",
           alignItems: "flex-end",
-          justifyContent: "space-between",
           height: BAR_H,
           paddingBottom: insets.bottom ? insets.bottom - 2 : 8,
-          paddingHorizontal: 16,
         }}
       >
-        {routes.map((route, idx) => {
-          const isFocused = getIsFocused(route.key);
-          const options = descriptors[route.key]?.options || {};
-          const label =
-            (options.tabBarLabel as string) ||
-            (options.title as string) ||
-            route.name;
+        {/* 2 items bên trái */}
+        <View
+          style={{
+            flexDirection: "row",
+            flex: 1,
+            justifyContent: "space-around",
+            paddingLeft: 8,
+          }}
+        >
+          {routes.slice(0, 2).map((route) => {
+            const isFocused = getIsFocused(route.key);
+            const options = descriptors[route.key]?.options || {};
+            const label =
+              (options.tabBarLabel as string) ||
+              (options.title as string) ||
+              route.name;
 
-          const color = isFocused ? ACTIVE : INACTIVE;
-          const size = 24;
+            const color = isFocused ? ACTIVE : INACTIVE;
+            const size = 24;
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name as never);
-            }
-          };
+            const onPress = () => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name as never);
+              }
+            };
 
-          return (
-            <TouchableOpacity
-              key={route.key}
-              onPress={onPress}
-              activeOpacity={0.85}
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 3,
-              }}
-            >
-              {typeof options.tabBarIcon === "function" ? (
-                (options.tabBarIcon as any)({ focused: isFocused, color, size })
-              ) : (
-                <Ionicons name="ellipse-outline" size={size} color={color} />
-              )}
-              <Text
-                numberOfLines={1}
+            return (
+              <TouchableOpacity
+                key={route.key}
+                onPress={onPress}
+                activeOpacity={0.85}
                 style={{
-                  fontSize: 12,
-                  fontWeight: isFocused ? "700" : "500",
-                  color,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 3,
+                  minWidth: 60,
                 }}
               >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                {typeof options.tabBarIcon === "function" ? (
+                  (options.tabBarIcon as any)({
+                    focused: isFocused,
+                    color,
+                    size,
+                  })
+                ) : (
+                  <Ionicons name="ellipse-outline" size={size} color={color} />
+                )}
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: isFocused ? "700" : "500",
+                    color,
+                  }}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Khoảng trống cho nút giữa */}
+        <View style={{ width: BTN_R * 2 + 24 }} />
+
+        {/* 2 items bên phải */}
+        <View
+          style={{
+            flexDirection: "row",
+            flex: 1,
+            justifyContent: "space-around",
+            paddingRight: 8,
+          }}
+        >
+          {routes.slice(2, 4).map((route) => {
+            const isFocused = getIsFocused(route.key);
+            const options = descriptors[route.key]?.options || {};
+            const label =
+              (options.tabBarLabel as string) ||
+              (options.title as string) ||
+              route.name;
+
+            const color = isFocused ? ACTIVE : INACTIVE;
+            const size = 24;
+
+            const onPress = () => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name as never);
+              }
+            };
+
+            return (
+              <TouchableOpacity
+                key={route.key}
+                onPress={onPress}
+                activeOpacity={0.85}
+                style={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 3,
+                  minWidth: 60,
+                }}
+              >
+                {typeof options.tabBarIcon === "function" ? (
+                  (options.tabBarIcon as any)({
+                    focused: isFocused,
+                    color,
+                    size,
+                  })
+                ) : (
+                  <Ionicons name="ellipse-outline" size={size} color={color} />
+                )}
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: isFocused ? "700" : "500",
+                    color,
+                  }}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
-      {/* Nút giữa */}
+      {/* Nút giữa - AI Chatbot Signature */}
       <TouchableOpacity
         onPress={() => router.push("/chatbox")}
-        activeOpacity={0.9}
+        activeOpacity={0.85}
         style={{
           position: "absolute",
           left: width / 2 - BTN_R,
           bottom: insets.bottom * 1.6,
           width: BTN_R * 2,
           height: BTN_R * 2,
-          borderRadius: BTN_R,
-          backgroundColor: "#2563EB",
           justifyContent: "center",
           alignItems: "center",
-          borderWidth: 4,
-          borderColor: BAR_BG,
-          shadowColor: "#000",
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-          elevation: 8,
+          shadowColor: "#4285F4",
+          shadowOpacity: 0.6,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 20,
         }}
       >
-        {/* Đổi thành logo/app icon nếu muốn */}
-        <Ionicons name="add" size={30} color="#fff" />
+        {/* Glow background layer */}
+        <View
+          style={{
+            position: "absolute",
+            width: BTN_R * 2 + 10,
+            height: BTN_R * 2 + 10,
+            borderRadius: (BTN_R * 2 + 10) / 2,
+            backgroundColor: "#4285F4",
+            opacity: 0.15,
+          }}
+        />
+        <AIBotIcon size={52} />
       </TouchableOpacity>
     </View>
   );
