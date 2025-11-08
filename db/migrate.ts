@@ -108,6 +108,36 @@ CREATE TABLE IF NOT EXISTS ml_training_samples (
   FOREIGN KEY (chosen_category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ml_samples_user_time ON ml_training_samples(user_id, created_at);
+
+-- Budgets: overall budget plans
+CREATE TABLE IF NOT EXISTS budgets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  name TEXT NOT NULL,
+  total_income INTEGER NOT NULL,
+  period TEXT NOT NULL CHECK (period IN ('daily','weekly','monthly')),
+  lifestyle_desc TEXT,
+  start_date INTEGER NOT NULL,
+  end_date INTEGER,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  updated_at INTEGER,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id);
+
+-- Budget allocations: per-category limits within a budget
+CREATE TABLE IF NOT EXISTS budget_allocations (
+  id TEXT PRIMARY KEY,
+  budget_id TEXT NOT NULL,
+  category_id TEXT NOT NULL,
+  group_type TEXT NOT NULL CHECK (group_type IN ('needs','wants','savings')),
+  allocated_amount INTEGER NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  FOREIGN KEY (budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_budget_alloc_budget ON budget_allocations(budget_id);
+CREATE INDEX IF NOT EXISTS idx_budget_alloc_category ON budget_allocations(category_id);
 `;
 
 // Đảm bảo cột tồn tại: nếu thiếu thì ADD COLUMN + backfill

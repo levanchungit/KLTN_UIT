@@ -229,6 +229,8 @@ export default function CategoriesScreen() {
       pets: "paw",
       "credit-card": "credit-card-outline",
       assignment: "file-document-outline",
+      "piggy-bank-outline": "piggy-bank",
+      noodles: "food",
     };
 
     const [prefix, name] = iconStr.split(":");

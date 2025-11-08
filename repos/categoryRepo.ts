@@ -187,7 +187,7 @@ export async function seedCategoryDefaults() {
     {
       name: "Tiết kiệm",
       type: "income",
-      icon: "mc:piggy-bank-outline",
+      icon: "mc:piggy-bank",
       color: "#F6C33E",
     },
     {
