@@ -73,9 +73,11 @@ export default function Transactions() {
   const fetchRange = useCallback(
     async (fromOffsetDays: number, days: number) => {
       const to = startOfDay(new Date());
-      to.setDate(to.getDate() - fromOffsetDays); // exclusive end (HÔM NAY - offset)
+      to.setDate(to.getDate() - fromOffsetDays); // end date
+      to.setHours(23, 59, 59, 999); // include the whole end day
       const from = new Date(to);
-      from.setDate(to.getDate() - days); // lấy "days" ngày trước đó
+      from.setDate(to.getDate() - days + 1); // lấy "days" ngày (bao gồm to)
+      from.setHours(0, 0, 0, 0);
 
       const fromSec = Math.floor(from.getTime() / 1000);
       const toSec = Math.floor(to.getTime() / 1000);
@@ -209,20 +211,10 @@ export default function Transactions() {
           );
         }}
         refreshing={refreshing}
-        onRefresh={() => {
-          setRefreshing(true);
-          // ...reload data...
-          setRefreshing(false);
-        }}
+        onRefresh={loadInitial}
         onEndReached={() => {
           if (!loadingMoreRef.current && onEndMomentumFired.current) {
-            loadingMoreRef.current = true;
-            setLoadingMore(true);
-            // ...load more data...
-            setTimeout(() => {
-              setLoadingMore(false);
-              loadingMoreRef.current = false;
-            }, 1000);
+            loadMore();
           }
         }}
         onEndReachedThreshold={0.3}

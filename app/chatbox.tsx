@@ -1264,11 +1264,13 @@ export default function Chatbox() {
 
   // Edit transaction handlers
   const handleEditTransaction = (item: Extract<Msg, { role: "card" }>) => {
+    // Ensure io is properly set from the card data
+    const txType = item.io || "OUT"; // default to OUT if not set
     setEditingTx({
       transactionId: item.transactionId,
       accountId: item.accountId,
       categoryId: item.categoryId,
-      io: item.io,
+      io: txType,
       amount: item.amount || 0,
       note: item.note,
       when: new Date(),
@@ -1286,6 +1288,11 @@ export default function Chatbox() {
       return;
     }
 
+    if (!editCategoryId) {
+      alert("Vui lòng chọn danh mục");
+      return;
+    }
+
     try {
       await updateTransaction({
         id: editingTx.transactionId,
@@ -1297,7 +1304,7 @@ export default function Chatbox() {
         when: editingTx.when,
       });
 
-      // Update message in chat
+      // Update message in chat - bao gồm cả io type
       setMessages((msgs) =>
         msgs.map((m) =>
           m.role === "card" && m.transactionId === editingTx.transactionId
@@ -1306,6 +1313,7 @@ export default function Chatbox() {
                 amount: newAmount,
                 note: editNote,
                 categoryId: editCategoryId,
+                io: editingTx.io, // Update io type
                 categoryName:
                   items.find((c) => c.id === editCategoryId)?.name ||
                   m.categoryName,
@@ -1315,6 +1323,10 @@ export default function Chatbox() {
       );
 
       setEditingTx(null);
+      // Reset edit states
+      setEditAmount("");
+      setEditNote("");
+      setEditCategoryId("");
     } catch (e: any) {
       alert("Không thể cập nhật: " + (e?.message || "Lỗi"));
     }
@@ -1590,6 +1602,115 @@ export default function Chatbox() {
               </View>
 
               <ScrollView>
+                {/* Transaction Type Toggle */}
+                <View style={{ marginBottom: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      marginBottom: 8,
+                      color: colors.text,
+                    }}
+                  >
+                    Loại giao dịch
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (editingTx) {
+                          setEditingTx({ ...editingTx, io: "OUT" });
+                          // Reset category khi đổi loại
+                          setEditCategoryId("");
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor:
+                          editingTx?.io === "OUT" ? "#EF4444" : colors.divider,
+                        backgroundColor:
+                          editingTx?.io === "OUT"
+                            ? mode === "dark"
+                              ? "#7F1D1D"
+                              : "#FEE2E2"
+                            : colors.background,
+                      }}
+                    >
+                      <Ionicons
+                        name="arrow-down-circle"
+                        size={20}
+                        color={
+                          editingTx?.io === "OUT" ? "#EF4444" : colors.subText
+                        }
+                      />
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color:
+                            editingTx?.io === "OUT"
+                              ? "#EF4444"
+                              : colors.subText,
+                        }}
+                      >
+                        Chi phí
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (editingTx) {
+                          setEditingTx({ ...editingTx, io: "IN" });
+                          // Reset category khi đổi loại
+                          setEditCategoryId("");
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor:
+                          editingTx?.io === "IN" ? "#10B981" : colors.divider,
+                        backgroundColor:
+                          editingTx?.io === "IN"
+                            ? mode === "dark"
+                              ? "#065F46"
+                              : "#D1FAE5"
+                            : colors.background,
+                      }}
+                    >
+                      <Ionicons
+                        name="arrow-up-circle"
+                        size={20}
+                        color={
+                          editingTx?.io === "IN" ? "#10B981" : colors.subText
+                        }
+                      />
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color:
+                            editingTx?.io === "IN" ? "#10B981" : colors.subText,
+                        }}
+                      >
+                        Thu nhập
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
                 {/* Amount */}
                 <View style={{ marginBottom: 16 }}>
                   <Text
@@ -1665,12 +1786,17 @@ export default function Chatbox() {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    style={{ flexDirection: "row", gap: 8 }}
+                    contentContainerStyle={{
+                      flexDirection: "row",
+                      gap: 8,
+                      paddingVertical: 4,
+                    }}
                   >
                     {items
                       .filter((c) => {
+                        if (!editingTx) return false;
                         const type =
-                          editingTx?.io === "OUT" ? "expense" : "income";
+                          editingTx.io === "OUT" ? "expense" : "income";
                         return c.type === type;
                       })
                       .map((cat) => (
@@ -1692,12 +1818,12 @@ export default function Chatbox() {
                                   ? "#065F46"
                                   : "#D1FAE5"
                                 : colors.background,
-                            marginRight: 8,
                           }}
                         >
                           <Text
                             style={{
                               fontSize: 14,
+                              fontWeight: "600",
                               color:
                                 editCategoryId === cat.id
                                   ? "#10B981"
