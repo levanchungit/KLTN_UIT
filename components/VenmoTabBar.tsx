@@ -30,26 +30,41 @@ export default function VenmoTabBar({
   const routes = state.routes.filter((r) => mainRouteNames.has(r.name));
 
   // Kích thước bar + notch
-  const BAR_H = 60 + insets.bottom;
+  // Reduce overall bar height for a more compact design
+  const EXTRA_BOTTOM_SPACE = 4; // minimal visual breathing room
+  const BAR_H = 56 + insets.bottom + EXTRA_BOTTOM_SPACE;
   const BTN_R = 30; // bán kính nút giữa (giữ như bạn muốn)
-  const NOTCH_H = 38; // ⬅️ độ sâu rãnh (giống bạn yêu cầu)
-  const NOTCH_PAD = 10; // ⬅️ độ cong/độ nới vai hai bên
 
   const d = useMemo(() => {
     const c = width / 2;
-    const left = c - (BTN_R + NOTCH_PAD);
-    const right = c + (BTN_R + NOTCH_PAD);
+
+    // Perfect Venmo-style oval: wider horizontally, moderate depth
+    const horizontalRadius = BTN_R + 12; // wider oval (44px from center)
+    const verticalRadius = BTN_R + 12; // shallower depth (36px)
+
+    const left = c - horizontalRadius;
+    const right = c + horizontalRadius;
+
+    // Use Bezier curves with precise control points for perfect circular appearance
+    // Based on the approximation: control offset = radius * 0.5522847498 (circle constant)
+    const hControl = horizontalRadius * 0.5522847498;
+    const vControl = verticalRadius * 0.5522847498;
+
     return [
       `M0 0`,
       `H${left}`,
-      `C ${left + 8} 0, ${c - BTN_R} ${NOTCH_H}, ${c} ${NOTCH_H}`,
-      `C ${c + BTN_R} ${NOTCH_H}, ${right - 8} 0, ${right} 0`,
+      // First half of oval: left edge down to bottom center
+      `C ${left} ${vControl}, ${
+        c - hControl
+      } ${verticalRadius}, ${c} ${verticalRadius}`,
+      // Second half of oval: bottom center up to right edge
+      `C ${c + hControl} ${verticalRadius}, ${right} ${vControl}, ${right} 0`,
       `H${width}`,
       `V${BAR_H}`,
       `H0`,
       `Z`,
     ].join(" ");
-  }, [width, BAR_H, BTN_R, NOTCH_PAD, NOTCH_H]);
+  }, [width, BAR_H, BTN_R]);
 
   const getIsFocused = (routeKey: string) =>
     state.index === state.routes.findIndex((r) => r.key === routeKey);
@@ -90,7 +105,8 @@ export default function VenmoTabBar({
           flexDirection: "row",
           alignItems: "flex-end",
           height: BAR_H,
-          paddingBottom: insets.bottom ? insets.bottom - 2 : 8,
+          // Compact padding for tab items
+          paddingBottom: (insets.bottom || 6) + 2,
         }}
       >
         {/* 2 items bên trái */}
@@ -238,7 +254,8 @@ export default function VenmoTabBar({
         style={{
           position: "absolute",
           left: width / 2 - BTN_R,
-          bottom: insets.bottom * 1.6,
+          // Position so 50% of button is above bar edge, 50% below (cut in half)
+          bottom: BAR_H - BTN_R,
           width: BTN_R * 2,
           height: BTN_R * 2,
           justifyContent: "center",

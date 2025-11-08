@@ -1,18 +1,19 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Budget() {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <Text style={styles.title}>Ngân sách</Text>
         <Text style={styles.subtitle}>Tính năng đang phát triển...</Text>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

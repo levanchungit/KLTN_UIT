@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useColorScheme } from "react-native";
 
 type Mode = "light" | "dark";
 type Colors = {
@@ -11,7 +18,14 @@ type Colors = {
   divider: string;
   icon: string;
 };
-type ThemeCtx = { mode: Mode; colors: Colors; toggleTheme: () => void };
+type Preference = "system" | Mode;
+type ThemeCtx = {
+  mode: Mode; // effective mode (after applying preference + system)
+  preference: Preference; // user preference (system, light, dark)
+  colors: Colors;
+  cyclePreference: () => void; // cycle system -> dark -> light -> system
+  setPreference: (p: Preference) => void;
+};
 
 const light: Colors = {
   background: "#FAFBFC",
@@ -33,35 +47,54 @@ const dark: Colors = {
 
 const ThemeContext = createContext<ThemeCtx>({
   mode: "light",
+  preference: "system",
   colors: light,
-  toggleTheme: () => {},
+  cyclePreference: () => {},
+  setPreference: () => {},
 });
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode>("light");
+  const systemScheme = useColorScheme();
+  const [preference, setPreference] = useState<Preference>("system");
 
+  // Load saved preference
   useEffect(() => {
-    AsyncStorage.getItem("@app-theme").then((val) => {
-      if (val === "dark" || val === "light") setMode(val);
+    AsyncStorage.getItem("@theme-preference").then((val) => {
+      if (val === "system" || val === "light" || val === "dark") {
+        setPreference(val);
+      }
     });
   }, []);
 
+  // Persist preference
   useEffect(() => {
-    AsyncStorage.setItem("@app-theme", mode).catch(() => {});
-  }, [mode]);
+    AsyncStorage.setItem("@theme-preference", preference).catch(() => {});
+  }, [preference]);
+
+  const effectiveMode: Mode =
+    preference === "system"
+      ? systemScheme === "dark"
+        ? "dark"
+        : "light"
+      : preference;
 
   const value = useMemo<ThemeCtx>(
     () => ({
-      mode,
-      colors: mode === "light" ? light : dark,
-      toggleTheme: () => setMode((m) => (m === "light" ? "dark" : "light")),
+      mode: effectiveMode,
+      preference,
+      colors: effectiveMode === "light" ? light : dark,
+      cyclePreference: () =>
+        setPreference((prev) =>
+          prev === "system" ? "dark" : prev === "dark" ? "light" : "system"
+        ),
+      setPreference,
     }),
-    [mode]
+    [effectiveMode, preference]
   );
 
   return (
     <ThemeContext.Provider value={value}>
-      <StatusBar style={mode === "light" ? "dark" : "light"} />
+      <StatusBar style={effectiveMode === "light" ? "dark" : "light"} />
       {children}
     </ThemeContext.Provider>
   );

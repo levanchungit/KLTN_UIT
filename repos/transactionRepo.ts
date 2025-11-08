@@ -9,6 +9,7 @@ export type TxDetailRow = {
   account_name: string;
   category_name: string | null;
   category_icon: string | null;
+  category_color: string | null;
   type?: "expense" | "income";
 };
 
@@ -134,7 +135,6 @@ export async function addExpense({
   const id = `tx_${Math.random().toString(36).slice(2)}`;
   const occurred = Math.floor(when.getTime() / 1000);
   const updated = Math.floor(updatedAt.getTime() / 1000);
-  console.log(updated);
   await db.runAsync(
     `INSERT INTO transactions
       (id,user_id,account_id,category_id,type,amount,note,occurred_at,updated_at)
@@ -206,7 +206,7 @@ export async function listByDay(day: Date) {
   try {
     return await db.getAllAsync<any>(
       `
-      SELECT t.*, a.name account_name, c.name category_name, c.icon category_icon
+      SELECT t.*, a.name account_name, c.name category_name, c.icon category_icon, c.color category_color
       FROM transactions t
       JOIN accounts a ON a.id=t.account_id
       LEFT JOIN categories c ON c.id=t.category_id
@@ -274,7 +274,8 @@ export async function listTxByCategory(params: {
            t.updated_at,
            a.name AS account_name,
            c.name AS category_name,
-           c.icon AS category_icon
+           c.icon AS category_icon,
+           c.color AS category_color
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
@@ -367,7 +368,8 @@ export async function listBetween(
     SELECT t.id, t.amount, t.note, t.occurred_at, t.updated_at, t.type,
            a.name AS account_name,
            c.name AS category_name,
-           c.icon AS category_icon
+           c.icon AS category_icon,
+           c.color AS category_color
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id

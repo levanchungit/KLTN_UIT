@@ -152,14 +152,24 @@ export async function seedCategoryDefaults() {
     icon: string;
     color: string;
   }[] = [
-    { name: "Trả nợ", type: "expense", icon: "mi:money-off", color: "#7EC5E8" },
-    { name: "Điện", type: "expense", icon: "mi:flash-on", color: "#66C2A3" },
-    { name: "Wifi", type: "expense", icon: "mi:wifi", color: "#3A78D0" },
-    { name: "4G", type: "expense", icon: "mi:sim-card", color: "#7EC5E8" },
+    {
+      name: "Trả nợ",
+      type: "expense",
+      icon: "mc:cash-remove",
+      color: "#7EC5E8",
+    },
+    {
+      name: "Điện",
+      type: "expense",
+      icon: "mc:lightning-bolt",
+      color: "#66C2A3",
+    },
+    { name: "Wifi", type: "expense", icon: "mc:wifi", color: "#3A78D0" },
+    { name: "4G", type: "expense", icon: "mc:sim", color: "#7EC5E8" },
     {
       name: "Đám tiệc",
       type: "expense",
-      icon: "mi:celebration",
+      icon: "mc:party-popper",
       color: "#EE4DB4",
     },
     {

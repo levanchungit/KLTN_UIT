@@ -1,6 +1,6 @@
 // app/(tabs)/Transactions.tsx
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
-import { Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useRef, useState } from "react";
 import {
@@ -8,8 +8,9 @@ import {
   SectionList,
   StyleSheet,
   Text,
-  View
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../providers/ThemeProvider";
 
 /* Helpers */
@@ -140,7 +141,7 @@ export default function Transactions() {
   }, [fetchRange, loadedDays, sections]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <SectionList
         sections={sections}
         keyExtractor={(item, index) => `${item.id || index}`}
@@ -149,32 +150,64 @@ export default function Transactions() {
             <Text style={styles.sectionTitle}>{section.title}</Text>
           </View>
         )}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View style={styles.leftIcon}>
-              <Ionicons
-                name={item.type === "expense" ? "arrow-down" : "arrow-up"}
-                size={18}
-                color={item.type === "expense" ? "#EF4444" : "#10B981"}
-              />
+        renderItem={({ item }) => {
+          // Icon mapping for mi: prefix
+          const iconMap: Record<string, string> = {
+            "directions-car": "car",
+            "flight-takeoff": "airplane-takeoff",
+            assignment: "file-document-outline",
+            pets: "paw",
+            "credit-card": "credit-card-outline",
+          };
+
+          // Determine icon name and color
+          let iconName = "cash";
+          let iconColor = colors.icon;
+
+          if (item.category_icon) {
+            if (item.category_icon.startsWith("mc:")) {
+              iconName = item.category_icon.replace("mc:", "");
+            } else if (item.category_icon.startsWith("mi:")) {
+              const miName = item.category_icon.replace("mi:", "");
+              iconName = iconMap[miName] || "help-circle-outline";
+            } else {
+              iconName = item.category_icon;
+            }
+          }
+
+          if (item.category_color) {
+            iconColor = item.category_color;
+          }
+
+          return (
+            <View style={styles.row}>
+              <View style={styles.leftIcon}>
+                <MaterialCommunityIcons
+                  name={iconName as any}
+                  size={18}
+                  color={iconColor}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.catName}>
+                  {item.category_name || "Khác"}
+                </Text>
+                <Text style={styles.sub}>{item.note || ""}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.amount,
+                  {
+                    color: item.type === "expense" ? "#EF4444" : "#10B981",
+                  },
+                ]}
+              >
+                {item.type === "expense" ? "-" : "+"}
+                {fmtMoney(item.amount)}
+              </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.catName}>{item.category || "Khác"}</Text>
-              <Text style={styles.sub}>{item.note || ""}</Text>
-            </View>
-            <Text
-              style={[
-                styles.amount,
-                {
-                  color: item.type === "expense" ? "#EF4444" : "#10B981",
-                },
-              ]}
-            >
-              {item.type === "expense" ? "-" : "+"}
-              {fmtMoney(item.amount)}
-            </Text>
-          </View>
-        )}
+          );
+        }}
         refreshing={refreshing}
         onRefresh={() => {
           setRefreshing(true);
@@ -206,7 +239,7 @@ export default function Transactions() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
         stickySectionHeadersEnabled={false}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -234,7 +267,6 @@ const makeStyles = (c: {
       paddingVertical: 10,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: c.divider,
-      backgroundColor: c.card,
     },
     leftIcon: {
       width: 34,

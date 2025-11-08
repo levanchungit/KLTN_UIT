@@ -98,19 +98,6 @@ export default function WalletSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Chia sẻ ví và mời thành viên */}
-        <View style={styles.section}>
-          <TouchableOpacity style={styles.card}>
-            <MaterialCommunityIcons
-              name="account-multiple-plus-outline"
-              size={24}
-              color={colors.text}
-              style={{ marginRight: 12 }}
-            />
-            <Text style={styles.cardValue}>Chia sẻ ví và mời thành viên</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Ví yêu cầu mở khóa sinh trắc học */}
         <View style={styles.section}>
           <View style={styles.switchCard}>

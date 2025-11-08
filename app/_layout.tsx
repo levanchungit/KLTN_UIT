@@ -1,4 +1,7 @@
-import { AppThemeProvider } from "@/app/providers/ThemeProvider";
+import {
+  AppThemeProvider,
+  useTheme as useAppTheme,
+} from "@/app/providers/ThemeProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
@@ -10,7 +13,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { LogBox, Platform, UIManager, useColorScheme } from "react-native";
+import { LogBox, Platform, UIManager } from "react-native";
 import { PaperProvider } from "react-native-paper";
 
 // Suppress warnings in New Architecture
@@ -68,10 +71,10 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const { mode } = useAppTheme();
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={mode === "dark" ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chatbox" />

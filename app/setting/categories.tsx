@@ -21,6 +21,16 @@ import {
 import { Modal, Portal } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// Dynamic import for color picker to avoid bundling issues
+let ColorPicker: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const colorPickerModule = require("react-native-wheel-color-picker");
+  ColorPicker = colorPickerModule.default || colorPickerModule;
+} catch (e) {
+  console.warn("Color picker not available:", e);
+}
+
 type Tab = "expense" | "income";
 
 export default function CategoriesScreen() {
@@ -32,29 +42,82 @@ export default function CategoriesScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal state
   const [modalVisible, setModalVisible] = useState(false);
-  const [iconPickerVisible, setIconPickerVisible] = useState(false);
+  const [showAllIcons, setShowAllIcons] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formName, setFormName] = useState("");
   const [formIcon, setFormIcon] = useState("");
-  const [formColor, setFormColor] = useState("#3B82F6");
+  const [formColor, setFormColor] = useState("");
+  const [customColorVisible, setCustomColorVisible] = useState(false);
+  const [wheelColor, setWheelColor] = useState("#3B82F6");
+  const [customColors, setCustomColors] = useState<string[]>([]);
 
-  // Icon options
   const ICON_OPTIONS = [
-    { name: "Thức ăn", icon: "mc:food", emoji: "🍔" },
-    { name: "Du lịch", icon: "mc:airplane", emoji: "✈️" },
-    { name: "Mua sắm", icon: "mc:shopping", emoji: "🛍️" },
-    { name: "Nhà", icon: "mc:home", emoji: "🏠" },
-    { name: "Xe", icon: "mc:car", emoji: "🚗" },
-    { name: "Giải trí", icon: "mc:gamepad-variant", emoji: "🎮" },
-    { name: "Sức khỏe", icon: "mc:heart", emoji: "❤️" },
-    { name: "Giáo dục", icon: "mc:school", emoji: "🎓" },
-    { name: "Thể thao", icon: "mc:run", emoji: "🏃" },
-    { name: "Quà tặng", icon: "mc:gift", emoji: "🎁" },
-    { name: "Tiền lương", icon: "mc:cash", emoji: "💰" },
-    { name: "Cafe", icon: "mc:coffee", emoji: "☕" },
+    { name: "Thức ăn", icon: "mc:food" },
+    { name: "Du lịch", icon: "mc:airplane" },
+    { name: "Mua sắm", icon: "mc:shopping" },
+    { name: "Nhà", icon: "mc:home" },
+    { name: "Xe", icon: "mc:car" },
+    { name: "Giải trí", icon: "mc:gamepad-variant" },
+    { name: "Sức khỏe", icon: "mc:heart" },
+    { name: "Giáo dục", icon: "mc:school" },
+    { name: "Thể thao", icon: "mc:run" },
+    { name: "Quà tặng", icon: "mc:gift" },
+    { name: "Tiền lương", icon: "mc:cash" },
+    { name: "Cafe", icon: "mc:coffee" },
+    { name: "Điện thoại", icon: "mc:cellphone" },
+    { name: "Laptop", icon: "mc:laptop" },
+    { name: "Sách", icon: "mc:book" },
+    { name: "Âm nhạc", icon: "mc:music" },
+    { name: "Phim", icon: "mc:movie" },
+    { name: "Camera", icon: "mc:camera" },
+    { name: "Đồng hồ", icon: "mc:watch" },
+    { name: "Ví", icon: "mc:wallet" },
+    { name: "Thú cưng", icon: "mc:paw" },
+    { name: "Hoa", icon: "mc:flower" },
+    { name: "Cây", icon: "mc:tree" },
+    { name: "Bãi biển", icon: "mc:beach" },
+    { name: "Núi", icon: "mc:image-filter-hdr" },
+    { name: "Khách sạn", icon: "mc:bed" },
+    { name: "Nhà hàng", icon: "mc:silverware-fork-knife" },
+    { name: "Pizza", icon: "mc:pizza" },
+    { name: "Bia", icon: "mc:beer" },
+    { name: "Cocktail", icon: "mc:glass-cocktail" },
+    { name: "Bánh ngọt", icon: "mc:cake" },
+    { name: "Kem", icon: "mc:ice-cream" },
+    { name: "Bác sĩ", icon: "mc:doctor" },
+    { name: "Thuốc", icon: "mc:pill" },
+    { name: "Bệnh viện", icon: "mc:hospital-building" },
+    { name: "Gym", icon: "mc:dumbbell" },
+    { name: "Bóng đá", icon: "mc:soccer" },
+    { name: "Bóng rổ", icon: "mc:basketball" },
+    { name: "Bơi lội", icon: "mc:swim" },
+    { name: "Xe đạp", icon: "mc:bike" },
+    { name: "Xe máy", icon: "mc:motorbike" },
+    { name: "Xe buýt", icon: "mc:bus" },
+    { name: "Tàu hỏa", icon: "mc:train" },
+    { name: "Tàu thủy", icon: "mc:ferry" },
+    { name: "Xăng", icon: "mc:gas-station" },
+    { name: "Công cụ", icon: "mc:tools" },
+    { name: "Búa", icon: "mc:hammer" },
+    { name: "Sơn", icon: "mc:format-paint" },
+    { name: "Điện", icon: "mc:flash" },
+    { name: "Nước", icon: "mc:water" },
+    { name: "Lửa", icon: "mc:fire" },
+    { name: "Thời tiết", icon: "mc:weather-cloudy" },
+    { name: "Mặt trời", icon: "mc:white-balance-sunny" },
+    { name: "Mưa", icon: "mc:weather-rainy" },
+    { name: "Tuyết", icon: "mc:weather-snowy" },
+    { name: "Bảo hiểm", icon: "mc:shield-check" },
+    { name: "Tiết kiệm", icon: "mc:piggy-bank" },
+    { name: "Đầu tư", icon: "mc:chart-line" },
+    { name: "Ngân hàng", icon: "mc:bank" },
+    { name: "Thẻ tín dụng", icon: "mc:credit-card-outline" },
   ];
+  const MAX_VISIBLE_ICONS = 11;
+  const displayedIcons = showAllIcons
+    ? ICON_OPTIONS
+    : ICON_OPTIONS.slice(0, MAX_VISIBLE_ICONS);
 
   const loadCategories = useCallback(async () => {
     setLoading(true);
@@ -78,7 +141,9 @@ export default function CategoriesScreen() {
     setEditingCategory(null);
     setFormName("");
     setFormIcon("");
-    setFormColor("#3B82F6");
+    setFormColor("");
+    setCustomColors([]);
+    setShowAllIcons(false);
     setModalVisible(true);
   };
 
@@ -86,8 +151,15 @@ export default function CategoriesScreen() {
     setEditingCategory(cat);
     setFormName(cat.name);
     setFormIcon(cat.icon || "");
-    setFormColor(cat.color || "#3B82F6");
+    setFormColor(cat.color || "");
+    setCustomColors([]);
+    setShowAllIcons(false);
     setModalVisible(true);
+  };
+
+  const openCustomPicker = () => {
+    setWheelColor(formColor || "#3B82F6");
+    setCustomColorVisible(true);
   };
 
   const handleSave = async () => {
@@ -112,6 +184,7 @@ export default function CategoriesScreen() {
         });
       }
       setModalVisible(false);
+      setShowAllIcons(false);
       loadCategories();
     } catch (error) {
       Alert.alert("Lỗi", "Không thể lưu danh mục");
@@ -138,28 +211,70 @@ export default function CategoriesScreen() {
     ]);
   };
 
-  const getIconComponent = (iconStr: string | null) => {
+  const getIconComponent = (
+    iconStr: string | null,
+    iconColor: string | null,
+    size: number = 24
+  ) => {
+    const finalColor = iconColor || colors.icon;
+
     if (!iconStr)
       return (
-        <Ionicons name="help-circle-outline" size={24} color={colors.icon} />
+        <Ionicons name="help-circle-outline" size={size} color={finalColor} />
       );
+
+    const iconMap: Record<string, string> = {
+      "directions-car": "car",
+      "flight-takeoff": "airplane-takeoff",
+      pets: "paw",
+      "credit-card": "credit-card-outline",
+      assignment: "file-document-outline",
+    };
 
     const [prefix, name] = iconStr.split(":");
     if (prefix === "mc") {
+      const mappedName = iconMap[name] || name;
       return (
         <MaterialCommunityIcons
-          name={name as any}
-          size={24}
-          color={colors.icon}
+          name={mappedName as any}
+          size={size}
+          color={finalColor}
         />
       );
     }
-    return <Ionicons name={name as any} size={24} color={colors.icon} />;
+    if (prefix === "mi") {
+      const mappedName = iconMap[name] || name;
+      return (
+        <MaterialCommunityIcons
+          name={mappedName as any}
+          size={size}
+          color={finalColor}
+        />
+      );
+    }
+    const mappedName = iconMap[iconStr] || name || iconStr;
+
+    if (iconMap[iconStr]) {
+      return (
+        <MaterialCommunityIcons
+          name={mappedName as any}
+          size={size}
+          color={finalColor}
+        />
+      );
+    }
+
+    return (
+      <Ionicons
+        name={(name || iconStr) as any}
+        size={size}
+        color={finalColor}
+      />
+    );
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -168,7 +283,6 @@ export default function CategoriesScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === "expense" && styles.tabActive]}
@@ -198,7 +312,6 @@ export default function CategoriesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* List */}
       <ScrollView
         style={styles.list}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -221,7 +334,7 @@ export default function CategoriesScreen() {
                 { backgroundColor: cat.color || colors.divider },
               ]}
             >
-              {getIconComponent(cat.icon || null)}
+              {getIconComponent(cat.icon || null, "#FFFFFF")}
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.itemName}>{cat.name}</Text>
@@ -245,12 +358,8 @@ export default function CategoriesScreen() {
         ))}
       </ScrollView>
 
-      {/* Add Button */}
       <View
-        style={[
-          styles.addButtonContainer,
-          { paddingBottom: insets.bottom + 16 },
-        ]}
+        style={[styles.addButtonContainer, { paddingBottom: insets.bottom }]}
       >
         <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
           <Ionicons name="add" size={24} color="#fff" />
@@ -258,14 +367,25 @@ export default function CategoriesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal Bottom Sheet */}
       <Portal>
         <Modal
+          style={{ margin: 0, justifyContent: "flex-end" }}
           visible={modalVisible}
-          onDismiss={() => setModalVisible(false)}
+          onDismiss={() => {
+            setModalVisible(false);
+            setShowAllIcons(false);
+          }}
           contentContainerStyle={styles.modal}
         >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: colors.card,
+                paddingBottom: 0,
+              },
+            ]}
+          >
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingCategory ? "Sửa danh mục" : "Thêm danh mục"}
             </Text>
@@ -292,8 +412,13 @@ export default function CategoriesScreen() {
               <Text style={[styles.label, { color: colors.text }]}>
                 Chọn biểu tượng
               </Text>
-              <View style={styles.iconGrid}>
-                {ICON_OPTIONS.map((option) => (
+              <View
+                style={[
+                  styles.iconGrid,
+                  showAllIcons && { marginBottom: -200 },
+                ]}
+              >
+                {displayedIcons.map((option) => (
                   <TouchableOpacity
                     key={option.icon}
                     style={[
@@ -309,7 +434,11 @@ export default function CategoriesScreen() {
                     ]}
                     onPress={() => setFormIcon(option.icon)}
                   >
-                    <Text style={styles.iconEmoji}>{option.emoji}</Text>
+                    {getIconComponent(
+                      option.icon,
+                      formIcon === option.icon ? "#FFFFFF" : colors.icon,
+                      24
+                    )}
                     <Text
                       style={[
                         styles.iconOptionName,
@@ -323,14 +452,51 @@ export default function CategoriesScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                {!showAllIcons && (
+                  <TouchableOpacity
+                    style={[
+                      styles.iconOption,
+                      {
+                        backgroundColor: colors.background,
+                        borderColor: colors.divider,
+                      },
+                    ]}
+                    onPress={() => setShowAllIcons(true)}
+                  >
+                    <MaterialCommunityIcons
+                      name="dots-horizontal"
+                      size={24}
+                      color={colors.icon}
+                    />
+                    <Text
+                      style={[
+                        styles.iconOptionName,
+                        {
+                          color: colors.subText,
+                        },
+                      ]}
+                    >
+                      Xem thêm
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <Text
-                style={[styles.label, { color: colors.text, marginTop: 16 }]}
+                style={[styles.label, { color: colors.text, marginTop: 6 }]}
               >
                 Màu sắc
               </Text>
-              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingVertical: 4,
+                  gap: 8,
+                  paddingRight: 4,
+                }}
+              >
+                {/* 12 màu cơ bản */}
                 {[
                   "#EF4444",
                   "#F59E0B",
@@ -343,30 +509,222 @@ export default function CategoriesScreen() {
                     key={color}
                     onPress={() => setFormColor(color)}
                     style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 24,
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
                       backgroundColor: color,
-                      borderWidth: formColor === color ? 3 : 0,
-                      borderColor: colors.text,
+                      borderWidth: formColor === color ? 3 : 1,
+                      borderColor:
+                        formColor === color ? colors.text : colors.divider,
                     }}
                   />
                 ))}
-              </View>
+
+                {/* Màu tùy chỉnh từ người dùng */}
+                {customColors.map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    onPress={() => setFormColor(color)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: color,
+                      borderWidth: formColor === color ? 3 : 1,
+                      borderColor:
+                        formColor === color ? colors.text : colors.divider,
+                    }}
+                  />
+                ))}
+
+                {/* Nút thêm màu */}
+                <TouchableOpacity
+                  onPress={openCustomPicker}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.background,
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                  }}
+                  accessibilityLabel="Thêm màu"
+                >
+                  <MaterialCommunityIcons
+                    name="plus"
+                    size={18}
+                    color={colors.icon}
+                  />
+                </TouchableOpacity>
+              </ScrollView>
             </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.btnCancel, { borderColor: colors.divider }]}
-                onPress={() => setModalVisible(false)}
+                onPress={() => {
+                  setModalVisible(false);
+                  setShowAllIcons(false);
+                }}
               >
                 <Text style={{ color: colors.text }}>Hủy</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.btnSave} onPress={handleSave}>
+              <TouchableOpacity
+                style={[styles.btnSave, !formColor && { opacity: 0.5 }]}
+                disabled={!formColor}
+                onPress={handleSave}
+              >
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Lưu</Text>
               </TouchableOpacity>
             </View>
           </View>
+        </Modal>
+
+        <Modal
+          visible={customColorVisible}
+          onDismiss={() => setCustomColorVisible(false)}
+          contentContainerStyle={[
+            styles.colorPickerModal,
+            { backgroundColor: colors.card },
+          ]}
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            <View style={styles.colorPickerContent}>
+              {/* Header */}
+              <View style={styles.colorPickerHeader}>
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    { color: colors.text, marginBottom: 0, flex: 1 },
+                  ]}
+                >
+                  Chọn màu tùy chỉnh
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setCustomColorVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color={colors.icon} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Color Wheel Picker */}
+              <View style={styles.colorWheelContainer}>
+                {ColorPicker ? (
+                  <ColorPicker
+                    color={wheelColor}
+                    onColorChangeComplete={(c: string) => setWheelColor(c)}
+                    thumbSize={30}
+                    sliderSize={30}
+                    noSnap
+                    row={false}
+                    style={{ width: "100%", height: 280 }}
+                  />
+                ) : (
+                  <View style={styles.colorPickerError}>
+                    <Ionicons
+                      name="color-palette-outline"
+                      size={48}
+                      color={colors.subText}
+                    />
+                    <Text
+                      style={{
+                        color: colors.subText,
+                        marginTop: 12,
+                        fontSize: 14,
+                      }}
+                    >
+                      Trình chọn màu không khả dụng
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Màu đã chọn preview */}
+              <View style={styles.colorPreviewContainer}>
+                <View style={styles.colorPreviewBox}>
+                  <View
+                    style={[
+                      styles.colorPreviewCircle,
+                      {
+                        backgroundColor: wheelColor,
+                        borderColor: colors.divider,
+                      },
+                    ]}
+                  >
+                    <View style={styles.colorPreviewInner}>
+                      <Ionicons name="checkmark" size={24} color="#FFFFFF" />
+                    </View>
+                  </View>
+                  <View style={styles.colorPreviewInfo}>
+                    <Text
+                      style={[
+                        styles.colorPreviewLabel,
+                        { color: colors.subText },
+                      ]}
+                    >
+                      Màu đã chọn
+                    </Text>
+                    <Text
+                      style={[styles.colorPreviewHex, { color: colors.text }]}
+                    >
+                      {wheelColor.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Actions */}
+              <View style={styles.colorPickerActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.btnCancel,
+                    { borderColor: colors.divider, flex: 1 },
+                  ]}
+                  onPress={() => setCustomColorVisible(false)}
+                >
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 15,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Hủy
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btnSave, { flex: 2, flexDirection: "row" }]}
+                  onPress={() => {
+                    if (wheelColor) {
+                      setFormColor(wheelColor);
+                      if (!customColors.includes(wheelColor)) {
+                        setCustomColors([...customColors, wheelColor]);
+                      }
+                    }
+                    setCustomColorVisible(false);
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontWeight: "600",
+                      fontSize: 15,
+                      marginLeft: 6,
+                    }}
+                  >
+                    Áp dụng màu này
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </View>
@@ -466,70 +824,136 @@ const makeStyles = (c: {
       margin: 0,
       justifyContent: "flex-end",
     },
+    colorPickerModal: {
+      margin: 20,
+      borderRadius: 20,
+      alignSelf: "center",
+      width: "90%",
+      maxWidth: 380,
+      maxHeight: "85%",
+    },
+    colorPickerContent: {
+      padding: 20,
+    },
+    colorPickerHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16,
+    },
+    closeButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.background,
+      marginLeft: 12,
+    },
+    colorWheelContainer: {
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    colorPickerError: {
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 40,
+    },
+    colorPreviewContainer: {
+      marginBottom: 20,
+    },
+    colorPreviewBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.background,
+      padding: 14,
+      borderRadius: 12,
+    },
+    colorPreviewCircle: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      borderWidth: 3,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 14,
+    },
+    colorPreviewInner: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.15)",
+    },
+    colorPreviewInfo: {
+      flex: 1,
+    },
+    colorPreviewLabel: {
+      fontSize: 12,
+      fontWeight: "500",
+      marginBottom: 4,
+    },
+    colorPreviewHex: {
+      fontSize: 17,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+    },
+    colorPickerActions: {
+      flexDirection: "row",
+      gap: 10,
+    },
     modalContent: {
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      padding: 20,
+      paddingHorizontal: 20,
+      paddingTop: 16,
       maxHeight: "80%",
     },
     modalTitle: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: "700",
-      marginBottom: 16,
+      marginBottom: 12,
       textAlign: "center",
     },
     label: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
-      marginTop: 12,
+      marginTop: 10,
       marginBottom: 6,
     },
     input: {
       borderWidth: 1,
       borderRadius: 8,
       paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 15,
-    },
-    iconPickerButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderWidth: 1,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      paddingVertical: 9,
+      fontSize: 14,
     },
     iconGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 12,
-      marginTop: 8,
+      gap: 10,
+      marginTop: 6,
+      marginBottom: -24,
     },
     iconOption: {
       width: "22%",
       aspectRatio: 1,
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: 12,
+      borderRadius: 10,
       borderWidth: 1,
     },
-    iconOptionSelected: {
-      backgroundColor: "#3B82F6",
-      borderColor: "#3B82F6",
-    },
-    iconEmoji: {
-      fontSize: 32,
-    },
     iconOptionName: {
-      fontSize: 10,
-      marginTop: 4,
+      fontSize: 9,
+      marginTop: 3,
       textAlign: "center",
     },
     modalActions: {
       flexDirection: "row",
-      gap: 12,
-      marginTop: 20,
+      gap: 10,
+      marginTop: 16,
+      paddingBottom: 12,
     },
     btnCancel: {
       flex: 1,
@@ -543,6 +967,7 @@ const makeStyles = (c: {
       paddingVertical: 12,
       borderRadius: 8,
       alignItems: "center",
+      justifyContent: "center",
       backgroundColor: "#3B82F6",
     },
   });

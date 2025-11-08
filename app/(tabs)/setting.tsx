@@ -4,20 +4,21 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Setting() {
-  const { colors, mode, toggleTheme } = useTheme();
+  const { colors, mode, preference, cyclePreference } = useTheme();
   const { t } = useI18n();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flex: 1 }} />
         <TouchableOpacity
           style={styles.sunBtn}
-          onPress={toggleTheme}
+          onPress={cyclePreference}
           activeOpacity={0.8}
         >
           <Ionicons
@@ -60,7 +61,7 @@ export default function Setting() {
           </View>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -77,7 +78,7 @@ const makeStyles = (c: {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 24,
+      // SafeAreaView handles top inset; avoid manual marginTop
       marginBottom: 12,
       paddingHorizontal: 20,
       justifyContent: "space-between",

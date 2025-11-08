@@ -91,6 +91,23 @@ BEGIN
 END;
 
 INSERT OR REPLACE INTO settings(key,value) VALUES('schema_version','1');
+
+-- ML training samples (for improving on-device/offline models)
+CREATE TABLE IF NOT EXISTS ml_training_samples (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  text TEXT NOT NULL,
+  amount INTEGER,
+  io TEXT CHECK (io IN ('IN','OUT')),
+  predicted_category_id TEXT,
+  chosen_category_id TEXT,
+  confidence REAL,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (predicted_category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (chosen_category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ml_samples_user_time ON ml_training_samples(user_id, created_at);
 `;
 
 // Đảm bảo cột tồn tại: nếu thiếu thì ADD COLUMN + backfill

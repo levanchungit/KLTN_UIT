@@ -1,18 +1,32 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { db } from "@/db";
+import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
 import {
   listCategories,
   seedCategoryDefaults,
   type Category,
 } from "@/repos/categoryRepo";
-import { addExpense, addIncome } from "@/repos/transactionRepo";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { logCorrection, logPrediction } from "@/repos/mlRepo";
+import {
+  addExpense,
+  addIncome,
+  deleteTx,
+  updateTransaction,
+} from "@/repos/transactionRepo";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { useAudioRecorder } from "expo-audio";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +34,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 // ↓ Helper: lấy JSON từ chuỗi có thể lẫn text
 function tryPickJson(text: string) {
@@ -125,13 +140,15 @@ ${listCategoriesUser.map((c) => `- ${c.id}: ${c.name}`).join("\n")}
 
 /* ---------------- Back only (no header) ---------------- */
 function BackBar() {
+  const { t } = useI18n();
+  const { colors } = useTheme();
   return (
     <View
       style={{
         padding: 12,
         borderBottomWidth: 1,
-        borderColor: "#eee",
-        backgroundColor: "#fff",
+        borderColor: colors.divider,
+        backgroundColor: colors.card,
       }}
     >
       <TouchableOpacity
@@ -139,11 +156,130 @@ function BackBar() {
         style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <MaterialCommunityIcons name="chevron-left" size={28} color="#111" />
-        <Text style={{ fontSize: 16, fontWeight: "600" }}>Quay lại</Text>
+        <MaterialCommunityIcons
+          name="chevron-left"
+          size={28}
+          color={colors.text}
+        />
+        <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>
+          {t("back")}
+        </Text>
       </TouchableOpacity>
     </View>
   );
+}
+
+/* ---------------- OCR: Extract text from receipt image using Vision API ---------------- */
+async function processReceiptImage(imageUri: string): Promise<{
+  amount: number | null;
+  text: string;
+  merchantName?: string;
+}> {
+  try {
+    // TODO: Replace with your Google Cloud Vision API key or similar OCR service
+    const VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || "";
+
+    // Read image as base64
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    const reader = new FileReader();
+
+    const base64Image = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]); // Remove data:image/jpeg;base64, prefix
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Call Google Vision API for OCR
+    const visionResponse = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${VISION_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [
+            {
+              image: { content: base64Image },
+              features: [{ type: "TEXT_DETECTION" }],
+            },
+          ],
+        }),
+      }
+    );
+
+    const visionData = await visionResponse.json();
+    const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text || "";
+
+    // Extract amount using regex (tìm số tiền trong OCR text)
+    const amountMatch = fullText.match(
+      /(?:total|tổng|cộng|t\.tiền|thanh toán)[\s:]*([0-9,.]+)/i
+    );
+    const amount = amountMatch ? parseAmountVN(amountMatch[1]) : null;
+
+    // Extract merchant name (first line usually)
+    const lines = fullText.split("\n").filter((l: string) => l.trim());
+    const merchantName = lines[0] || "";
+
+    return {
+      amount,
+      text: fullText,
+      merchantName,
+    };
+  } catch (error) {
+    console.error("OCR Error:", error);
+    return { amount: null, text: "", merchantName: "" };
+  }
+}
+
+/* ---------------- Voice: Transcribe audio to text using Speech-to-Text API ---------------- */
+async function transcribeAudio(audioUri: string): Promise<string> {
+  try {
+    // TODO: Use Google Speech-to-Text API or similar
+    const SPEECH_API_KEY = process.env.GOOGLE_SPEECH_API_KEY || "";
+
+    // Read audio file as base64
+    const response = await fetch(audioUri);
+    const blob = await response.blob();
+    const reader = new FileReader();
+
+    const base64Audio = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Call Google Speech-to-Text API
+    const speechResponse = await fetch(
+      `https://speech.googleapis.com/v1/speech:recognize?key=${SPEECH_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            encoding: "LINEAR16",
+            sampleRateHertz: 16000,
+            languageCode: "vi-VN", // Vietnamese
+          },
+          audio: { content: base64Audio },
+        }),
+      }
+    );
+
+    const speechData = await speechResponse.json();
+    const transcript =
+      speechData.results?.[0]?.alternatives?.[0]?.transcript || "";
+
+    return transcript;
+  } catch (error) {
+    console.error("Speech-to-Text Error:", error);
+    return "";
+  }
 }
 
 /* ---------------- Helpers: VN money + IN/OUT ---------------- */
@@ -159,8 +295,8 @@ const parseAmountVN = (text: string): number | null => {
     unit.startsWith("k") || unit.startsWith("ng")
       ? 1e3
       : unit.startsWith("tr") || unit.startsWith("tri")
-        ? 1e6
-        : 1;
+      ? 1e6
+      : 1;
   return Math.round(n * factor);
 };
 const detectInOut = (text: string): "IN" | "OUT" => {
@@ -181,11 +317,19 @@ const normalizeVN = (s: string) =>
 
 const tokens = (s: string) => normalizeVN(s).split(" ").filter(Boolean);
 const jaccard = (a: string[], b: string[]) => {
-  const A = new Set(a),
-    B = new Set(b);
-  const inter = [...A].filter((x) => B.has(x)).length;
-  const uni = new Set([...a, ...b]).size;
-  return uni ? inter / uni : 0;
+  const A = new Set(a);
+  const B = new Set(b);
+  let inter = 0;
+  A.forEach((x) => {
+    if (B.has(x)) inter++;
+  });
+  const unionSize = (() => {
+    const U: Record<string, 1> = {};
+    a.forEach((x) => (U[x] = 1));
+    b.forEach((x) => (U[x] = 1));
+    return Object.keys(U).length;
+  })();
+  return unionSize ? inter / unionSize : 0;
 };
 const ngramSet = (s: string, n = 3) => {
   const t = normalizeVN(s);
@@ -195,9 +339,12 @@ const ngramSet = (s: string, n = 3) => {
   return out;
 };
 const ngramOverlap = (a: string, b: string, n = 3) => {
-  const A = ngramSet(a, n),
-    B = ngramSet(b, n);
-  const inter = [...A].filter((x) => B.has(x)).length;
+  const A = ngramSet(a, n);
+  const B = ngramSet(b, n);
+  let inter = 0;
+  A.forEach((x) => {
+    if (B.has(x)) inter++;
+  });
   return A.size + B.size ? (2 * inter) / (A.size + B.size) : 0;
 };
 
@@ -233,11 +380,11 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
     io === "IN" && /thu nhap|luong/.test(normalizeVN(cat.name))
       ? 0.2
       : io === "OUT" &&
-          /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang)/.test(
-            normalizeVN(cat.name)
-          )
-        ? 0.1
-        : 0;
+        /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang)/.test(
+          normalizeVN(cat.name)
+        )
+      ? 0.1
+      : 0;
   return 0.45 * A + 0.25 * B + 0.2 * C + 0.1 * D;
 };
 
@@ -343,8 +490,11 @@ type Msg =
   | { role: "typing" }
   | {
       role: "card";
+      transactionId: string;
+      accountId: string;
       amount: number | null;
       io: "IN" | "OUT";
+      categoryId: string;
       categoryName: string;
       note: string;
       when: string;
@@ -352,16 +502,49 @@ type Msg =
 
 /* ---------------- Component ---------------- */
 export default function Chatbox() {
+  const { t } = useI18n();
+  const { colors, mode } = useTheme();
   const [items, setItems] = useState<Category[]>([]);
   const [model, setModel] = useState<LRModel | null>(null);
+  const [priors, setPriors] = useState<{
+    IN: Record<string, number>;
+    OUT: Record<string, number>;
+  }>({ IN: {}, OUT: {} });
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([
-    {
-      role: "bot",
-      text: "Xin chào!👋 Hãy bắt đầu thêm giao dịch của bạn tại đây nhé!",
-    },
+    { role: "bot", text: t("chatWelcome") },
   ]);
   const flatRef = useRef<FlatList>(null);
+
+  // Voice & Image states
+  const audioRecorder = useAudioRecorder(
+    {
+      android: {
+        extension: ".m4a",
+        outputFormat: "mpeg4",
+        audioEncoder: "aac",
+        sampleRate: 16000,
+      },
+      ios: {
+        extension: ".m4a",
+        audioQuality: 0x60,
+        sampleRate: 16000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      extension: ".m4a",
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 128000,
+    },
+    (status) => {
+      console.log("Recording status:", status);
+    }
+  );
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
@@ -375,6 +558,7 @@ export default function Chatbox() {
   useEffect(() => {
     (async () => {
       try {
+        // Load simple LR model (JSON). If missing, fallback heuristics still work.
         const mod = require("../../assets/models/lr-vn-shopping.json");
         setModel(mod as unknown as LRModel);
       } catch (e) {
@@ -383,6 +567,52 @@ export default function Chatbox() {
           e
         );
         setModel(null);
+      }
+    })();
+  }, []);
+
+  // Build simple category priors from user's history (last 90 days), separated by IN/OUT
+  useEffect(() => {
+    (async () => {
+      try {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const fromSec = nowSec - 90 * 86400;
+        const rows = await db.getAllAsync<{
+          category_id: string | null;
+          type: string;
+          cnt: number;
+        }>(
+          `SELECT category_id, type, COUNT(*) as cnt
+           FROM transactions
+           WHERE user_id='u_demo' AND occurred_at>=${fromSec} AND occurred_at<=${nowSec}
+           GROUP BY category_id, type`
+        );
+        const outP: Record<string, number> = {};
+        const inP: Record<string, number> = {};
+        let sumOut = 0,
+          sumIn = 0;
+        for (const r of rows) {
+          const id = r.category_id || "__null__";
+          if (r.type === "expense") {
+            outP[id] = (outP[id] || 0) + (r.cnt || 0);
+            sumOut += r.cnt || 0;
+          } else {
+            inP[id] = (inP[id] || 0) + (r.cnt || 0);
+            sumIn += r.cnt || 0;
+          }
+        }
+        // Normalize and apply small smoothing
+        const norm = (m: Record<string, number>, sum: number) => {
+          const out: Record<string, number> = {};
+          const denom = sum + 1e-6;
+          Object.entries(m).forEach(([k, v]) => {
+            out[k] = v / denom;
+          });
+          return out;
+        };
+        setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
+      } catch (e) {
+        // ignore priors if query fails
       }
     })();
   }, []);
@@ -411,7 +641,11 @@ export default function Chatbox() {
           const m = mapMLToUserCategory(r.label, items);
           if (!m) return null;
           // Kết hợp điểm ML và độ giống tên danh mục
-          const score = 0.8 * r.p + 0.2 * m.sim;
+          let score = 0.8 * r.p + 0.2 * m.sim;
+          // Áp dụng prior từ lịch sử người dùng
+          const priorMap = io === "IN" ? priors.IN : priors.OUT;
+          const prior = priorMap[m.category.id] || 0;
+          score = 0.85 * score + 0.15 * prior;
           return { categoryId: m.category.id, name: m.category.name, score };
         })
         .filter(Boolean) as {
@@ -429,15 +663,22 @@ export default function Chatbox() {
         const prev = byId.get(r.categoryId);
         if (!prev || r.score > prev.score) byId.set(r.categoryId, r);
       }
-      const arr = [...byId.values()].sort((a, b) => b.score - a.score);
+      const tmp: { categoryId: string; name: string; score: number }[] = [];
+      byId.forEach((v) => tmp.push(v));
+      const arr = tmp.sort((a, b) => b.score - a.score);
 
       // Nếu mỏng quá (ít khớp), trộn thêm heuristic để an toàn
       if (arr.length < 2) {
-        const hs = items.map((c) => ({
-          categoryId: c.id,
-          name: c.name,
-          score: heuristicScore(text, c, io),
-        }));
+        const hs = items.map((c) => {
+          const base = heuristicScore(text, c, io);
+          const priorMap = io === "IN" ? priors.IN : priors.OUT;
+          const prior = priorMap[c.id] || 0;
+          return {
+            categoryId: c.id,
+            name: c.name,
+            score: 0.9 * base + 0.1 * prior,
+          };
+        });
         hs.sort((a, b) => b.score - a.score);
         return { io, ranked: [...arr, ...hs].slice(0, 5) };
       }
@@ -445,11 +686,16 @@ export default function Chatbox() {
     }
 
     // 2) Fallback: heuristic thuần
-    const hs = items.map((c) => ({
-      categoryId: c.id,
-      name: c.name,
-      score: heuristicScore(text, c, io),
-    }));
+    const hs = items.map((c) => {
+      const base = heuristicScore(text, c, io);
+      const priorMap = io === "IN" ? priors.IN : priors.OUT;
+      const prior = priorMap[c.id] || 0;
+      return {
+        categoryId: c.id,
+        name: c.name,
+        score: 0.9 * base + 0.1 * prior,
+      };
+    });
     hs.sort((a, b) => b.score - a.score);
     return { io, ranked: hs };
   }
@@ -493,16 +739,25 @@ export default function Chatbox() {
 
     // Nếu chưa có amount → nhắn nhắc người dùng bổ sung và dừng
     if (!ai.amount || ai.amount <= 0) {
-      setMessages((m) => [
-        ...m,
-        { role: "bot", text: "Bạn cho mình biết số tiền cụ thể nhé 💬" },
-      ]);
+      setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
       scrollToEnd();
       return;
     }
 
     // Nếu chưa có categoryId HOẶC điểm tự tin thấp → bật gợi ý chọn danh mục
-    const lowConfidence = !best || best.score < 0.4; // ngưỡng có thể chỉnh
+    const confidence = best?.score ?? 0;
+    const lowConfidence = confidence < 0.4; // threshold can be tuned
+
+    // Log initial prediction
+    try {
+      pendingLogId.current = await logPrediction({
+        text,
+        amount: ai.amount ?? null,
+        io,
+        predictedCategoryId: best?.categoryId || null,
+        confidence,
+      });
+    } catch {}
     if (!finalCategoryId || lowConfidence) {
       setPendingPick({
         text,
@@ -527,13 +782,26 @@ export default function Chatbox() {
         ...m,
         {
           role: "card",
+          transactionId: txn.id,
+          accountId: txn.accountId,
           amount: txn.amount ?? null,
           io: ai.io,
+          categoryId: finalCategoryId,
           categoryName: finalCategoryName,
           note: ai.note,
           when,
         },
       ]);
+      // If user did not correct (direct accept), log correction equal to prediction
+      try {
+        if (pendingLogId.current && finalCategoryId) {
+          await logCorrection({
+            id: pendingLogId.current,
+            chosenCategoryId: finalCategoryId,
+          });
+          pendingLogId.current = null;
+        }
+      } catch {}
       scrollToEnd();
     } catch (e: any) {
       setMessages((m) => [
@@ -555,6 +823,21 @@ export default function Chatbox() {
     io: "IN" | "OUT";
     choices: { categoryId: string; name: string; score: number }[];
   } | null>(null);
+  const pendingLogId = useRef<string | null>(null);
+
+  // Edit transaction state
+  const [editingTx, setEditingTx] = useState<{
+    transactionId: string;
+    accountId: string;
+    categoryId: string;
+    io: "IN" | "OUT";
+    amount: number;
+    note: string;
+    when: Date;
+  } | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
 
   const chooseCategory = async (c: { categoryId: string; name: string }) => {
     if (!pendingPick) return;
@@ -569,24 +852,495 @@ export default function Chatbox() {
       ...m,
       {
         role: "card",
+        transactionId: txn.id,
+        accountId: txn.accountId,
         amount: txn.amount ?? null,
         io: pendingPick.io,
+        categoryId: c.categoryId,
         categoryName: c.name,
         note: pendingPick.text,
         when,
       },
     ]);
+    // Log correction (user choice overriding prediction)
+    try {
+      if (pendingLogId.current) {
+        await logCorrection({
+          id: pendingLogId.current,
+          chosenCategoryId: c.categoryId,
+        });
+        pendingLogId.current = null;
+      }
+    } catch {}
     setPendingPick(null);
     scrollToEnd();
   };
 
+  // ----- Voice Recording Handler -----
+  const handleVoicePress = async () => {
+    try {
+      if (isRecording) {
+        // Stop recording
+        setIsRecording(false);
+        if (!audioRecorder.isRecording) return;
+
+        await audioRecorder.stop();
+        const uri = audioRecorder.uri;
+        if (!uri) return;
+
+        // Show processing message
+        setIsProcessingVoice(true);
+        setMessages((m) => [
+          ...m,
+          { role: "bot", text: "🎤 Đang xử lý giọng nói..." },
+        ]);
+
+        // Transcribe audio to text
+        const transcript = await transcribeAudio(uri);
+
+        if (!transcript || transcript.trim() === "") {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: "❌ Không thể nhận diện giọng nói. Vui lòng thử lại.",
+            },
+          ]);
+          setIsProcessingVoice(false);
+          return;
+        }
+
+        // Remove processing message and add user message
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          { role: "user", text: transcript },
+        ]);
+        setIsProcessingVoice(false);
+
+        // Process using existing classification logic
+        const { io, ranked } = classifyToUserCategories(transcript);
+        const best = ranked[0];
+        const amount = parseAmountVN(transcript);
+
+        setMessages((m) => [...m, { role: "typing" }]);
+        scrollToEnd();
+
+        const ai = await getEmotionalReplyDirect({
+          io,
+          categoryName: best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
+          amount,
+          note: transcript,
+        });
+
+        const finalCategoryId = ai.categoryId || best?.categoryId;
+        const confidence = best?.score ?? 0;
+
+        setMessages((m) => [
+          ...m.filter((x) => x.role !== "typing"),
+          { role: "bot", text: ai.message },
+        ]);
+        scrollToEnd();
+
+        if (!ai.amount || ai.amount <= 0) {
+          setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
+          scrollToEnd();
+          return;
+        }
+
+        // Log prediction
+        try {
+          pendingLogId.current = await logPrediction({
+            text: transcript,
+            amount: ai.amount ?? null,
+            io,
+            predictedCategoryId: best?.categoryId || null,
+            confidence,
+          });
+        } catch {}
+
+        if (!finalCategoryId || confidence < 0.4) {
+          setPendingPick({
+            text: transcript,
+            amount: ai.amount,
+            io: ai.io,
+            choices: ranked.slice(0, 6),
+          });
+          return;
+        }
+
+        // Create transaction
+        const txn = await createTransaction({
+          amount: ai.amount,
+          io: ai.io,
+          categoryId: finalCategoryId,
+          note: ai.note,
+        });
+
+        const when = new Date().toLocaleDateString();
+        const finalCategoryName =
+          items.find((c) => c.id === finalCategoryId)?.name ||
+          best?.name ||
+          "Chưa rõ";
+
+        setMessages((m) => [
+          ...m,
+          {
+            role: "card",
+            transactionId: txn.id,
+            accountId: txn.accountId,
+            amount: txn.amount ?? null,
+            io: ai.io,
+            categoryId: finalCategoryId,
+            categoryName: finalCategoryName,
+            note: ai.note,
+            when,
+          },
+        ]);
+
+        try {
+          if (pendingLogId.current) {
+            await logCorrection({
+              id: pendingLogId.current,
+              chosenCategoryId: finalCategoryId,
+            });
+            pendingLogId.current = null;
+          }
+        } catch {}
+        scrollToEnd();
+      } else {
+        // Start recording
+        await audioRecorder.record();
+        setIsRecording(true);
+
+        // Show recording message
+        setMessages((m) => [
+          ...m,
+          { role: "bot", text: "🎤 Đang ghi âm... Nhấn lại để dừng." },
+        ]);
+      }
+    } catch (error) {
+      console.error("Voice error:", error);
+      Alert.alert("Lỗi", "Không thể ghi âm. Vui lòng thử lại.");
+      setIsRecording(false);
+      setIsProcessingVoice(false);
+    }
+  };
+
+  // ----- Image Receipt Handler -----
+  const handleImagePress = async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Quyền truy cập", "Cần quyền truy cập thư viện ảnh");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images" as any,
+        allowsEditing: true,
+        quality: 1,
+      });
+
+      if (result.canceled) return;
+      const imageUri = result.assets[0].uri;
+
+      setIsProcessingImage(true);
+      setMessages((m) => [
+        ...m,
+        { role: "bot", text: "📷 Đang phân tích hóa đơn..." },
+      ]);
+
+      // Process receipt image with OCR
+      const ocrResult = await processReceiptImage(imageUri);
+
+      if (!ocrResult.amount && !ocrResult.text) {
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          {
+            role: "bot",
+            text: "❌ Không thể đọc hóa đơn. Vui lòng thử ảnh khác.",
+          },
+        ]);
+        setIsProcessingImage(false);
+        return;
+      }
+
+      // Build transaction text from OCR
+      const merchantText = ocrResult.merchantName || "hóa đơn";
+      const amountText = ocrResult.amount
+        ? `${ocrResult.amount.toLocaleString("vi-VN")}đ`
+        : "";
+      const transactionText = `${merchantText} ${amountText}`;
+
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        { role: "user", text: `📷 ${transactionText}` },
+      ]);
+      setIsProcessingImage(false);
+
+      // Process using existing classification logic (always OUT for receipts)
+      const { ranked } = classifyToUserCategories(transactionText);
+      const best = ranked[0];
+      const amount = ocrResult.amount || parseAmountVN(transactionText);
+      const io = "OUT"; // Receipts are always expenses
+
+      setMessages((m) => [...m, { role: "typing" }]);
+      scrollToEnd();
+
+      const ai = await getEmotionalReplyDirect({
+        io,
+        categoryName: best?.name || "Chi tiêu",
+        amount,
+        note: transactionText,
+      });
+
+      const finalCategoryId = ai.categoryId || best?.categoryId;
+      const confidence = best?.score ?? 0;
+
+      setMessages((m) => [
+        ...m.filter((x) => x.role !== "typing"),
+        { role: "bot", text: ai.message },
+      ]);
+      scrollToEnd();
+
+      if (!ai.amount || ai.amount <= 0) {
+        setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
+        scrollToEnd();
+        return;
+      }
+
+      // Log prediction
+      try {
+        pendingLogId.current = await logPrediction({
+          text: transactionText,
+          amount: ai.amount ?? null,
+          io,
+          predictedCategoryId: best?.categoryId || null,
+          confidence,
+        });
+      } catch {}
+
+      if (!finalCategoryId || confidence < 0.4) {
+        setPendingPick({
+          text: transactionText,
+          amount: ai.amount,
+          io: ai.io,
+          choices: ranked.slice(0, 6),
+        });
+        return;
+      }
+
+      // Create transaction
+      const txn = await createTransaction({
+        amount: ai.amount,
+        io: ai.io,
+        categoryId: finalCategoryId,
+        note: ai.note,
+      });
+
+      const when = new Date().toLocaleDateString();
+      const finalCategoryName =
+        items.find((c) => c.id === finalCategoryId)?.name ||
+        best?.name ||
+        "Chưa rõ";
+
+      setMessages((m) => [
+        ...m,
+        {
+          role: "card",
+          transactionId: txn.id,
+          accountId: txn.accountId,
+          amount: txn.amount ?? null,
+          io: ai.io,
+          categoryId: finalCategoryId,
+          categoryName: finalCategoryName,
+          note: ai.note,
+          when,
+        },
+      ]);
+
+      try {
+        if (pendingLogId.current) {
+          await logCorrection({
+            id: pendingLogId.current,
+            chosenCategoryId: finalCategoryId,
+          });
+          pendingLogId.current = null;
+        }
+      } catch {}
+      scrollToEnd();
+    } catch (error) {
+      console.error("Image OCR error:", error);
+      Alert.alert("Lỗi", "Không thể xử lý ảnh. Vui lòng thử lại.");
+      setIsProcessingImage(false);
+    }
+  };
+
+  // ----- Process text input (shared by voice, image, and text) -----
+  const processTextInput = async (text: string) => {
+    const userText = text.trim();
+    if (!userText) return;
+
+    // Add typing indicator
+    setMessages((m) => [...m, { role: "typing" }]);
+    scrollToEnd();
+
+    // Parse and classify
+    const amt = parseAmountVN(userText);
+    const { io, ranked } = classifyToUserCategories(userText);
+
+    if (!ranked || ranked.length === 0) {
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        {
+          role: "bot",
+          text: t("askAmount"),
+        },
+      ]);
+      return;
+    }
+
+    const topPred = ranked[0];
+    if (topPred.score >= 0.6) {
+      // Auto-create with high confidence
+      await autoCreateTransaction(userText, amt, io, topPred.categoryId);
+    } else {
+      // Show suggestions
+      setMessages((m) => m.slice(0, -1));
+      setPendingPick({
+        text: userText,
+        amount: amt,
+        io,
+        choices: ranked.slice(0, 3),
+      });
+    }
+  };
+
+  // ----- Auto create transaction -----
+  const autoCreateTransaction = async (
+    text: string,
+    amount: number | null,
+    io: "IN" | "OUT",
+    categoryId: string
+  ) => {
+    try {
+      const txn = await createTransaction({
+        amount,
+        io,
+        categoryId,
+        note: text,
+      });
+
+      const categoryName =
+        items.find((c) => c.id === categoryId)?.name || "Unknown";
+      const when = new Date().toLocaleDateString();
+
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        {
+          role: "card",
+          transactionId: txn.id,
+          accountId: txn.accountId,
+          amount: txn.amount ?? null,
+          io,
+          categoryId,
+          categoryName,
+          note: text,
+          when,
+        },
+      ]);
+      scrollToEnd();
+    } catch (e: any) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "bot",
+          text: "Tạo giao dịch thất bại. " + (e?.message || ""),
+        },
+      ]);
+    }
+  };
+
+  // Edit transaction handlers
+  const handleEditTransaction = (item: Extract<Msg, { role: "card" }>) => {
+    setEditingTx({
+      transactionId: item.transactionId,
+      accountId: item.accountId,
+      categoryId: item.categoryId,
+      io: item.io,
+      amount: item.amount || 0,
+      note: item.note,
+      when: new Date(),
+    });
+    setEditAmount(String(item.amount || 0));
+    setEditNote(item.note);
+    setEditCategoryId(item.categoryId);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTx) return;
+    const newAmount = parseFloat(editAmount);
+    if (!newAmount || newAmount <= 0) {
+      alert("Số tiền không hợp lệ");
+      return;
+    }
+
+    try {
+      await updateTransaction({
+        id: editingTx.transactionId,
+        accountId: editingTx.accountId,
+        categoryId: editCategoryId,
+        type: editingTx.io === "OUT" ? "expense" : "income",
+        amount: newAmount,
+        note: editNote,
+        when: editingTx.when,
+      });
+
+      // Update message in chat
+      setMessages((msgs) =>
+        msgs.map((m) =>
+          m.role === "card" && m.transactionId === editingTx.transactionId
+            ? {
+                ...m,
+                amount: newAmount,
+                note: editNote,
+                categoryId: editCategoryId,
+                categoryName:
+                  items.find((c) => c.id === editCategoryId)?.name ||
+                  m.categoryName,
+              }
+            : m
+        )
+      );
+
+      setEditingTx(null);
+    } catch (e: any) {
+      alert("Không thể cập nhật: " + (e?.message || "Lỗi"));
+    }
+  };
+
+  const handleDeleteTransaction = async (transactionId: string) => {
+    try {
+      await deleteTx(transactionId);
+      // Remove from messages
+      setMessages((msgs) =>
+        msgs.filter(
+          (m) => m.role !== "card" || m.transactionId !== transactionId
+        )
+      );
+    } catch (e: any) {
+      alert("Không thể xóa: " + (e?.message || "Lỗi"));
+    }
+  };
+
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: "#f5f5f5" }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       edges={["top", "bottom"]}
     >
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: "#fafafa" }}
+        style={{ flex: 1, backgroundColor: colors.background }}
         behavior={"padding"}
       >
         <BackBar />
@@ -600,15 +1354,37 @@ export default function Chatbox() {
           renderItem={({ item }) => {
             if (item.role === "user") {
               return (
-                <View style={[styles.bubble, styles.right]}>
-                  <Text style={styles.text}>{item.text}</Text>
+                <View
+                  style={[
+                    styles.bubble,
+                    styles.right,
+                    {
+                      backgroundColor: mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+                      borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.text, { color: colors.text }]}>
+                    {item.text}
+                  </Text>
                 </View>
               );
             }
             if (item.role === "bot") {
               return (
-                <View style={[styles.bubble, styles.left]}>
-                  <Text style={styles.text}>{item.text}</Text>
+                <View
+                  style={[
+                    styles.bubble,
+                    styles.left,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.divider,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.text, { color: colors.text }]}>
+                    {item.text}
+                  </Text>
                 </View>
               );
             }
@@ -618,18 +1394,34 @@ export default function Chatbox() {
                   style={[
                     styles.bubble,
                     styles.left,
-                    { flexDirection: "row", gap: 4 },
+                    {
+                      flexDirection: "row",
+                      gap: 4,
+                      backgroundColor: colors.card,
+                      borderColor: colors.divider,
+                    },
                   ]}
                 >
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
+                  <View
+                    style={[styles.dot, { backgroundColor: colors.subText }]}
+                  />
+                  <View
+                    style={[styles.dot, { backgroundColor: colors.subText }]}
+                  />
+                  <View
+                    style={[styles.dot, { backgroundColor: colors.subText }]}
+                  />
                 </View>
               );
             }
 
             return (
-              <View style={styles.card}>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.divider },
+                ]}
+              >
                 <View
                   style={{
                     flexDirection: "row",
@@ -645,20 +1437,85 @@ export default function Chatbox() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#666", marginBottom: 2 }}>
-                      Đã ghi nhận: {item.io === "OUT" ? "Chi phí" : "Thu nhập"}{" "}
-                      · {item.when}
+                    <Text style={{ color: colors.subText, marginBottom: 2 }}>
+                      {t("recorded")}{" "}
+                      {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
+                      {item.when}
                     </Text>
-                    <Text style={{ fontWeight: "700", fontSize: 18 }}>
+                    <Text
+                      style={{
+                        fontWeight: "700",
+                        fontSize: 18,
+                        color: colors.text,
+                      }}
+                    >
                       {item.categoryName}
                     </Text>
-                    <Text style={{ marginTop: 2, color: "#444" }}>
+                    <Text style={{ marginTop: 2, color: colors.text }}>
                       {item.note}
                     </Text>
                   </View>
-                  <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                  <Text
+                    style={{
+                      fontWeight: "700",
+                      fontSize: 16,
+                      color: colors.text,
+                    }}
+                  >
                     {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
                   </Text>
+                </View>
+                {/* Action buttons */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    marginTop: 12,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => handleEditTransaction(item)}
+                    style={[
+                      styles.actionBtn,
+                      {
+                        borderColor: colors.divider,
+                        backgroundColor:
+                          mode === "dark" ? colors.card : "#f9f9f9",
+                      },
+                    ]}
+                  >
+                    <Ionicons name="create-outline" size={18} color="#3B82F6" />
+                    <Text style={{ color: "#3B82F6", fontSize: 13 }}>
+                      {t("edit")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
+                        { text: t("cancel"), style: "cancel" },
+                        {
+                          text: t("delete"),
+                          style: "destructive",
+                          onPress: () =>
+                            handleDeleteTransaction(item.transactionId),
+                        },
+                      ]);
+                    }}
+                    style={[
+                      styles.actionBtn,
+                      {
+                        borderColor: colors.divider,
+                        backgroundColor:
+                          mode === "dark" ? colors.card : "#f9f9f9",
+                      },
+                    ]}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    <Text style={{ color: "#EF4444", fontSize: 13 }}>
+                      {t("delete")}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -667,14 +1524,19 @@ export default function Chatbox() {
 
         {/* Gợi ý khi chưa đủ tự tin */}
         {pendingPick && (
-          <View style={styles.suggestBar}>
+          <View
+            style={[styles.suggestBar, { backgroundColor: colors.background }]}
+          >
             {pendingPick.choices.map((c) => (
               <Pressable
                 key={c.categoryId}
                 onPress={() => chooseCategory(c)}
-                style={styles.chip}
+                style={[
+                  styles.chip,
+                  { borderColor: colors.divider, backgroundColor: colors.card },
+                ]}
               >
-                <Text style={styles.chipText}>
+                <Text style={[styles.chipText, { color: colors.text }]}>
                   {c.name} · {Math.round(c.score * 100)}%
                 </Text>
               </Pressable>
@@ -682,18 +1544,265 @@ export default function Chatbox() {
           </View>
         )}
 
+        {/* Edit Modal */}
+        <Modal
+          visible={!!editingTx}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setEditingTx(null)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              justifyContent: "flex-end",
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                padding: 20,
+                maxHeight: "80%",
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 18,
+                    fontWeight: "700",
+                    color: colors.text,
+                  }}
+                >
+                  {t("editTransaction")}
+                </Text>
+                <TouchableOpacity onPress={() => setEditingTx(null)}>
+                  <Ionicons name="close" size={24} color={colors.icon} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView>
+                {/* Amount */}
+                <View style={{ marginBottom: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      marginBottom: 6,
+                      color: colors.text,
+                    }}
+                  >
+                    {t("amount")}
+                  </Text>
+                  <TextInput
+                    value={editAmount}
+                    onChangeText={setEditAmount}
+                    keyboardType="numeric"
+                    placeholderTextColor={colors.subText}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 16,
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                    }}
+                  />
+                </View>
+
+                {/* Note */}
+                <View style={{ marginBottom: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      marginBottom: 6,
+                      color: colors.text,
+                    }}
+                  >
+                    {t("note")}
+                  </Text>
+                  <TextInput
+                    value={editNote}
+                    onChangeText={setEditNote}
+                    multiline
+                    numberOfLines={3}
+                    placeholderTextColor={colors.subText}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 16,
+                      textAlignVertical: "top",
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                    }}
+                  />
+                </View>
+
+                {/* Category */}
+                <View style={{ marginBottom: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      marginBottom: 6,
+                      color: colors.text,
+                    }}
+                  >
+                    {t("category")}
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ flexDirection: "row", gap: 8 }}
+                  >
+                    {items
+                      .filter((c) => {
+                        const type =
+                          editingTx?.io === "OUT" ? "expense" : "income";
+                        return c.type === type;
+                      })
+                      .map((cat) => (
+                        <TouchableOpacity
+                          key={cat.id}
+                          onPress={() => setEditCategoryId(cat.id)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor:
+                              editCategoryId === cat.id
+                                ? "#10B981"
+                                : colors.divider,
+                            backgroundColor:
+                              editCategoryId === cat.id
+                                ? mode === "dark"
+                                  ? "#065F46"
+                                  : "#D1FAE5"
+                                : colors.background,
+                            marginRight: 8,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              color:
+                                editCategoryId === cat.id
+                                  ? "#10B981"
+                                  : colors.text,
+                            }}
+                          >
+                            {cat.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              </ScrollView>
+
+              {/* Save button */}
+              <TouchableOpacity
+                onPress={handleSaveEdit}
+                style={{
+                  backgroundColor: "#10B981",
+                  padding: 14,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  marginTop: 8,
+                }}
+              >
+                <Text
+                  style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}
+                >
+                  {t("saveChanges")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         {/* Input */}
-        <View style={styles.inputBar}>
+        <View
+          style={[
+            styles.inputBar,
+            { borderColor: colors.divider, backgroundColor: colors.card },
+          ]}
+        >
+          {/* Voice button */}
+          <Pressable
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: isRecording
+                  ? "#EF4444"
+                  : mode === "dark"
+                  ? colors.background
+                  : "#F3F4F6",
+                borderColor: colors.divider,
+              },
+            ]}
+            onPress={handleVoicePress}
+            disabled={isProcessingVoice || isProcessingImage}
+          >
+            <Ionicons
+              name={isRecording ? "stop-circle" : "mic"}
+              size={22}
+              color={isRecording ? "#fff" : colors.icon}
+            />
+          </Pressable>
+
+          {/* Image button */}
+          <Pressable
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor:
+                  mode === "dark" ? colors.background : "#F3F4F6",
+                borderColor: colors.divider,
+              },
+            ]}
+            onPress={handleImagePress}
+            disabled={isProcessingVoice || isProcessingImage}
+          >
+            <Ionicons name="image" size={22} color={colors.icon} />
+          </Pressable>
+
           <TextInput
-            placeholder="ví dụ: trà sữa 60k · lương tháng 10 10tr…"
+            placeholder={t("inputPlaceholder")}
+            placeholderTextColor={colors.subText}
             value={input}
             onChangeText={setInput}
-            style={styles.textInput}
+            style={[
+              styles.textInput,
+              {
+                borderColor: colors.divider,
+                backgroundColor: colors.background,
+                color: colors.text,
+              },
+            ]}
             returnKeyType="send"
             onSubmitEditing={handleSend}
           />
-          <Pressable style={styles.sendBtn} onPress={handleSend}>
-            <Text style={styles.sendText}>Gửi</Text>
+          <Pressable
+            style={[
+              styles.sendBtn,
+              { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+            ]}
+            onPress={handleSend}
+          >
+            <Text style={styles.sendText}>{t("send")}</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -759,6 +1868,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendText: { color: "#fff", fontWeight: "600" },
+
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+  },
+
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e5e5ea",
+    backgroundColor: "#f9f9f9",
+  },
 
   suggestBar: {
     flexDirection: "row",
