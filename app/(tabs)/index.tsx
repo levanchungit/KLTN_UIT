@@ -6,7 +6,9 @@ import {
   MaterialCommunityIcons,
   MaterialIcons,
 } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
@@ -554,6 +556,13 @@ export default function DashboardScreen() {
     loadData();
   }, [loadData]);
 
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
   const addDays = (d: Date, n: number) => {
     const x = new Date(d);
     x.setDate(x.getDate() + n);
@@ -893,10 +902,17 @@ export default function DashboardScreen() {
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-            <TouchableOpacity activeOpacity={0.85} style={styles.iconButton}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.iconButton}
+              onPress={() => router.push("/charts")}
+            >
               <Ionicons name="bar-chart" size={22} color={colors.icon} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => router.push("/notifications")}
+            >
               <Ionicons
                 name="notifications-outline"
                 size={22}

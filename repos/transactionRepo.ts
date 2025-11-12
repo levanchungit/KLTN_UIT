@@ -338,8 +338,13 @@ export async function getTxById(id: string) {
     note: string | null;
     occurred_at: number;
     updated_at: number | null;
+    account_id: string;
     account_name: string;
+    category_id: string | null;
     category_name: string | null;
+    category_icon: string | null;
+    category_color: string | null;
+    type: "expense" | "income";
   }>(
     `
     SELECT t.id,
@@ -347,8 +352,13 @@ export async function getTxById(id: string) {
            t.note,
            t.occurred_at,
            t.updated_at,
+           t.account_id,
+           t.category_id,
+           t.type,
            a.name AS account_name,
-           c.name AS category_name
+           c.name AS category_name,
+           c.icon AS category_icon,
+           c.color AS category_color
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id

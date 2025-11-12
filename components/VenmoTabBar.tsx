@@ -1,9 +1,11 @@
 // components/VenmoTabBar.tsx
+import { useTheme } from "@/app/providers/ThemeProvider";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Dimensions, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Portal } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import AIBotIcon from "./AIBotIcon";
@@ -19,6 +21,8 @@ export default function VenmoTabBar({
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = Dimensions.get("window");
+  const { colors } = useTheme();
+  const [showMenu, setShowMenu] = useState(false);
 
   // Chỉ lấy 4 tab chính theo data của bạn
   const mainRouteNames = new Set([
@@ -249,7 +253,7 @@ export default function VenmoTabBar({
 
       {/* Nút giữa - AI Chatbot Signature */}
       <TouchableOpacity
-        onPress={() => router.push("/chatbox")}
+        onPress={() => setShowMenu(true)}
         activeOpacity={0.85}
         style={{
           position: "absolute",
@@ -280,6 +284,107 @@ export default function VenmoTabBar({
         />
         <AIBotIcon size={52} />
       </TouchableOpacity>
+
+      {/* Menu Modal */}
+      <Portal>
+        <Modal
+          visible={showMenu}
+          onDismiss={() => setShowMenu(false)}
+          contentContainerStyle={{
+            marginHorizontal: 24,
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            padding: 8,
+            alignSelf: "center",
+            width: 280,
+            maxWidth: "90%",
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              setShowMenu(false);
+              router.push("/chatbox");
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              padding: 16,
+              borderRadius: 12,
+              gap: 12,
+            }}
+            activeOpacity={0.7}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "#E0F2FE",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubbles" size={20} color="#0284C7" />
+            </View>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: colors.text,
+                flex: 1,
+              }}
+            >
+              ChatboxAI
+            </Text>
+          </TouchableOpacity>
+
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.divider,
+              marginVertical: 4,
+            }}
+          />
+
+          <TouchableOpacity
+            onPress={() => {
+              setShowMenu(false);
+              router.push("/add-transaction");
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              padding: 16,
+              borderRadius: 12,
+              gap: 12,
+            }}
+            activeOpacity={0.7}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "#FEF3C7",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="add-circle" size={20} color="#F59E0B" />
+            </View>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: colors.text,
+                flex: 1,
+              }}
+            >
+              Tạo giao dịch thủ công
+            </Text>
+          </TouchableOpacity>
+        </Modal>
+      </Portal>
     </View>
   );
 }
