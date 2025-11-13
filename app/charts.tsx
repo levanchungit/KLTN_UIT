@@ -24,19 +24,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 type TimeRange = "Ngày" | "Tuần" | "Tháng" | "Năm" | "Khoảng thời gian";
 
 const VI_MONTHS = [
-  "Tháng 1",
-  "Tháng 2",
-  "Tháng 3",
-  "Tháng 4",
-  "Tháng 5",
-  "Tháng 6",
-  "Tháng 7",
-  "Tháng 8",
-  "Tháng 9",
-  "Tháng 10",
-  "Tháng 11",
-  "Tháng 12",
+  "tháng 1",
+  "tháng 2",
+  "tháng 3",
+  "tháng 4",
+  "tháng 5",
+  "tháng 6",
+  "tháng 7",
+  "tháng 8",
+  "tháng 9",
+  "tháng 10",
+  "tháng 11",
+  "tháng 12",
 ];
+const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 const fmtMoney = (n: number) =>
   (n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 0 }) + "₫";
@@ -118,6 +119,12 @@ export default function ChartsScreen() {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [tempStart, setTempStart] = useState<Date | null>(null);
   const [tempEnd, setTempEnd] = useState<Date | null>(null);
+  const [tempAnchor, setTempAnchor] = useState<Date | null>(anchor);
+  const [tempYear, setTempYear] = useState<number>(new Date().getFullYear());
+  const [tempMonth, setTempMonth] = useState<number>(new Date().getMonth());
+  const [tempOnlyYear, setTempOnlyYear] = useState<number>(
+    new Date().getFullYear()
+  );
   const [chartData, setChartData] = useState<
     {
       value: number;
@@ -202,12 +209,344 @@ export default function ChartsScreen() {
 
   const shiftAnchor = (dir: -1 | 1) => {
     const a = new Date(anchor);
-    if (timeRange === "Ngày") a.setDate(a.getDate() + dir);
-    else if (timeRange === "Tuần") a.setDate(a.getDate() + dir * 7);
-    else if (timeRange === "Tháng") a.setMonth(a.getMonth() + dir);
-    else if (timeRange === "Năm") a.setFullYear(a.getFullYear() + dir);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (timeRange === "Ngày") {
+      a.setDate(a.getDate() + dir);
+      if (dir > 0 && a > today) return; // Không cho chọn tương lai
+    } else if (timeRange === "Tuần") {
+      a.setDate(a.getDate() + dir * 7);
+      if (dir > 0 && a > today) return;
+    } else if (timeRange === "Tháng") {
+      a.setMonth(a.getMonth() + dir);
+      const endOfMonth = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+      if (dir > 0 && endOfMonth > today) return;
+    } else if (timeRange === "Năm") {
+      a.setFullYear(a.getFullYear() + dir);
+      if (dir > 0 && a.getFullYear() > today.getFullYear()) return;
+    }
     setAnchor(a);
   };
+
+  const addDays = (d: Date, n: number) => {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+
+  const startOfWeekMon = (d: Date) => {
+    const x = startOfDay(d);
+    const wd = (x.getDay() + 6) % 7;
+    x.setDate(x.getDate() - wd);
+    return x;
+  };
+
+  const getWeeksOfMonth = (year: number, month: number) => {
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0);
+    first.setHours(0, 0, 0, 0);
+    last.setHours(0, 0, 0, 0);
+    const start = new Date(first);
+    const wd = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - wd);
+    const end = new Date(last);
+    const wd2 = (end.getDay() + 6) % 7;
+    end.setDate(end.getDate() + (6 - wd2));
+    const out: { start: Date; end: Date; label: string }[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 7)) {
+      const s = new Date(d);
+      const e = new Date(d);
+      e.setDate(e.getDate() + 6);
+      const sameMonth = s.getMonth() === month || e.getMonth() === month;
+      if (sameMonth) {
+        const fmt = (x: Date) => `${x.getDate()} thg ${x.getMonth() + 1}`;
+        out.push({ start: s, end: e, label: `${fmt(s)} – ${fmt(e)}` });
+      }
+    }
+    return out;
+  };
+
+  function DayOrWeekPicker({ mode }: { mode: TimeRange }) {
+    const customDatesStyles =
+      mode !== "Tuần" || !tempAnchor
+        ? []
+        : Array.from({ length: 7 }).map((_, i) => {
+            const d = addDays(startOfWeekMon(tempAnchor!), i);
+            return {
+              date: d,
+              style: { backgroundColor: "#C7F9E5" },
+              textStyle: { color: "#111" },
+            };
+          });
+
+    return (
+      <CalendarPicker
+        allowRangeSelection={mode === "Khoảng thời gian"}
+        selectedStartDate={
+          mode === "Khoảng thời gian"
+            ? tempStart ?? undefined
+            : tempAnchor ?? undefined
+        }
+        selectedEndDate={
+          mode === "Khoảng thời gian"
+            ? tempEnd ?? undefined
+            : mode === "Tuần" && tempAnchor
+            ? addDays(startOfWeekMon(tempAnchor), 6)
+            : undefined
+        }
+        initialDate={
+          mode === "Khoảng thời gian"
+            ? tempStart ?? new Date()
+            : tempAnchor ?? new Date()
+        }
+        minDate={new Date(1970, 0, 1)}
+        maxDate={new Date()}
+        weekdays={VI_WEEKDAYS}
+        months={VI_MONTHS}
+        previousTitle="‹"
+        nextTitle="›"
+        todayBackgroundColor="#E6F7FF"
+        selectedDayColor="#10B981"
+        selectedDayTextColor="#fff"
+        selectedRangeStartStyle={{ backgroundColor: "#10B981" }}
+        selectedRangeEndStyle={{ backgroundColor: "#10B981" }}
+        selectedRangeStyle={{ backgroundColor: "#A7F3D0" }}
+        customDatesStyles={customDatesStyles}
+        textStyle={{ color: colors.text }}
+        onDateChange={(date: Date, type?: "START_DATE" | "END_DATE") => {
+          if (mode === "Khoảng thời gian") {
+            if (type === "START_DATE") {
+              setTempStart(date);
+              if (tempEnd && date > tempEnd) setTempEnd(null);
+            } else {
+              setTempEnd(date);
+            }
+          } else {
+            setTempAnchor(date);
+          }
+        }}
+      />
+    );
+  }
+
+  function WeekGridPicker() {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const weeks = React.useMemo(
+      () => getWeeksOfMonth(tempYear, tempMonth),
+      [tempYear, tempMonth]
+    );
+    const sel = React.useMemo(() => {
+      if (!tempAnchor) return null;
+      const s = startOfWeekMon(tempAnchor);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 6);
+      return { s, e };
+    }, [tempAnchor]);
+    const canNextMonth =
+      tempYear < now.getFullYear() ||
+      (tempYear === now.getFullYear() && tempMonth < now.getMonth());
+
+    return (
+      <View style={{ padding: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              const m = tempMonth - 1;
+              if (m < 0) {
+                setTempYear((y) => y - 1);
+                setTempMonth(11);
+              } else setTempMonth(m);
+            }}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-left"
+              size={28}
+              color={colors.icon}
+            />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+            {VI_MONTHS[tempMonth]} {tempYear}
+          </Text>
+          <TouchableOpacity
+            disabled={!canNextMonth}
+            onPress={() => {
+              if (!canNextMonth) return;
+              const m = tempMonth + 1;
+              if (m > 11) {
+                setTempYear((y) => y + 1);
+                setTempMonth(0);
+              } else setTempMonth(m);
+            }}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-right"
+              size={28}
+              color={canNextMonth ? colors.icon : colors.divider}
+            />
+          </TouchableOpacity>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            rowGap: 10,
+          }}
+        >
+          {weeks.map((w, idx) => {
+            const isSelected =
+              sel && sel.s.getTime() === startOfWeekMon(w.start).getTime();
+            const disabled = w.start.getTime() > now.getTime();
+            return (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  if (!disabled) setTempAnchor(new Date(w.start));
+                }}
+                activeOpacity={0.8}
+                style={{
+                  width: "48%",
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: isSelected ? "#10B981" : colors.card,
+                  opacity: disabled ? 0.5 : 1,
+                  borderWidth: isSelected ? 0 : 1,
+                  borderColor: colors.divider,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isSelected ? "#fff" : colors.text,
+                    fontWeight: "700",
+                    marginBottom: 4,
+                  }}
+                >
+                  Tuần {idx + 1}
+                </Text>
+                <Text
+                  style={{
+                    color: isSelected ? "#fff" : colors.subText,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  {w.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function MonthGridPicker() {
+    const months = VI_MONTHS.map((m, idx) => ({
+      label: m.replace("tháng ", "Thg "),
+      idx,
+    }));
+    return (
+      <View style={{ padding: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <TouchableOpacity onPress={() => setTempYear((y) => y - 1)}>
+            <Text style={{ fontSize: 18, color: colors.icon }}>‹</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+            {tempYear}
+          </Text>
+          <TouchableOpacity
+            onPress={() =>
+              setTempYear((y) => Math.min(y + 1, new Date().getFullYear()))
+            }
+          >
+            <Text style={{ fontSize: 18, color: colors.icon }}>›</Text>
+          </TouchableOpacity>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            justifyContent: "space-between",
+          }}
+        >
+          {months.map(({ label, idx }) => {
+            const isCur = tempMonth === idx;
+            return (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => setTempMonth(idx)}
+                style={{
+                  width: "31%",
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: isCur ? "#10B981" : colors.card,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isCur ? "#fff" : colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function YearPicker() {
+    const canNext = tempOnlyYear < new Date().getFullYear();
+    return (
+      <View style={{ alignItems: "center", paddingVertical: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 24 }}>
+          <TouchableOpacity onPress={() => setTempOnlyYear((y) => y - 1)}>
+            <MaterialIcons
+              name="keyboard-arrow-left"
+              size={28}
+              color={colors.icon}
+            />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>
+            {tempOnlyYear}
+          </Text>
+          <TouchableOpacity
+            disabled={!canNext}
+            onPress={() => setTempOnlyYear((y) => y + 1)}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-right"
+              size={28}
+              color={canNext ? colors.icon : colors.divider}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const styles = StyleSheet.create({
     container: {
@@ -353,7 +692,12 @@ export default function ChartsScreen() {
                   key={item}
                   onPress={() => {
                     if (item === "Khoảng thời gian") {
-                      setShowCalendarModal(true);
+                      const r = getRange(timeRange, anchor);
+                      const s = new Date(r.startSec * 1000);
+                      const e = new Date(r.endSec * 1000);
+                      e.setDate(e.getDate() - 1);
+                      setRangeStart(s);
+                      setRangeEnd(e);
                     }
                     setTimeRange(item);
                   }}
@@ -377,40 +721,106 @@ export default function ChartsScreen() {
 
           {/* Time Navigation or Custom Range Display */}
           {timeRange === "Khoảng thời gian" ? (
-            <TouchableOpacity
-              onPress={() => setShowCalendarModal(true)}
-              style={styles.timeNavigation}
+            <View
+              style={{
+                width: "100%",
+                height: 28,
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
+              }}
             >
-              <Text style={styles.periodLabel}>{label}</Text>
-              <MaterialIcons
-                name="calendar-today"
-                size={20}
-                color={colors.icon}
-              />
-            </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowCalendarModal(true)}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {rangeStart.getDate()}/{rangeStart.getMonth() + 1} -{" "}
+                  {rangeEnd.getDate()}/{rangeEnd.getMonth() + 1}
+                </Text>
+              </TouchableOpacity>
+              <View style={{ position: "absolute", right: 0 }}>
+                <TouchableOpacity onPress={() => setShowCalendarModal(true)}>
+                  <MaterialIcons
+                    name="calendar-today"
+                    size={24}
+                    color={colors.icon}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
-            <View style={styles.timeNavigation}>
-              <TouchableOpacity
-                style={styles.navButton}
-                onPress={() => shiftAnchor(-1)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="chevron-back" size={20} color={colors.icon} />
+            <View
+              style={{
+                height: 28,
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              <View style={{ position: "absolute", left: 0 }}>
+                <TouchableOpacity onPress={() => shiftAnchor(-1)}>
+                  <MaterialIcons
+                    name="keyboard-arrow-left"
+                    size={28}
+                    color={colors.icon}
+                  />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={() => setShowCalendarModal(true)}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {label}
+                </Text>
               </TouchableOpacity>
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let canNext = false;
 
-              <Text style={styles.periodLabel}>{label}</Text>
+                if (timeRange === "Ngày") {
+                  const nextDay = new Date(anchor);
+                  nextDay.setDate(nextDay.getDate() + 1);
+                  canNext = nextDay <= today;
+                } else if (timeRange === "Tuần") {
+                  const nextWeek = new Date(anchor);
+                  nextWeek.setDate(nextWeek.getDate() + 7);
+                  canNext = nextWeek <= today;
+                } else if (timeRange === "Tháng") {
+                  const nextMonth = new Date(anchor);
+                  nextMonth.setMonth(nextMonth.getMonth() + 1);
+                  const endOfNextMonth = new Date(
+                    nextMonth.getFullYear(),
+                    nextMonth.getMonth() + 1,
+                    0
+                  );
+                  canNext = endOfNextMonth <= today;
+                } else if (timeRange === "Năm") {
+                  const nextYear = new Date(anchor);
+                  nextYear.setFullYear(nextYear.getFullYear() + 1);
+                  canNext = nextYear.getFullYear() <= today.getFullYear();
+                }
 
-              <TouchableOpacity
-                style={styles.navButton}
-                onPress={() => shiftAnchor(1)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.icon}
-                />
-              </TouchableOpacity>
+                return canNext ? (
+                  <View style={{ position: "absolute", right: 0 }}>
+                    <TouchableOpacity onPress={() => shiftAnchor(1)}>
+                      <MaterialIcons
+                        name="keyboard-arrow-right"
+                        size={28}
+                        color={colors.icon}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ) : null;
+              })()}
             </View>
           )}
         </View>
@@ -505,7 +915,7 @@ export default function ChartsScreen() {
         </View>
       </ScrollView>
 
-      {/* Calendar Modal for Custom Range */}
+      {/* Calendar Modal */}
       <Portal>
         <Modal
           visible={showCalendarModal}
@@ -520,33 +930,13 @@ export default function ChartsScreen() {
             maxWidth: "95%",
           }}
         >
-          <CalendarPicker
-            allowRangeSelection={true}
-            selectedStartDate={tempStart ?? undefined}
-            selectedEndDate={tempEnd ?? undefined}
-            initialDate={tempStart ?? new Date()}
-            minDate={new Date(1970, 0, 1)}
-            maxDate={new Date()}
-            weekdays={["T2", "T3", "T4", "T5", "T6", "T7", "CN"]}
-            months={VI_MONTHS}
-            previousTitle="‹"
-            nextTitle="›"
-            todayBackgroundColor="#E6F7FF"
-            selectedDayColor="#10B981"
-            selectedDayTextColor="#fff"
-            selectedRangeStartStyle={{ backgroundColor: "#10B981" }}
-            selectedRangeEndStyle={{ backgroundColor: "#10B981" }}
-            selectedRangeStyle={{ backgroundColor: "#A7F3D0" }}
-            textStyle={{ color: colors.text }}
-            onDateChange={(date, type) => {
-              if (type === "START_DATE") {
-                setTempStart(date);
-                if (tempEnd && date > tempEnd) setTempEnd(null);
-              } else {
-                setTempEnd(date);
-              }
-            }}
-          />
+          {timeRange === "Ngày" && <DayOrWeekPicker mode="Ngày" />}
+          {timeRange === "Tuần" && <WeekGridPicker />}
+          {timeRange === "Khoảng thời gian" && (
+            <DayOrWeekPicker mode="Khoảng thời gian" />
+          )}
+          {timeRange === "Tháng" && <MonthGridPicker />}
+          {timeRange === "Năm" && <YearPicker />}
 
           <View
             style={{
@@ -563,13 +953,21 @@ export default function ChartsScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
-                if (tempStart && tempEnd) {
+                if (timeRange === "Khoảng thời gian") {
+                  if (!tempStart || !tempEnd)
+                    return setShowCalendarModal(false);
                   setRangeStart(startOfDay(tempStart));
                   setRangeEnd(startOfDay(tempEnd));
-                  setShowCalendarModal(false);
-                } else {
-                  setShowCalendarModal(false);
+                } else if (timeRange === "Ngày") {
+                  if (tempAnchor) setAnchor(startOfDay(tempAnchor));
+                } else if (timeRange === "Tuần") {
+                  if (tempAnchor) setAnchor(startOfWeekMon(tempAnchor));
+                } else if (timeRange === "Tháng") {
+                  setAnchor(new Date(tempYear, tempMonth, 1));
+                } else if (timeRange === "Năm") {
+                  setAnchor(new Date(tempOnlyYear, 0, 1));
                 }
+                setShowCalendarModal(false);
               }}
               style={{ padding: 10 }}
             >

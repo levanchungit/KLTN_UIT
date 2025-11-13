@@ -5,6 +5,7 @@ import { listCategories, type Category } from "@/repos/categoryRepo";
 import {
   addExpense,
   addIncome,
+  deleteTx,
   getTxById,
   updateTransaction,
 } from "@/repos/transactionRepo";
@@ -180,6 +181,28 @@ export default function AddTransactionScreen() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!txId) return;
+
+    Alert.alert("Xác nhận xóa", "Bạn có chắc chắn muốn xóa giao dịch này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteTx(txId);
+            Alert.alert("Thành công", "Đã xóa giao dịch");
+            router.back();
+          } catch (error) {
+            console.error("Error deleting transaction:", error);
+            Alert.alert("Lỗi", "Không thể xóa giao dịch");
+          }
+        },
+      },
+    ]);
+  };
+
   const getCategoryIcon = (iconName: string | null | undefined) => {
     if (!iconName) return "help-circle-outline";
 
@@ -347,13 +370,36 @@ export default function AddTransactionScreen() {
       fontWeight: "600",
       color: "#1D4ED8",
     },
-    saveButton: {
+    buttonContainer: {
+      flexDirection: "row",
+      gap: 12,
       marginHorizontal: 16,
       marginVertical: 20,
+    },
+    saveButton: {
+      flex: 1,
       backgroundColor: "#1D4ED8",
       borderRadius: 12,
       paddingVertical: 16,
       alignItems: "center",
+    },
+    saveButtonSmall: {
+      flex: 2,
+    },
+    deleteButton: {
+      flex: 1,
+      backgroundColor: "#EF4444",
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 6,
+    },
+    deleteButtonText: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: "#fff",
     },
     saveButtonText: {
       fontSize: 16,
@@ -568,10 +614,25 @@ export default function AddTransactionScreen() {
         </View>
       </ScrollView>
 
-      {/* Save Button */}
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>{t("save")}</Text>
-      </TouchableOpacity>
+      {/* Action Buttons */}
+      <View style={styles.buttonContainer}>
+        {isEditMode && (
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+            <MaterialCommunityIcons
+              name="delete-outline"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.deleteButtonText}>Xóa</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[styles.saveButton, isEditMode && styles.saveButtonSmall]}
+          onPress={handleSave}
+        >
+          <Text style={styles.saveButtonText}>{t("save")}</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Calendar Modal - Giống Dashboard */}
       <Portal>

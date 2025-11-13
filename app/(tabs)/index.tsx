@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useUser } from "@/context/userContext";
 import { listAccounts } from "@/repos/accountRepo";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {
@@ -259,19 +260,23 @@ function ExpenseDonutChart({
 }
 
 function CategoryRow({
+  categoryId,
   title,
   amount,
   percent,
   color,
   iconName,
   colors,
+  onPress,
 }: {
+  categoryId: string | null;
   title: string;
   amount: number;
   percent: string | number;
   color: string;
   iconName?: string;
   colors: any;
+  onPress?: () => void;
 }) {
   const pctNum =
     typeof percent === "number"
@@ -352,7 +357,12 @@ function CategoryRow({
   });
 
   return (
-    <View style={localStyles.catItem}>
+    <TouchableOpacity
+      style={localStyles.catItem}
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={!onPress}
+    >
       <View style={localStyles.catIcon}>
         {(() => {
           if (!iconName) {
@@ -428,13 +438,14 @@ function CategoryRow({
           </View>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { colors, mode } = useTheme();
+  const { user } = useUser();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
   const [activeTab, setActiveTab] = useState<Tab>("Chi phí");
@@ -460,6 +471,7 @@ export default function DashboardScreen() {
   >([]);
   const [listData, setListData] = useState<
     {
+      categoryId: string | null;
       category: string;
       percent: string;
       amount: number;
@@ -543,6 +555,7 @@ export default function DashboardScreen() {
       rows
         .filter((r) => (r.total || 0) > 0)
         .map((r, i) => ({
+          categoryId: r.category_id,
           category: r.name ?? "Khác",
           percent: `${Math.round(((r.total || 0) / grand) * 100)}%`,
           amount: r.total || 0,
@@ -898,7 +911,9 @@ export default function DashboardScreen() {
             />
             <View>
               <Text style={styles.greeting}>Xin chào 👋</Text>
-              <Text style={styles.username}>Người dùng</Text>
+              <Text style={styles.username}>
+                {user ? user.username : "Người dùng (demo)"}
+              </Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
@@ -1196,12 +1211,26 @@ export default function DashboardScreen() {
               {listData.map((it, idx) => (
                 <CategoryRow
                   key={idx}
+                  categoryId={it.categoryId}
                   title={it.category}
                   amount={it.amount}
                   percent={it.percent}
                   color={it.color}
                   colors={colors}
                   iconName={it.iconName}
+                  onPress={() => {
+                    if (it.categoryId) {
+                      router.push({
+                        pathname: "/category-detail",
+                        params: {
+                          categoryId: it.categoryId,
+                          categoryName: it.category,
+                          categoryIcon: it.iconName,
+                          categoryColor: it.color,
+                        },
+                      });
+                    }
+                  }}
                 />
               ))}
             </View>

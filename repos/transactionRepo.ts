@@ -1,4 +1,5 @@
 import { db, openDb } from "@/db";
+import { transactionClassifier } from "@/services/transactionClassifier";
 
 export type TxDetailRow = {
   id: string;
@@ -7,6 +8,7 @@ export type TxDetailRow = {
   occurred_at: number;
   updated_at: number;
   account_name: string;
+  category_id: string | null;
   category_name: string | null;
   category_icon: string | null;
   category_color: string | null;
@@ -151,6 +153,16 @@ export async function addExpense({
       updated,
     ]
   );
+
+  // Auto-train AI model with new transaction
+  if (note && note.trim()) {
+    transactionClassifier
+      .learnFromNewTransaction(note, categoryId)
+      .catch((err) => {
+        console.error("Failed to update AI model:", err);
+      });
+  }
+
   return id;
 }
 
@@ -190,6 +202,16 @@ export async function addIncome({
       updated,
     ]
   );
+
+  // Auto-train AI model with new transaction (income)
+  if (note && note.trim()) {
+    transactionClassifier
+      .learnFromNewTransaction(note, categoryId)
+      .catch((err) => {
+        console.error("Failed to update AI model:", err);
+      });
+  }
+
   return id;
 }
 
@@ -327,6 +349,17 @@ export async function updateTransaction({
      WHERE id=? AND user_id='u_demo'`,
     [accountId, categoryId, type, amount, note ?? null, occurred, updated, id]
   );
+
+  // Auto-train AI with corrected transaction (WAIT for completion)
+  if (note && note.trim() && categoryId) {
+    try {
+      await transactionClassifier.learnFromCorrection(note, categoryId);
+      console.log("✅ AI updated successfully after transaction edit");
+    } catch (err: any) {
+      console.error("❌ Failed to update AI after transaction edit:", err);
+    }
+  }
+
   return id;
 }
 
@@ -377,6 +410,7 @@ export async function listBetween(
     `
     SELECT t.id, t.amount, t.note, t.occurred_at, t.updated_at, t.type,
            a.name AS account_name,
+           t.category_id,
            c.name AS category_name,
            c.icon AS category_icon,
            c.color AS category_color

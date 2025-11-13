@@ -2,6 +2,7 @@ import {
   AppThemeProvider,
   useTheme as useAppTheme,
 } from "@/app/providers/ThemeProvider";
+import { UserProvider } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
@@ -62,9 +63,11 @@ export default function RootLayout() {
   return (
     <I18nProvider>
       <AppThemeProvider>
-        <PaperProvider>
-          <RootLayoutNav />
-        </PaperProvider>
+        <UserProvider>
+          <PaperProvider>
+            <RootLayoutNav />
+          </PaperProvider>
+        </UserProvider>
       </AppThemeProvider>
     </I18nProvider>
   );

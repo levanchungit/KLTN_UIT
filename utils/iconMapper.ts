@@ -17,6 +17,7 @@ export function fixIconName(iconName: string | null | undefined): string {
     "flight-takeoff": "airplane-takeoff",
     "directions-car": "car",
     "credit-card": "credit-card-outline",
+    assignment: "file-document-outline",
 
     // Additional common mistakes
     "food-variant": "food",

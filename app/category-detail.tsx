@@ -1,16 +1,14 @@
-// app/(tabs)/Transactions.tsx
-import { listCategories } from "@/repos/categoryRepo";
+// app/category-detail.tsx
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { writeAsStringAsync } from "expo-file-system";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -21,11 +19,10 @@ import {
 import CalendarPicker from "react-native-calendar-picker";
 import { Modal, Portal } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from "../providers/ThemeProvider";
+import { useTheme } from "./providers/ThemeProvider";
 
 // Helper to get cache directory path
 const getCacheDir = () => {
-  // Platform-specific cache directory
   return require("expo-file-system").documentDirectory || "";
 };
 
@@ -71,9 +68,15 @@ const fmtMoney = (n: number) =>
 
 type Section = { title: string; key: string; date: Date; data: TxDetailRow[] };
 
-export default function Transactions() {
+export default function CategoryDetail() {
   const { colors, mode } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
+  const params = useLocalSearchParams();
+  const categoryId = params.categoryId as string;
+  const categoryName = params.categoryName as string;
+  const categoryIcon = params.categoryIcon as string | undefined;
+  const categoryColor = params.categoryColor as string | undefined;
+
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -88,13 +91,8 @@ export default function Transactions() {
   const [tempStartDate, setTempStartDate] = useState<Date | null>(null);
   const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
 
-  // Search and category filter state
+  // Search state
   const [searchText, setSearchText] = useState("");
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<
-    string | null
-  >(null);
-  const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
-  const [allCategories, setAllCategories] = useState<any[]>([]);
 
   const PAGE_DAYS = 14;
   const MAX_PAST_DAYS = 365 * 3;
@@ -102,7 +100,7 @@ export default function Transactions() {
   const loadingMoreRef = useRef(false);
   const onEndMomentumFired = useRef(false);
 
-  // Group rows → sections theo ngày (LÀM Ở JS, không query từng ngày)
+  // Group rows → sections theo ngày
   const groupByDay = useCallback((rows: TxDetailRow[]) => {
     const map = new Map<string, Section>();
     for (const r of rows) {
@@ -120,15 +118,13 @@ export default function Transactions() {
     );
   }, []);
 
-  // Fetch một lần theo khoảng ngày với filter
+  // Fetch transactions filtered by category
   const fetchRange = useCallback(
     async (fromOffsetDays: number, days: number) => {
       let from: Date;
       let to: Date;
 
-      // Apply filter
       if (filterType === "all") {
-        // Load theo page như cũ
         to = startOfDay(new Date());
         to.setDate(to.getDate() - fromOffsetDays);
         to.setHours(23, 59, 59, 999);
@@ -136,38 +132,32 @@ export default function Transactions() {
         from.setDate(to.getDate() - days + 1);
         from.setHours(0, 0, 0, 0);
       } else if (filterType === "day") {
-        // Today only - ignore offset
         from = startOfDay(new Date());
         to = new Date(from);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "week") {
-        // This week (Monday to Sunday) - ignore offset
         const today = new Date();
-        const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0
+        const dayOfWeek = (today.getDay() + 6) % 7;
         from = startOfDay(new Date());
         from.setDate(from.getDate() - dayOfWeek);
         to = new Date(from);
         to.setDate(to.getDate() + 6);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "month") {
-        // This month - ignore offset
         const today = new Date();
         from = new Date(today.getFullYear(), today.getMonth(), 1);
         to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "year") {
-        // This year - ignore offset
         const today = new Date();
         from = new Date(today.getFullYear(), 0, 1);
         to = new Date(today.getFullYear(), 11, 31);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "custom") {
-        // Custom range - ignore offset
         from = startOfDay(filterStartDate);
         to = startOfDay(filterEndDate);
         to.setHours(23, 59, 59, 999);
       } else {
-        // Default to all
         to = startOfDay(new Date());
         to.setDate(to.getDate() - fromOffsetDays);
         to.setHours(23, 59, 59, 999);
@@ -181,16 +171,17 @@ export default function Transactions() {
 
       try {
         const rows = await listBetween(fromSec, toSec);
-        return groupByDay(rows);
+        // Filter by categoryId
+        const filtered = rows.filter((r) => r.category_id === categoryId);
+        return groupByDay(filtered);
       } catch (e) {
         console.warn("listBetween error", e);
         return [];
       }
     },
-    [groupByDay, filterType, filterStartDate, filterEndDate]
+    [groupByDay, filterType, filterStartDate, filterEndDate, categoryId]
   );
 
-  // Initial + on focus (DÙNG 1 nơi thôi để tránh double-load)
   const loadInitial = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -205,24 +196,11 @@ export default function Transactions() {
   useFocusEffect(
     useCallback(() => {
       loadInitial();
-      loadCategoriesForFilter();
     }, [loadInitial])
   );
 
-  const loadCategoriesForFilter = async () => {
-    try {
-      const cats = await listCategories();
-      setAllCategories(cats);
-    } catch (e) {
-      console.warn("Load categories error", e);
-    }
-  };
-
-  // Load more theo page (chỉ khi filter = "all")
   const loadMore = useCallback(async () => {
-    // Chỉ load more khi filter = all
     if (filterType !== "all") return;
-
     if (loadingMoreRef.current) return;
     if (loadedDays >= MAX_PAST_DAYS) return;
 
@@ -232,7 +210,6 @@ export default function Transactions() {
       const more = await fetchRange(loadedDays, PAGE_DAYS);
       if (more.length === 0) return;
 
-      // merge theo key (ngày)
       const merged = new Map<string, Section>();
       for (const s of sections) merged.set(s.key, s);
       for (const s of more) {
@@ -254,7 +231,6 @@ export default function Transactions() {
 
   const exportToCSV = async () => {
     try {
-      // Flatten all transactions from sections
       const allTransactions = sections.flatMap((section) => section.data);
 
       if (allTransactions.length === 0) {
@@ -262,10 +238,7 @@ export default function Transactions() {
         return;
       }
 
-      // CSV header (removed ID field)
       const csvHeader = "Số tiền,Loại,Danh mục,Ghi chú,Ngày\n";
-
-      // CSV rows
       const csvRows = allTransactions
         .map((tx) => {
           const dateObj = new Date(tx.occurred_at * 1000);
@@ -275,7 +248,7 @@ export default function Transactions() {
             dateObj.getHours()
           ).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
           const type = tx.type === "expense" ? "Chi tiêu" : "Thu nhập";
-          const amount = tx.amount.toString(); // Export as plain number without formatting
+          const amount = tx.amount.toString();
           const category = (tx.category_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
           return `${amount},"${type}","${category}","${note}","${date}"`;
@@ -283,15 +256,11 @@ export default function Transactions() {
         .join("\n");
 
       const csvContent = csvHeader + csvRows;
-      const fileName = `giao_dich_${new Date().getTime()}.csv`;
-
-      // Use the helper function
+      const fileName = `giao_dich_${categoryName}_${new Date().getTime()}.csv`;
       const fileUri = `${getCacheDir()}${fileName}`;
 
-      // Write file
       await writeAsStringAsync(fileUri, csvContent);
 
-      // Share the file
       const canShare = await isAvailableAsync();
       if (canShare) {
         await shareAsync(fileUri, {
@@ -308,11 +277,59 @@ export default function Transactions() {
     }
   };
 
+  // Get icon name for display
+  const getIconName = () => {
+    if (!categoryIcon) return "cash";
+    if (categoryIcon.startsWith("mc:")) return categoryIcon.replace("mc:", "");
+    if (categoryIcon.startsWith("mi:")) {
+      const iconMap: Record<string, string> = {
+        "directions-car": "car",
+        "flight-takeoff": "airplane-takeoff",
+        assignment: "file-document-outline",
+        pets: "paw",
+        "credit-card": "credit-card-outline",
+      };
+      const miName = categoryIcon.replace("mi:", "");
+      return iconMap[miName] || "help-circle-outline";
+    }
+    return categoryIcon;
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* Header with Add and Filter Buttons */}
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Giao dịch</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
+          <MaterialCommunityIcons
+            name="arrow-left"
+            size={24}
+            color={colors.text}
+          />
+        </TouchableOpacity>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            flex: 1,
+          }}
+        >
+          <View
+            style={[
+              styles.categoryIconCircle,
+              { backgroundColor: categoryColor || "#667eea" },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={getIconName() as any}
+              size={24}
+              color="#fff"
+            />
+          </View>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {categoryName}
+          </Text>
+        </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
             style={styles.exportButton}
@@ -338,13 +355,14 @@ export default function Transactions() {
         </View>
       </View>
 
-      {/* Search Bar and Category Filter */}
+      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputWrapper}>
           <Ionicons
             name="search"
             size={20}
             color={colors.subText}
+            style={{ marginRight: 8 }}
           />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -354,28 +372,11 @@ export default function Transactions() {
             onChangeText={setSearchText}
           />
           {searchText ? (
-            <TouchableOpacity onPress={() => setSearchText("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => setSearchText("")}>
               <Ionicons name="close-circle" size={20} color={colors.subText} />
             </TouchableOpacity>
           ) : null}
         </View>
-        <TouchableOpacity
-          style={[
-            styles.categoryFilterButton,
-            {
-              backgroundColor: selectedCategoryFilter ? "#10B981" : colors.card,
-              borderColor: selectedCategoryFilter ? "#10B981" : colors.divider,
-            },
-          ]}
-          onPress={() => setShowCategoryFilterModal(true)}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons
-            name="shape-outline"
-            size={22}
-            color={selectedCategoryFilter ? "#fff" : colors.icon}
-          />
-        </TouchableOpacity>
       </View>
 
       {/* Filter Modal */}
@@ -421,16 +422,14 @@ export default function Transactions() {
                 key={filter}
                 onPress={() => {
                   if (filter === "custom") {
-                    // Close filter modal and immediately open calendar picker
                     setShowFilterModal(false);
-                    // Use setTimeout to ensure modal is closed before opening new one
                     setTimeout(() => {
                       setShowCalendarModal(true);
                     }, 100);
                   } else {
                     setFilterType(filter);
                     setShowFilterModal(false);
-                    loadInitial(); // Reload with filter
+                    loadInitial();
                   }
                 }}
                 style={{
@@ -470,7 +469,7 @@ export default function Transactions() {
         </Modal>
       </Portal>
 
-      {/* Calendar Modal for Custom Range */}
+      {/* Calendar Modal */}
       <Portal>
         <Modal
           visible={showCalendarModal}
@@ -546,7 +545,7 @@ export default function Transactions() {
                   setFilterEndDate(tempEndDate);
                   setFilterType("custom");
                   setShowCalendarModal(false);
-                  loadInitial(); // Reload with custom range
+                  loadInitial();
                 } else {
                   setShowCalendarModal(false);
                 }
@@ -559,140 +558,7 @@ export default function Transactions() {
         </Modal>
       </Portal>
 
-      {/* Category Filter Modal */}
-      <Portal>
-        <Modal
-          visible={showCategoryFilterModal}
-          onDismiss={() => setShowCategoryFilterModal(false)}
-          contentContainerStyle={{
-            marginHorizontal: 24,
-            borderRadius: 16,
-            backgroundColor: colors.card,
-            padding: 16,
-            alignSelf: "center",
-            width: 320,
-            maxWidth: "90%",
-            maxHeight: "70%",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 18,
-              fontWeight: "700",
-              color: colors.text,
-              marginBottom: 16,
-            }}
-          >
-            Lọc theo danh mục
-          </Text>
-
-          <ScrollView style={{ maxHeight: 400 }}>
-            <TouchableOpacity
-              onPress={() => {
-                setSelectedCategoryFilter(null);
-                setShowCategoryFilterModal(false);
-              }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 12,
-                paddingHorizontal: 12,
-                borderRadius: 8,
-                backgroundColor: !selectedCategoryFilter
-                  ? "#667eea"
-                  : "transparent",
-                marginBottom: 8,
-              }}
-            >
-              <MaterialCommunityIcons
-                name="all-inclusive"
-                size={20}
-                color={!selectedCategoryFilter ? "#fff" : colors.icon}
-                style={{ marginRight: 12 }}
-              />
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: "600",
-                  color: !selectedCategoryFilter ? "#fff" : colors.text,
-                }}
-              >
-                Tất cả danh mục
-              </Text>
-            </TouchableOpacity>
-
-            {allCategories.map((cat) => {
-              const isSelected = selectedCategoryFilter === cat.id;
-              let iconName = "cash";
-              if (cat.icon) {
-                if (cat.icon.startsWith("mc:")) {
-                  iconName = cat.icon.replace("mc:", "");
-                } else if (cat.icon.startsWith("mi:")) {
-                  const iconMap: Record<string, string> = {
-                    "directions-car": "car",
-                    "flight-takeoff": "airplane-takeoff",
-                    assignment: "file-document-outline",
-                    pets: "paw",
-                    "credit-card": "credit-card-outline",
-                  };
-                  const miName = cat.icon.replace("mi:", "");
-                  iconName = iconMap[miName] || "help-circle-outline";
-                } else {
-                  iconName = cat.icon;
-                }
-              }
-
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => {
-                    setSelectedCategoryFilter(cat.id);
-                    setShowCategoryFilterModal(false);
-                  }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingVertical: 12,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    backgroundColor: isSelected ? "#667eea" : "transparent",
-                    marginBottom: 8,
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name={iconName as any}
-                    size={20}
-                    color={isSelected ? "#fff" : cat.color || colors.icon}
-                    style={{ marginRight: 12 }}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: "600",
-                      color: isSelected ? "#fff" : colors.text,
-                    }}
-                  >
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <TouchableOpacity
-            onPress={() => setShowCategoryFilterModal(false)}
-            style={{
-              marginTop: 16,
-              paddingVertical: 10,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#10B981", fontWeight: "700" }}>Đóng</Text>
-          </TouchableOpacity>
-        </Modal>
-      </Portal>
-
-      {/* Show date range when custom filter is selected */}
+      {/* Custom date range display */}
       {filterType === "custom" && (
         <View
           style={{
@@ -745,7 +611,6 @@ export default function Transactions() {
           .map((section) => ({
             ...section,
             data: section.data.filter((item) => {
-              // Filter by search text
               const matchesSearch =
                 !searchText ||
                 (item.note || "")
@@ -754,13 +619,7 @@ export default function Transactions() {
                 (item.category_name || "")
                   .toLowerCase()
                   .includes(searchText.toLowerCase());
-
-              // Filter by category
-              const matchesCategory =
-                !selectedCategoryFilter ||
-                item.category_id === selectedCategoryFilter;
-
-              return matchesSearch && matchesCategory;
+              return matchesSearch;
             }),
           }))
           .filter((section) => section.data.length > 0)}
@@ -771,7 +630,6 @@ export default function Transactions() {
           </View>
         )}
         renderItem={({ item }) => {
-          // Icon mapping for mi: prefix
           const iconMap: Record<string, string> = {
             "directions-car": "car",
             "flight-takeoff": "airplane-takeoff",
@@ -780,7 +638,6 @@ export default function Transactions() {
             "credit-card": "credit-card-outline",
           };
 
-          // Determine icon name and color
           let iconName = "cash";
           let iconColor = colors.icon;
 
@@ -835,9 +692,7 @@ export default function Transactions() {
         refreshing={refreshing}
         onRefresh={loadInitial}
         onEndReached={() => {
-          // Chỉ load more khi filter = all
           if (filterType !== "all") return;
-
           if (!loadingMoreRef.current && onEndMomentumFired.current) {
             loadMore();
           }
@@ -873,7 +728,7 @@ const makeStyles = (c: {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: 8,
       paddingHorizontal: 16,
       paddingVertical: 12,
       borderBottomWidth: 1,
@@ -881,9 +736,17 @@ const makeStyles = (c: {
       backgroundColor: c.card,
     },
     headerTitle: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: "700",
       color: c.text,
+      flex: 1,
+    },
+    categoryIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
     },
     addButton: {
       width: 40,
@@ -924,6 +787,30 @@ const makeStyles = (c: {
       shadowRadius: 4,
       elevation: 4,
     },
+    searchContainer: {
+      flexDirection: "row",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: c.card,
+      borderBottomWidth: 1,
+      borderBottomColor: c.divider,
+    },
+    searchInputWrapper: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.background,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: c.divider,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 15,
+      color: c.text,
+    },
     sectionHeader: {
       marginTop: 8,
       marginBottom: 4,
@@ -952,45 +839,4 @@ const makeStyles = (c: {
     catName: { fontSize: 15, fontWeight: "700", color: c.text },
     sub: { fontSize: 12, color: c.subText, marginTop: 2 },
     amount: { fontSize: 14, fontWeight: "800" },
-    searchContainer: {
-      flexDirection: "row",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      gap: 12,
-      backgroundColor: c.card,
-      borderBottomWidth: 1,
-      borderBottomColor: c.divider,
-      alignItems: "center",
-    },
-    searchInputWrapper: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: c.background,
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: c.divider,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 15,
-      color: c.text,
-      paddingVertical: 0,
-    },
-    categoryFilterButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: c.divider,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
-      elevation: 2,
-    },
   });

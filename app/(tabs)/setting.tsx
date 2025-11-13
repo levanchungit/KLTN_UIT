@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Setting() {
   const { colors, mode, preference, cyclePreference } = useTheme();
+  const { user } = useUser();
   const { t } = useI18n();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
@@ -15,7 +17,32 @@ export default function Setting() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.profileButton}
+          onPress={() => {
+            if (user) {
+              router.push("/setting/profile");
+            } else {
+              router.push("/auth/login");
+            }
+          }}
+        >
+          <View style={styles.avatar}>
+            <Ionicons
+              name={user ? "person" : "person-outline"}
+              size={24}
+              color="#fff"
+            />
+          </View>
+          <View style={{ marginLeft: 12 }}>
+            <Text style={styles.profileName}>
+              {user ? user.username : "Chưa đăng nhập"}
+            </Text>
+            <Text style={styles.profileDesc}>
+              {user ? "Xem hồ sơ" : "Đăng nhập ngay"}
+            </Text>
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.sunBtn}
           onPress={cyclePreference}
@@ -78,10 +105,32 @@ const makeStyles = (c: {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      // SafeAreaView handles top inset; avoid manual marginTop
       marginBottom: 12,
       paddingHorizontal: 20,
       justifyContent: "space-between",
+    },
+    profileButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: "#007AFF",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    profileName: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: c.text,
+    },
+    profileDesc: {
+      fontSize: 13,
+      color: c.subText,
+      marginTop: 2,
     },
     sunBtn: {
       backgroundColor: c.card,
