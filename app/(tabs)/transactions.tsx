@@ -341,11 +341,7 @@ export default function Transactions() {
       {/* Search Bar and Category Filter */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputWrapper}>
-          <Ionicons
-            name="search"
-            size={20}
-            color={colors.subText}
-          />
+          <Ionicons name="search" size={20} color={colors.subText} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Tìm kiếm giao dịch..."
@@ -354,7 +350,10 @@ export default function Transactions() {
             onChangeText={setSearchText}
           />
           {searchText ? (
-            <TouchableOpacity onPress={() => setSearchText("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              onPress={() => setSearchText("")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name="close-circle" size={20} color={colors.subText} />
             </TouchableOpacity>
           ) : null}

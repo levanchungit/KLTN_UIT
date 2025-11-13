@@ -20,6 +20,7 @@ import { parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -40,7 +41,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_API_KEY =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || "";
+const OCR_SPACE_API_KEY =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_OCR_SPACE_API_KEY || ""; // Free OCR.space API key
 // ↓ Helper: lấy JSON từ chuỗi có thể lẫn text
 function tryPickJson(text: string) {
   if (!text) return null;
@@ -190,7 +194,7 @@ async function processReceiptImage(imageUri: string): Promise<{
       type: "image/jpeg",
       name: "receipt.jpg",
     } as any);
-    formData.append("apikey", "K87219670488957"); // Free API key
+    formData.append("apikey", OCR_SPACE_API_KEY); // Free API key
     formData.append("language", "eng"); // English (works well for numbers and common text)
     formData.append("isOverlayRequired", "false");
     formData.append("OCREngine", "2"); // Engine 2 for better accuracy
