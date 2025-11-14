@@ -1,6 +1,5 @@
 import * as SQLite from "expo-sqlite";
 import { runMigrations } from "./migrate";
-import { seedIfEmpty } from "./seed-internal";
 
 let _db: SQLite.SQLiteDatabase | null = null;
 let _opening: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -80,8 +79,7 @@ export async function openDb() {
   const conn = await _ensureOpen();
   if (!_initialized) {
     await runMigrations(conn);
-    await seedIfEmpty(conn);
-    await ensureDbIndexes(); // quan trọng cho truy vấn theo thời gian
+    await ensureDbIndexes();
     _initialized = true;
   }
   return conn;
@@ -93,3 +91,5 @@ export async function ensureDbIndexes() {
     "CREATE INDEX IF NOT EXISTS idx_tx_user_time ON transactions(user_id, occurred_at);"
   );
 }
+
+export const database = _ensureOpen();
