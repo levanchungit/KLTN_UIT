@@ -3,6 +3,7 @@ export default {
     name: "KLTN_UIT",
     slug: "KLTN_UIT",
     version: "1.0.0",
+    owner: "levanchung.it",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "kltnuit",
@@ -64,6 +65,9 @@ export default {
     extra: {
       EXPO_PUBLIC_OPENAI_API_KEY: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
       EXPO_PUBLIC_OCR_SPACE_API_KEY: process.env.EXPO_PUBLIC_OCR_SPACE_API_KEY,
+      eas: {
+        projectId: "17ee9dcf-d3f4-41ef-95bb-5202d44fdc8d",
+      },
     },
   },
 };

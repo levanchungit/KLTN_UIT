@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "702360028374",
+    "project_id": "kltn-uit-921cf",
+    "storage_bucket": "kltn-uit-921cf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:702360028374:android:2594267a35d91c9289f577",
+        "android_client_info": {
+          "package_name": "com.levanchung.it.KLTN_UIT"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBimbX3quCDULOtEeUC87WTWjTLgsxVp5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
