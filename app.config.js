@@ -50,14 +50,6 @@ export default {
             "Ứng dụng cần quyền truy cập thư viện ảnh để chọn hóa đơn",
         },
       ],
-      [
-        "expo-av",
-        {
-          microphonePermission:
-            "Ứng dụng cần quyền ghi âm để nhận diện giọng nói",
-        },
-      ],
-      "expo-audio",
     ],
     experiments: {
       typedRoutes: true,

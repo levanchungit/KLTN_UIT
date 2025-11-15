@@ -94,6 +94,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
@@ -129,6 +130,13 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
+}
+
+configurations.all {
+    // Loại bỏ các support lib cũ vì đã dùng AndroidX
+    exclude group: 'com.android.support', module: 'support-compat'
+    exclude group: 'com.android.support', module: 'versionedparcelable'
+    exclude group: 'com.android.support', module: 'localbroadcastmanager'
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`
