@@ -44,7 +44,7 @@ export default {
     plugins: [
       "expo-router",
       "./plugins/withAppComponentFactoryFix",
-      "@react-native-voice/voice"
+      "@react-native-voice/voice",
       [
         "expo-image-picker",
         {
