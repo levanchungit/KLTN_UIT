@@ -1,8 +1,19 @@
 // app/notifications.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
+import {
+  AppNotification,
+  clearAllNotifications,
+  deleteNotification,
+  getAllNotifications,
+  markAllAsRead,
+  markAsRead,
+  requestNotificationPermissions,
+  subscribeToNotifications,
+} from "@/services/notificationService";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -12,61 +23,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type Notification = {
-  id: string;
-  title: string;
-  message: string;
-  date: Date;
-  read: boolean;
-  type: "info" | "success" | "warning" | "error";
-};
-
-// Mock data - will be replaced with real push notifications later
-const mockNotifications: Notification[] = [
-  {
-    id: "1",
-    title: "Ngân sách sắp vượt mức",
-    message: "Bạn đã chi tiêu 85% ngân sách tháng này",
-    date: new Date(),
-    read: false,
-    type: "warning",
-  },
-  {
-    id: "2",
-    title: "Giao dịch mới",
-    message: "Đã thêm giao dịch: Cà phê sáng 45,000đ",
-    date: new Date(Date.now() - 86400000), // Yesterday
-    read: false,
-    type: "success",
-  },
-  {
-    id: "3",
-    title: "Nhắc nhở",
-    message: "Bạn chưa ghi lại chi tiêu hôm nay",
-    date: new Date(Date.now() - 86400000),
-    read: true,
-    type: "info",
-  },
-  {
-    id: "4",
-    title: "Thu nhập mới",
-    message: "Đã thêm thu nhập: Lương tháng 10 15,000,000đ",
-    date: new Date(Date.now() - 172800000), // 2 days ago
-    read: true,
-    type: "success",
-  },
-  {
-    id: "5",
-    title: "Vượt ngân sách",
-    message: "Danh mục Ăn uống đã vượt 120% ngân sách",
-    date: new Date(Date.now() - 259200000), // 3 days ago
-    read: true,
-    type: "error",
-  },
-];
-
-function groupByDate(notifications: Notification[]) {
-  const groups: { [key: string]: Notification[] } = {};
+function groupByDate(notifications: AppNotification[]) {
+  const groups: { [key: string]: AppNotification[] } = {};
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today);
@@ -100,24 +58,53 @@ function groupByDate(notifications: Notification[]) {
 
 export default function NotificationsScreen() {
   const { colors } = useTheme();
-  const [notifications, setNotifications] =
-    useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  // Ask permissions once when screen mounts
+  useEffect(() => {
+    requestNotificationPermissions().catch(() => undefined);
+  }, []);
+
+  const load = useCallback(async () => {
+    const items = await getAllNotifications();
+    setNotifications(items);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const unsub = subscribeToNotifications(() => {
+        load();
+      });
+      return () => unsub();
+    }, [load])
+  );
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  const onMarkOne = async (id: string) => {
+    await markAsRead(id);
+    await load();
   };
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const onMarkAll = async () => {
+    await markAllAsRead();
+    await load();
+  };
+
+  const onDeleteOne = async (id: string) => {
+    await deleteNotification(id);
+    await load();
+  };
+
+  const onClearAll = async () => {
+    await clearAllNotifications();
+    await load();
   };
 
   const groupedNotifications = groupByDate(notifications);
 
-  const getIcon = (type: Notification["type"]) => {
+  const getIcon = (type: AppNotification["type"]) => {
     switch (type) {
       case "success":
         return "checkmark-circle";
@@ -130,7 +117,7 @@ export default function NotificationsScreen() {
     }
   };
 
-  const getIconColor = (type: Notification["type"]) => {
+  const getIconColor = (type: AppNotification["type"]) => {
     switch (type) {
       case "success":
         return "#10B981";
@@ -143,7 +130,7 @@ export default function NotificationsScreen() {
     }
   };
 
-  const getIconBg = (type: Notification["type"]) => {
+  const getIconBg = (type: AppNotification["type"]) => {
     switch (type) {
       case "success":
         return "#DCFCE7";
@@ -156,7 +143,10 @@ export default function NotificationsScreen() {
     }
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date | undefined) => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return "--:--";
+    }
     return date.toLocaleTimeString("vi-VN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -182,6 +172,11 @@ export default function NotificationsScreen() {
       alignItems: "center",
       gap: 12,
     },
+    headerRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
     backButton: {
       width: 40,
       height: 40,
@@ -197,28 +192,15 @@ export default function NotificationsScreen() {
       fontWeight: "700",
       color: colors.text,
     },
-    markAllButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
-      backgroundColor: "#667eea",
-    },
-    markAllText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: "#fff",
-    },
-    unreadBadge: {
-      marginLeft: 8,
-      backgroundColor: "#EF4444",
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 10,
-    },
-    unreadBadgeText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: "#fff",
+    iconBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.card,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.divider,
     },
     sectionHeader: {
       paddingHorizontal: 16,
@@ -313,22 +295,36 @@ export default function NotificationsScreen() {
           >
             <Ionicons name="arrow-back" size={20} color={colors.icon} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Thông báo</Text>
+          <Text style={styles.headerTitle}>
+            {unreadCount > 0 ? `Thông báo (${unreadCount})` : "Thông báo"}
+          </Text>
+        </View>
+        <View style={styles.headerRight}>
           {unreadCount > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={onMarkAll}
+              activeOpacity={0.7}
+              accessibilityLabel="Đánh dấu tất cả đã đọc"
+            >
+              <Ionicons
+                name="checkmark-done-outline"
+                size={20}
+                color={colors.icon}
+              />
+            </TouchableOpacity>
+          )}
+          {notifications.length > 0 && (
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={onClearAll}
+              activeOpacity={0.7}
+              accessibilityLabel="Xoá tất cả thông báo"
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.icon} />
+            </TouchableOpacity>
           )}
         </View>
-        {unreadCount > 0 && (
-          <TouchableOpacity
-            style={styles.markAllButton}
-            onPress={markAllAsRead}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.markAllText}>Đánh dấu đã đọc</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Notifications List */}
@@ -357,7 +353,8 @@ export default function NotificationsScreen() {
                     styles.notificationItem,
                     !notif.read && styles.notificationItemUnread,
                   ]}
-                  onPress={() => markAsRead(notif.id)}
+                  onPress={() => onMarkOne(notif.id)}
+                  onLongPress={() => onDeleteOne(notif.id)}
                   activeOpacity={0.7}
                 >
                   <View

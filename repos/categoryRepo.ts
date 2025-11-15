@@ -1,5 +1,6 @@
 // categoryRepo.ts
 import { openDb } from "@/db";
+import { getCurrentUserId } from "@/utils/auth";
 
 /** ===== Types ===== */
 export type Category = {
@@ -74,6 +75,7 @@ export async function createCategory(input: {
   parent_id?: string | null;
 }) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   const id = genId();
   const icon = normalizeIconForDb(input.icon ?? null);
   const color = input.color ?? null;
@@ -84,7 +86,7 @@ export async function createCategory(input: {
         id, user_id, name, type, icon, color, parent_id, created_at, updated_at
       )
       VALUES(?,?,?,?,?,?,?, strftime('%s','now'), strftime('%s','now'))`,
-    [id, "u_demo", input.name.trim(), input.type, icon, color, parent_id]
+    [id, userId, input.name.trim(), input.type, icon, color, parent_id]
   );
   return id;
 }

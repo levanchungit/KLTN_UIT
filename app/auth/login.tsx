@@ -94,11 +94,13 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <MaterialCommunityIcons
@@ -196,17 +198,6 @@ export default function LoginScreen() {
               </Text>
             )}
           </TouchableOpacity>
-
-          {isLogin && (
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={() => router.replace("/(tabs)")}
-            >
-              <Text style={styles.skipButtonText}>
-                Bỏ qua (Dùng mà không cần đăng nhập)
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -222,6 +213,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     padding: 20,
+    paddingBottom: 40,
   },
   header: {
     alignItems: "center",

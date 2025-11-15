@@ -1,4 +1,5 @@
 import { db, openDb } from "@/db";
+import { getCurrentUserId } from "@/utils/auth";
 
 export type MLTrainingSample = {
   id: string;
@@ -24,6 +25,7 @@ export async function logPrediction(sample: {
   confidence: number | null;
 }) {
   await openDb();
+  const userId = await getCurrentUserId();
   const id = makeId();
   // Use string interpolation to avoid binding type inference issues in this TS setup
   const amountVal = sample.amount != null ? sample.amount : "NULL";
@@ -32,7 +34,7 @@ export async function logPrediction(sample: {
     : "NULL";
   const confVal = sample.confidence != null ? sample.confidence : "NULL";
   const sql = `INSERT INTO ml_training_samples(id,user_id,text,amount,io,predicted_category_id,confidence)
-               VALUES('${id}','u_demo','${sample.text.replace(
+               VALUES('${id}','${userId}','${sample.text.replace(
     /'/g,
     "''"
   )}','${amountVal}','${sample.io}',${predVal},${confVal})`;
@@ -53,17 +55,20 @@ export async function listRecentSamples(
   limit = 200
 ): Promise<MLTrainingSample[]> {
   await openDb();
+  const userId = await getCurrentUserId();
   return db.getAllAsync<MLTrainingSample>(
     `SELECT * FROM ml_training_samples
-     WHERE user_id='u_demo'
+     WHERE user_id=?
      ORDER BY created_at DESC
-     LIMIT ${limit}`
+     LIMIT ${limit}`,
+    [userId]
   );
 }
 
 // Aggregate counts per (predicted_category_id, chosen_category_id) to evaluate accuracy
 export async function confusionPairs() {
   await openDb();
+  const userId = await getCurrentUserId();
   return db.getAllAsync<{
     predicted_category_id: string | null;
     chosen_category_id: string | null;
@@ -71,7 +76,8 @@ export async function confusionPairs() {
   }>(
     `SELECT predicted_category_id, chosen_category_id, COUNT(*) as cnt
      FROM ml_training_samples
-     WHERE user_id='u_demo'
-     GROUP BY predicted_category_id, chosen_category_id`
+     WHERE user_id=?
+     GROUP BY predicted_category_id, chosen_category_id`,
+    [userId]
   );
 }

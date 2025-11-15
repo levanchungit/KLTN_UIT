@@ -162,7 +162,46 @@ export async function runMigrations(db: SQLiteDatabase) {
   // 1) Tạo bảng/cấu trúc cơ bản
   await db.execAsync(initSQL);
 
-  // 2) Nâng cấp bảng cũ (nếu đã tồn tại từ trước) — thêm cột còn thiếu
+  // 2) Đảm bảo local user tồn tại (cho SQLite offline usage)
+  const localUser = await db.getFirstAsync<{ id: string }>(
+    `SELECT id FROM users WHERE id=?`,
+    ["local_user"]
+  );
+  if (!localUser) {
+    await db.runAsync(
+      `INSERT INTO users(id, username, password_hash, created_at, updated_at)
+       VALUES(?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
+      ["local_user", "Local User", ""]
+    );
+  }
+
+  // Create default account for local_user if not exists
+  const defaultAccount = await db.getFirstAsync<{ id: string }>(
+    `SELECT id FROM accounts WHERE user_id=? AND name=?`,
+    ["local_user", "Ví mặc định"]
+  );
+  if (!defaultAccount) {
+    await db.runAsync(
+      `INSERT INTO accounts(id, user_id, name, icon, color, include_in_total, balance_cached, created_at, updated_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
+      ["acc_default", "local_user", "Ví mặc định", "wallet", "#007AFF", 1, 0]
+    );
+  }
+
+  // Keep u_demo for backward compatibility
+  const demoUser = await db.getFirstAsync<{ id: string }>(
+    `SELECT id FROM users WHERE id=?`,
+    ["u_demo"]
+  );
+  if (!demoUser) {
+    await db.runAsync(
+      `INSERT INTO users(id, username, password_hash, created_at, updated_at)
+       VALUES(?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
+      ["u_demo", "demo", "demo_hash"]
+    );
+  }
+
+  // 3) Nâng cấp bảng cũ (nếu đã tồn tại từ trước) — thêm cột còn thiếu
   // categories
   await ensureColumn(
     db,

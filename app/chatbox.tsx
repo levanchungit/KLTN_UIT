@@ -15,10 +15,11 @@ import {
   updateTransaction,
 } from "@/repos/transactionRepo";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Voice from "@react-native-voice/voice";
+// import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -791,61 +792,61 @@ export default function Chatbox() {
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
   // Initialize Voice module
-  useEffect(() => {
-    const initVoice = async () => {
-      try {
-        // Check if Voice module is loaded
-        if (!Voice || typeof Voice.isAvailable !== "function") {
-          console.log(
-            "ℹ️ Voice module không được hỗ trợ (chỉ hoạt động trên thiết bị thật)"
-          );
-          setIsVoiceAvailable(false);
-          return;
-        }
+  // useEffect(() => {
+  //   const initVoice = async () => {
+  //     try {
+  //       // Check if Voice module is loaded
+  //       if (!Voice || typeof Voice.isAvailable !== "function") {
+  //         console.log(
+  //           "ℹ️ Voice module không được hỗ trợ (chỉ hoạt động trên thiết bị thật)"
+  //         );
+  //         setIsVoiceAvailable(false);
+  //         return;
+  //       }
 
-        const available = await Voice.isAvailable();
-        const isAvailable = available === 1;
-        setIsVoiceAvailable(isAvailable);
-        if (!isAvailable) {
-          console.log(
-            "ℹ️ Voice recognition chỉ khả dụng trên thiết bị thật (không hoạt động trên simulator)"
-          );
-        }
-      } catch (error) {
-        setIsVoiceAvailable(false);
-        console.log(
-          "ℹ️ Voice module không khả dụng - app sẽ hoạt động bình thường với Text và Image input"
-        );
-      }
-    };
+  //       const available = await Voice.isAvailable();
+  //       const isAvailable = available === 1;
+  //       setIsVoiceAvailable(isAvailable);
+  //       if (!isAvailable) {
+  //         console.log(
+  //           "ℹ️ Voice recognition chỉ khả dụng trên thiết bị thật (không hoạt động trên simulator)"
+  //         );
+  //       }
+  //     } catch (error) {
+  //       setIsVoiceAvailable(false);
+  //       console.log(
+  //         "ℹ️ Voice module không khả dụng - app sẽ hoạt động bình thường với Text và Image input"
+  //       );
+  //     }
+  //   };
 
-    initVoice();
+  //   initVoice();
 
-    // Cleanup Voice when component unmounts
-    return () => {
-      if (!Voice || typeof Voice.destroy !== "function") {
-        return; // Voice module not loaded, skip cleanup
-      }
+  //   // Cleanup Voice when component unmounts
+  //   return () => {
+  //     if (!Voice || typeof Voice.destroy !== "function") {
+  //       return; // Voice module not loaded, skip cleanup
+  //     }
 
-      try {
-        Voice.destroy()
-          .then(() => {
-            try {
-              if (Voice && typeof Voice.removeAllListeners === "function") {
-                Voice.removeAllListeners();
-              }
-            } catch (e) {
-              // Silent fail - listeners may not exist
-            }
-          })
-          .catch(() => {
-            // Silent fail - Voice may not be initialized
-          });
-      } catch (error) {
-        // Silent fail - Voice module may not be available
-      }
-    };
-  }, []);
+  //     try {
+  //       Voice.destroy()
+  //         .then(() => {
+  //           try {
+  //             if (Voice && typeof Voice.removeAllListeners === "function") {
+  //               Voice.removeAllListeners();
+  //             }
+  //           } catch (e) {
+  //             // Silent fail - listeners may not exist
+  //           }
+  //         })
+  //         .catch(() => {
+  //           // Silent fail - Voice may not be initialized
+  //         });
+  //     } catch (error) {
+  //       // Silent fail - Voice module may not be available
+  //     }
+  //   };
+  // }, []);
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
@@ -881,6 +882,7 @@ export default function Chatbox() {
   useEffect(() => {
     (async () => {
       try {
+        const userId = await getCurrentUserId();
         const nowSec = Math.floor(Date.now() / 1000);
         const fromSec = nowSec - 90 * 86400;
         const rows = await db.getAllAsync<{
@@ -890,8 +892,9 @@ export default function Chatbox() {
         }>(
           `SELECT category_id, type, COUNT(*) as cnt
            FROM transactions
-           WHERE user_id='u_demo' AND occurred_at>=${fromSec} AND occurred_at<=${nowSec}
-           GROUP BY category_id, type`
+           WHERE user_id=? AND occurred_at>=? AND occurred_at<=?
+           GROUP BY category_id, type`,
+          [userId, fromSec, nowSec]
         );
         const outP: Record<string, number> = {};
         const inP: Record<string, number> = {};
@@ -1255,211 +1258,211 @@ export default function Chatbox() {
   };
 
   // ----- Voice Recognition Handler -----
-  const handleVoicePress = async () => {
-    try {
-      // Check if Voice is available (use state to avoid repeated API calls)
-      if (!isVoiceAvailable) {
-        Alert.alert(
-          "Không khả dụng",
-          "Nhận diện giọng nói chỉ hoạt động trên thiết bị thật.\n\nVui lòng test trên điện thoại/tablet."
-        );
-        return;
-      }
+  // const handleVoicePress = async () => {
+  //   try {
+  //     // Check if Voice is available (use state to avoid repeated API calls)
+  //     if (!isVoiceAvailable) {
+  //       Alert.alert(
+  //         "Không khả dụng",
+  //         "Nhận diện giọng nói chỉ hoạt động trên thiết bị thật.\n\nVui lòng test trên điện thoại/tablet."
+  //       );
+  //       return;
+  //     }
 
-      if (isRecording) {
-        // Stop voice recognition
-        setIsRecording(false);
-        if (Voice && typeof Voice.stop === "function") {
-          await Voice.stop();
-        }
-        setIsProcessingVoice(true);
-        return;
-      }
+  //     if (isRecording) {
+  //       // Stop voice recognition
+  //       setIsRecording(false);
+  //       if (Voice && typeof Voice.stop === "function") {
+  //         await Voice.stop();
+  //       }
+  //       setIsProcessingVoice(true);
+  //       return;
+  //     }
 
-      // Start voice recognition
-      setIsRecording(true);
-      setMessages((m) => [
-        ...m,
-        { role: "user", text: "", imageUri: "voice-recording" },
-        { role: "bot", text: "🎤 Đang lắng nghe... Nói đi!" },
-      ]);
+  //     // Start voice recognition
+  //     setIsRecording(true);
+  //     setMessages((m) => [
+  //       ...m,
+  //       { role: "user", text: "", imageUri: "voice-recording" },
+  //       { role: "bot", text: "🎤 Đang lắng nghe... Nói đi!" },
+  //     ]);
 
-      // Setup Voice recognition callbacks
-      if (Voice && typeof Voice.onSpeechResults !== "undefined") {
-        Voice.onSpeechResults = async (e: any) => {
-          try {
-            const transcript = e.value?.[0] || "";
+  //     // Setup Voice recognition callbacks
+  //     if (Voice && typeof Voice.onSpeechResults !== "undefined") {
+  //       Voice.onSpeechResults = async (e: any) => {
+  //         try {
+  //           const transcript = e.value?.[0] || "";
 
-            if (!transcript || transcript.trim() === "") {
-              setMessages((m) => [
-                ...m.slice(0, -1),
-                {
-                  role: "bot",
-                  text: "❌ Không nghe rõ. Vui lòng thử lại.",
-                },
-              ]);
-              setIsProcessingVoice(false);
-              setIsRecording(false);
-              return;
-            }
+  //           if (!transcript || transcript.trim() === "") {
+  //             setMessages((m) => [
+  //               ...m.slice(0, -1),
+  //               {
+  //                 role: "bot",
+  //                 text: "❌ Không nghe rõ. Vui lòng thử lại.",
+  //               },
+  //             ]);
+  //             setIsProcessingVoice(false);
+  //             setIsRecording(false);
+  //             return;
+  //           }
 
-            // Remove "listening" message and add user message
-            setMessages((m) => [
-              ...m.slice(0, -2),
-              { role: "user", text: transcript },
-            ]); // Parse amount and clean note from transcript
-            const parsed = parseTransactionText(transcript);
-            const cleanNote = parsed.note || transcript;
-            const parsedAmount = parsed.amount;
+  //           // Remove "listening" message and add user message
+  //           setMessages((m) => [
+  //             ...m.slice(0, -2),
+  //             { role: "user", text: transcript },
+  //           ]); // Parse amount and clean note from transcript
+  //           const parsed = parseTransactionText(transcript);
+  //           const cleanNote = parsed.note || transcript;
+  //           const parsedAmount = parsed.amount;
 
-            // Process using AI classification
-            const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
-            const best = ranked[0];
-            const amount = parsedAmount || parseAmountVN(transcript);
+  //           // Process using AI classification
+  //           const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+  //           const best = ranked[0];
+  //           const amount = parsedAmount || parseAmountVN(transcript);
 
-            const ai = await getEmotionalReplyDirect({
-              io,
-              categoryName:
-                best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
-              amount,
-              note: cleanNote,
-            });
+  //           const ai = await getEmotionalReplyDirect({
+  //             io,
+  //             categoryName:
+  //               best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
+  //             amount,
+  //             note: cleanNote,
+  //           });
 
-            const finalCategoryId = ai.categoryId || best?.categoryId;
-            const confidence = best?.score ?? 0;
+  //           const finalCategoryId = ai.categoryId || best?.categoryId;
+  //           const confidence = best?.score ?? 0;
 
-            if (!ai.amount || ai.amount <= 0) {
-              setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
-              scrollToEnd();
-              setIsProcessingVoice(false);
-              setIsRecording(false);
-              return;
-            }
+  //           if (!ai.amount || ai.amount <= 0) {
+  //             setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
+  //             scrollToEnd();
+  //             setIsProcessingVoice(false);
+  //             setIsRecording(false);
+  //             return;
+  //           }
 
-            // Log prediction
-            try {
-              pendingLogId.current = await logPrediction({
-                text: cleanNote,
-                amount: ai.amount ?? null,
-                io,
-                predictedCategoryId: best?.categoryId || null,
-                confidence,
-              });
-            } catch {}
+  //           // Log prediction
+  //           try {
+  //             pendingLogId.current = await logPrediction({
+  //               text: cleanNote,
+  //               amount: ai.amount ?? null,
+  //               io,
+  //               predictedCategoryId: best?.categoryId || null,
+  //               confidence,
+  //             });
+  //           } catch {}
 
-            if (!finalCategoryId || confidence < 0.3) {
-              setPendingPick({
-                text: cleanNote,
-                amount: ai.amount,
-                io: ai.io,
-                choices: ranked.slice(0, 4),
-              });
-              setIsProcessingVoice(false);
-              setIsRecording(false);
-              return;
-            }
+  //           if (!finalCategoryId || confidence < 0.3) {
+  //             setPendingPick({
+  //               text: cleanNote,
+  //               amount: ai.amount,
+  //               io: ai.io,
+  //               choices: ranked.slice(0, 4),
+  //             });
+  //             setIsProcessingVoice(false);
+  //             setIsRecording(false);
+  //             return;
+  //           }
 
-            // Create transaction
-            const txn = await createTransaction({
-              amount: ai.amount,
-              io: ai.io,
-              categoryId: finalCategoryId,
-              note: ai.note,
-            });
+  //           // Create transaction
+  //           const txn = await createTransaction({
+  //             amount: ai.amount,
+  //             io: ai.io,
+  //             categoryId: finalCategoryId,
+  //             note: ai.note,
+  //           });
 
-            const when = new Date().toLocaleDateString();
-            const selectedCategory = items.find(
-              (c) => c.id === finalCategoryId
-            );
-            const finalCategoryName =
-              selectedCategory?.name || best?.name || "Chưa rõ";
+  //           const when = new Date().toLocaleDateString();
+  //           const selectedCategory = items.find(
+  //             (c) => c.id === finalCategoryId
+  //           );
+  //           const finalCategoryName =
+  //             selectedCategory?.name || best?.name || "Chưa rõ";
 
-            setMessages((m) => [
-              ...m,
-              {
-                role: "card",
-                transactionId: txn.id,
-                accountId: txn.accountId,
-                amount: txn.amount ?? null,
-                io: ai.io,
-                categoryId: finalCategoryId,
-                categoryName: finalCategoryName,
-                categoryIcon: selectedCategory?.icon || "wallet",
-                categoryColor: selectedCategory?.color || "#6366F1",
-                note: ai.note,
-                when,
-              },
-            ]);
+  //           setMessages((m) => [
+  //             ...m,
+  //             {
+  //               role: "card",
+  //               transactionId: txn.id,
+  //               accountId: txn.accountId,
+  //               amount: txn.amount ?? null,
+  //               io: ai.io,
+  //               categoryId: finalCategoryId,
+  //               categoryName: finalCategoryName,
+  //               categoryIcon: selectedCategory?.icon || "wallet",
+  //               categoryColor: selectedCategory?.color || "#6366F1",
+  //               note: ai.note,
+  //               when,
+  //             },
+  //           ]);
 
-            try {
-              if (pendingLogId.current) {
-                await logCorrection({
-                  id: pendingLogId.current,
-                  chosenCategoryId: finalCategoryId,
-                });
-                pendingLogId.current = null;
-              }
-            } catch {}
+  //           try {
+  //             if (pendingLogId.current) {
+  //               await logCorrection({
+  //                 id: pendingLogId.current,
+  //                 chosenCategoryId: finalCategoryId,
+  //               });
+  //               pendingLogId.current = null;
+  //             }
+  //           } catch {}
 
-            setIsProcessingVoice(false);
-            setIsRecording(false);
-            scrollToEnd();
-          } catch (error) {
-            console.error("Voice processing error:", error);
-            setMessages((m) => [
-              ...m.slice(0, -1),
-              {
-                role: "bot",
-                text: "❌ Lỗi xử lý giọng nói. Vui lòng thử lại.",
-              },
-            ]);
-            setIsProcessingVoice(false);
-            setIsRecording(false);
-          }
-        };
-      }
+  //           setIsProcessingVoice(false);
+  //           setIsRecording(false);
+  //           scrollToEnd();
+  //         } catch (error) {
+  //           console.error("Voice processing error:", error);
+  //           setMessages((m) => [
+  //             ...m.slice(0, -1),
+  //             {
+  //               role: "bot",
+  //               text: "❌ Lỗi xử lý giọng nói. Vui lòng thử lại.",
+  //             },
+  //           ]);
+  //           setIsProcessingVoice(false);
+  //           setIsRecording(false);
+  //         }
+  //       };
+  //     }
 
-      // Setup error handler
-      if (Voice && typeof Voice.onSpeechError !== "undefined") {
-        Voice.onSpeechError = (e: any) => {
-          console.error("Speech recognition error:", e);
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            {
-              role: "bot",
-              text: "❌ Lỗi nhận diện giọng nói. Vui lòng thử lại.",
-            },
-          ]);
-          setIsRecording(false);
-          setIsProcessingVoice(false);
-        };
-      }
+  //     // Setup error handler
+  //     if (Voice && typeof Voice.onSpeechError !== "undefined") {
+  //       Voice.onSpeechError = (e: any) => {
+  //         console.error("Speech recognition error:", e);
+  //         setMessages((m) => [
+  //           ...m.slice(0, -1),
+  //           {
+  //             role: "bot",
+  //             text: "❌ Lỗi nhận diện giọng nói. Vui lòng thử lại.",
+  //           },
+  //         ]);
+  //         setIsRecording(false);
+  //         setIsProcessingVoice(false);
+  //       };
+  //     }
 
-      // Start listening
-      if (!Voice || typeof Voice.start !== "function") {
-        throw new Error("Voice module không khả dụng");
-      }
-      await Voice.start("vi-VN"); // Vietnamese language
-    } catch (error) {
-      console.error("Voice error:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Không thể nhận diện giọng nói";
-      Alert.alert("Lỗi Voice", errorMessage);
-      setIsRecording(false);
-      setIsProcessingVoice(false);
+  //     // Start listening
+  //     if (!Voice || typeof Voice.start !== "function") {
+  //       throw new Error("Voice module không khả dụng");
+  //     }
+  //     await Voice.start("vi-VN"); // Vietnamese language
+  //   } catch (error) {
+  //     console.error("Voice error:", error);
+  //     const errorMessage =
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Không thể nhận diện giọng nói";
+  //     Alert.alert("Lỗi Voice", errorMessage);
+  //     setIsRecording(false);
+  //     setIsProcessingVoice(false);
 
-      // Remove listening message if exists
-      setMessages((m) => {
-        const lastMsg = m[m.length - 1];
-        if (lastMsg?.role === "bot" && lastMsg.text.includes("🎤")) {
-          return m.slice(0, -1);
-        }
-        return m;
-      });
-    }
-  };
+  //     // Remove listening message if exists
+  //     setMessages((m) => {
+  //       const lastMsg = m[m.length - 1];
+  //       if (lastMsg?.role === "bot" && lastMsg.text.includes("🎤")) {
+  //         return m.slice(0, -1);
+  //       }
+  //       return m;
+  //     });
+  //   }
+  // };
 
   // ----- Image Receipt Handler -----
   const handleImagePress = async () => {
@@ -2329,7 +2332,7 @@ export default function Chatbox() {
                 borderColor: colors.divider,
               },
             ]}
-            onPress={handleVoicePress}
+            // onPress={handleVoicePress}
             disabled={isProcessingVoice}
           >
             <Ionicons

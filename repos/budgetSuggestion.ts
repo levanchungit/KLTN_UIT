@@ -181,37 +181,47 @@ export async function generateBudgetSuggestion(params: {
 }
 
 async function getOrCreateCategoryId(name: string): Promise<string> {
-  const cats = await listCategories({ type: "expense" });
-  const existing = cats.find(
-    (c) => c.name.toLowerCase() === name.toLowerCase()
-  );
-  if (existing) return existing.id;
+  try {
+    const cats = await listCategories({ type: "expense" });
+    const existing = cats.find(
+      (c) => c.name.toLowerCase() === name.toLowerCase()
+    );
+    if (existing) return existing.id;
 
-  // Create category if it doesn't exist
-  const iconMap: Record<string, string> = {
-    "thức ăn & đồ uống": "mc:food",
-    nhà: "mc:home-outline",
-    "mua sắm": "mc:cart-outline",
-    "tiết kiệm": "mc:piggy-bank",
-  };
+    // Create category if it doesn't exist
+    const iconMap: Record<string, string> = {
+      "thức ăn & đồ uống": "mc:food",
+      nhà: "mc:home-outline",
+      "mua sắm": "mc:cart-outline",
+      "tiết kiệm": "mc:piggy-bank",
+    };
 
-  const colorMap: Record<string, string> = {
-    "thức ăn & đồ uống": "#F6C33E",
-    nhà: "#3A78D0",
-    "mua sắm": "#7AC15B",
-    "tiết kiệm": "#16A34A",
-  };
+    const colorMap: Record<string, string> = {
+      "thức ăn & đồ uống": "#F6C33E",
+      nhà: "#3A78D0",
+      "mua sắm": "#7AC15B",
+      "tiết kiệm": "#16A34A",
+    };
 
-  const lowerName = name.toLowerCase();
-  const icon = iconMap[lowerName] || "mc:help-circle-outline";
-  const color = colorMap[lowerName] || "#7EC5E8";
+    const lowerName = name.toLowerCase();
+    const icon = iconMap[lowerName] || "mc:help-circle-outline";
+    const color = colorMap[lowerName] || "#7EC5E8";
 
-  const newId = await createCategory({
-    name,
-    type: "expense",
-    icon,
-    color,
-  });
+    const newId = await createCategory({
+      name,
+      type: "expense",
+      icon,
+      color,
+    });
 
-  return newId;
+    return newId;
+  } catch (error) {
+    console.error("Error in getOrCreateCategoryId:", error);
+    // Return a fallback category ID if creation fails
+    const cats = await listCategories({ type: "expense" });
+    if (cats.length > 0) {
+      return cats[0].id; // Return first available category as fallback
+    }
+    throw new Error("Cannot create or find any category");
+  }
 }

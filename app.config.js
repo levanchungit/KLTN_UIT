@@ -35,6 +35,7 @@ export default {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: "com.levanchung.it.KLTN_UIT",
+      googleServicesFile: "./google-services.json",
     },
     web: {
       bundler: "metro",
@@ -43,12 +44,19 @@ export default {
     },
     plugins: [
       "expo-router",
-      "./plugins/withAppComponentFactoryFix",
       [
         "expo-image-picker",
         {
           photosPermission:
             "Ứng dụng cần quyền truy cập thư viện ảnh để chọn hóa đơn",
+        },
+      ],
+      [
+        "expo-notifications",
+        {
+          icon: "./assets/images/notification-icon.png",
+          color: "#667eea",
+          sounds: [],
         },
       ],
     ],

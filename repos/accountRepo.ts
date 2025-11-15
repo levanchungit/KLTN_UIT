@@ -1,4 +1,6 @@
+// accountRepo.ts
 import { openDb } from "@/db";
+import { getCurrentUserId } from "@/utils/auth";
 
 export type Account = {
   id: string;
@@ -38,13 +40,14 @@ export async function createAccount(input: {
   balance: number;
 }) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   const id = genId();
   await db.runAsync(
     `INSERT INTO accounts(id,user_id,name,icon,color,include_in_total,balance_cached,created_at,updated_at)
      VALUES(?,?,?,?,?,?,?, strftime('%s','now'), strftime('%s','now'))`,
     [
       id,
-      "u_demo",
+      userId,
       input.name.trim(),
       input.icon ?? null,
       input.color ?? null,

@@ -40,7 +40,7 @@ export default function ProfileScreen() {
           <Text style={styles.notLoggedInText}>Chưa đăng nhập</Text>
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={() => router.push("/auth/login")}
+            onPress={() => router.push("/auth/login?upgrade=1")}
           >
             <Text style={styles.loginButtonText}>Đăng nhập</Text>
           </TouchableOpacity>
@@ -83,12 +83,14 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.section}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <MaterialCommunityIcons name="logout" size={24} color="#fff" />
-          <Text style={styles.logoutButtonText}>Đăng xuất</Text>
-        </TouchableOpacity>
-      </View>
+      {user.id !== "local_user" && (
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <MaterialCommunityIcons name="logout" size={24} color="#fff" />
+            <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }

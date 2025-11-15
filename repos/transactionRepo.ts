@@ -1,5 +1,6 @@
 import { db, openDb } from "@/db";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import { getCurrentUserId } from "@/utils/auth";
 
 export type TxDetailRow = {
   id: string;
@@ -21,11 +22,14 @@ export async function totalInRange(
   type: "expense" | "income"
 ) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   const row = await db.getFirstAsync<{ sum: number }>(
     `SELECT COALESCE(SUM(amount),0) AS sum
      FROM transactions
-     WHERE user_id='u_demo' AND type=? AND occurred_at>=? AND occurred_at<?`,
-    [type, startSec, endSec]
+     WHERE user_id=? AND type=? AND occurred_at>=? AND occurred_at<?`,
+    [userId, type, startSec, endSec]
   );
   return row?.sum ?? 0;
 }
@@ -36,6 +40,9 @@ export async function categoryBreakdown(
   type: "expense" | "income"
 ) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   return db.getAllAsync<{
     category_id: string | null;
     name: string | null;
@@ -48,14 +55,14 @@ export async function categoryBreakdown(
            SUM(t.amount) AS total
     FROM transactions t
     LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.user_id='u_demo'
+    WHERE t.user_id=?
       AND t.type=?
       AND t.occurred_at>=? AND t.occurred_at<?
     GROUP BY c.id
     HAVING total IS NOT NULL
     ORDER BY total DESC
   `,
-    [type, startSec, endSec]
+    [userId, type, startSec, endSec]
   );
 }
 
@@ -69,7 +76,8 @@ export async function seedSampleMonthRandom({
   count?: number;
 }) {
   const db = await openDb();
-  const userId = "u_demo";
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
   const accountId = "acc_bank";
 
   // danh mục mẫu
@@ -134,6 +142,9 @@ export async function addExpense({
   updatedAt: Date;
 }) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   const id = `tx_${Math.random().toString(36).slice(2)}`;
   const occurred = Math.floor(when.getTime() / 1000);
   const updated = Math.floor(updatedAt.getTime() / 1000);
@@ -143,7 +154,7 @@ export async function addExpense({
      VALUES(?,?,?,?,?,?,?,?,?)`,
     [
       id,
-      "u_demo",
+      userId,
       accountId,
       categoryId,
       "expense",
@@ -162,6 +173,11 @@ export async function addExpense({
         console.error("Failed to update AI model:", err);
       });
   }
+
+  // Check budget alert for this category
+  import("@/services/smartNotificationService")
+    .then(({ checkBudgetAlert }) => checkBudgetAlert(categoryId, amount))
+    .catch((err) => console.error("Budget alert check failed:", err));
 
   return id;
 }
@@ -182,6 +198,9 @@ export async function addIncome({
   updatedAt: Date;
 }) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   const id = `tx_${Math.random().toString(36).slice(2)}`;
   const occurred = Math.floor(when.getTime() / 1000);
   const updated = Math.floor(updatedAt.getTime() / 1000);
@@ -192,7 +211,7 @@ export async function addIncome({
      VALUES(?,?,?,?,?,?,?,?,?)`,
     [
       id,
-      "u_demo",
+      userId,
       accountId,
       categoryId,
       "income",
@@ -217,6 +236,8 @@ export async function addIncome({
 
 export async function listByDay(day: Date) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
 
   const start = new Date(day);
   if (!isFinite(start.getTime())) return []; // ⬅️ guard
@@ -232,10 +253,10 @@ export async function listByDay(day: Date) {
       FROM transactions t
       JOIN accounts a ON a.id=t.account_id
       LEFT JOIN categories c ON c.id=t.category_id
-      WHERE t.user_id='u_demo' AND t.occurred_at>=? AND t.occurred_at<?
+      WHERE t.user_id=? AND t.occurred_at>=? AND t.occurred_at<?
       ORDER BY t.occurred_at DESC
       `,
-      [s, e] // ⬅️ đảm bảo luôn là số
+      [userId, s, e] // ⬅️ đảm bảo luôn là số
     );
   } catch (err) {
     console.warn("listByDay error", err, { s, e }); // ⬅️ log để debug
@@ -250,13 +271,13 @@ export async function listTxByCategory(params: {
   fromSec?: number;
   toSec?: number;
 }): Promise<TxDetailRow[]> {
-  const {
-    userId = "u_demo",
-    categoryId,
-    categoryName,
-    fromSec,
-    toSec,
-  } = params;
+  let { userId, categoryId, categoryName, fromSec, toSec } = params;
+
+  // If userId not provided, get current user
+  if (!userId) {
+    userId = (await getCurrentUserId()) || undefined;
+    // Guest mode check removed
+  }
 
   if (!categoryId && !categoryName) {
     throw new Error("listTxByCategory: cần categoryId hoặc categoryName");
@@ -308,8 +329,12 @@ export async function listTxByCategory(params: {
   );
 }
 
-export async function deleteTx(id: string, userId = "u_demo") {
+export async function deleteTx(id: string, userId?: string) {
   await openDb();
+  if (!userId) {
+    userId = (await getCurrentUserId()) || undefined;
+    // Guest mode check removed
+  }
   await db.runAsync(`DELETE FROM transactions WHERE id=? AND user_id=?`, [
     id,
     userId,
@@ -334,6 +359,9 @@ export async function updateTransaction({
   when: Date;
 }) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   const occurred = Math.floor(when.getTime() / 1000);
   const updated = Math.floor(Date.now() / 1000);
 
@@ -346,8 +374,18 @@ export async function updateTransaction({
            note=?,
            occurred_at=?,
            updated_at=?
-     WHERE id=? AND user_id='u_demo'`,
-    [accountId, categoryId, type, amount, note ?? null, occurred, updated, id]
+     WHERE id=? AND user_id=?`,
+    [
+      accountId,
+      categoryId,
+      type,
+      amount,
+      note ?? null,
+      occurred,
+      updated,
+      id,
+      userId,
+    ]
   );
 
   // Auto-train AI with corrected transaction (WAIT for completion)
@@ -365,6 +403,9 @@ export async function updateTransaction({
 
 export async function getTxById(id: string) {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   return db.getFirstAsync<{
     id: string;
     amount: number;
@@ -395,9 +436,9 @@ export async function getTxById(id: string) {
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.user_id='u_demo' AND t.id=?
+    WHERE t.user_id=? AND t.id=?
     `,
-    [id]
+    [userId, id]
   );
 }
 
@@ -406,6 +447,9 @@ export async function listBetween(
   toSec: number
 ): Promise<TxDetailRow[]> {
   await openDb();
+  const userId = await getCurrentUserId();
+  // Guest mode check removed
+
   return db.getAllAsync<TxDetailRow>(
     `
     SELECT t.id, t.amount, t.note, t.occurred_at, t.updated_at, t.type,
@@ -417,10 +461,10 @@ export async function listBetween(
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.user_id='u_demo'
+    WHERE t.user_id=?
       AND t.occurred_at>=? AND t.occurred_at<?
     ORDER BY t.occurred_at DESC
     `,
-    [fromSec, toSec]
+    [userId, fromSec, toSec]
   );
 }

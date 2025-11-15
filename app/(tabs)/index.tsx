@@ -3,6 +3,10 @@ import { useUser } from "@/context/userContext";
 import { listAccounts } from "@/repos/accountRepo";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {
+  getUnreadCount,
+  subscribeToNotifications,
+} from "@/services/notificationService";
+import {
   Ionicons,
   MaterialCommunityIcons,
   MaterialIcons,
@@ -479,6 +483,7 @@ export default function DashboardScreen() {
       iconName?: string;
     }[]
   >([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const fmt = (d: Date) => `${d.getDate()} thg ${d.getMonth() + 1}`;
   const { startSec, endSec, label } = useMemo(() => {
@@ -573,6 +578,19 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      (async () => {
+        try {
+          const c = await getUnreadCount();
+          setUnreadCount(c);
+        } catch {}
+      })();
+      const unsub = subscribeToNotifications(async () => {
+        try {
+          const c = await getUnreadCount();
+          setUnreadCount(c);
+        } catch {}
+      });
+      return () => unsub();
     }, [loadData])
   );
 
@@ -933,9 +951,13 @@ export default function DashboardScreen() {
                 size={22}
                 color={colors.icon}
               />
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>3</Text>
-              </View>
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </View>

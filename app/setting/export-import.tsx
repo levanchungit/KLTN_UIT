@@ -2,6 +2,7 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { db } from "@/db";
 import { useI18n } from "@/i18n/I18nProvider";
+import { getCurrentUserId } from "@/utils/auth";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { readAsStringAsync, writeAsStringAsync } from "expo-file-system";
@@ -33,6 +34,8 @@ export default function ExportImportSettings() {
     try {
       setLoading(true);
 
+      const userId = await getCurrentUserId();
+
       // Get all transactions with category and account info
       const transactions = await db.getAllAsync<any>(
         `SELECT 
@@ -46,8 +49,9 @@ export default function ExportImportSettings() {
         FROM transactions t
         LEFT JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.account_id = a.id
-        WHERE t.user_id = 'u_demo'
-        ORDER BY t.occurred_at DESC`
+        WHERE t.user_id = ?
+        ORDER BY t.occurred_at DESC`,
+        [userId]
       );
 
       if (transactions.length === 0) {
@@ -133,6 +137,14 @@ export default function ExportImportSettings() {
       }
 
       console.log("Selected file:", fileUri);
+
+      // Check if user is logged in
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        Alert.alert(t("error"), "Vui lòng đăng nhập để nhập dữ liệu");
+        setLoading(false);
+        return;
+      }
 
       // Read file content
       const csvContent = await readAsStringAsync(fileUri);
@@ -225,7 +237,8 @@ export default function ExportImportSettings() {
 
           // Get default account
           const account = await db.getFirstAsync<{ id: string }>(
-            `SELECT id FROM accounts WHERE user_id = 'u_demo' LIMIT 1`
+            `SELECT id FROM accounts WHERE user_id = ? LIMIT 1`,
+            [userId]
           );
           const accountId = account?.id || "acc_default";
 
@@ -240,7 +253,7 @@ export default function ExportImportSettings() {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               id,
-              "u_demo",
+              userId,
               accountId,
               categoryId,
               type,

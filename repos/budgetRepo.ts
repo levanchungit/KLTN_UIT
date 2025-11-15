@@ -1,5 +1,6 @@
 // budgetRepo.ts
 import { db, openDb } from "@/db";
+import { getCurrentUserId } from "@/utils/auth";
 import { categoryBreakdown } from "./transactionRepo";
 
 export type Budget = {
@@ -47,8 +48,9 @@ export async function createBudget(input: {
   }>;
 }): Promise<string> {
   await openDb();
+  const userId = await getCurrentUserId();
+
   const budgetId = genId("budget");
-  const userId = "u_demo";
   const startSec = Math.floor(input.startDate.getTime() / 1000);
   const endSec = input.endDate
     ? Math.floor(input.endDate.getTime() / 1000)
@@ -76,6 +78,19 @@ export async function createBudget(input: {
 
   // Insert allocations
   for (const alloc of input.allocations) {
+    // Verify category exists before inserting
+    const categoryCheck = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM categories WHERE id=?`,
+      [alloc.categoryId] as any
+    );
+
+    if (!categoryCheck) {
+      console.warn(
+        `Category ${alloc.categoryId} not found, skipping allocation`
+      );
+      continue;
+    }
+
     const allocId = genId("alloc");
     await db.runAsync(
       `INSERT INTO budget_allocations(
@@ -93,11 +108,24 @@ export async function createBudget(input: {
     );
   }
 
+  // Trigger immediate alerts in case existing spending already crosses thresholds
+  try {
+    const { triggerBudgetAlertsForBudget } = await import(
+      "@/services/smartNotificationService"
+    );
+    await triggerBudgetAlertsForBudget(budgetId);
+  } catch (err) {
+    console.error("Failed to trigger budget alerts after creation:", err);
+  }
+
   return budgetId;
 }
 
-export async function listBudgets(userId = "u_demo"): Promise<Budget[]> {
+export async function listBudgets(userId?: string): Promise<Budget[]> {
   await openDb();
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
   // @ts-ignore
   return db.getAllAsync<Budget>(
     `SELECT * FROM budgets WHERE user_id=? ORDER BY created_at DESC`,
@@ -107,9 +135,12 @@ export async function listBudgets(userId = "u_demo"): Promise<Budget[]> {
 
 export async function getBudgetById(
   id: string,
-  userId = "u_demo"
+  userId?: string
 ): Promise<Budget | undefined> {
   await openDb();
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
   // @ts-ignore
   return db.getFirstAsync<Budget>(
     `SELECT * FROM budgets WHERE id=? AND user_id=?`,
@@ -134,8 +165,11 @@ export async function listBudgetAllocations(
   return rows;
 }
 
-export async function deleteBudget(id: string, userId = "u_demo") {
+export async function deleteBudget(id: string, userId?: string) {
   await openDb();
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
   // @ts-ignore
   await db.runAsync(`DELETE FROM budgets WHERE id=? AND user_id=?`, [
     id,
@@ -158,7 +192,10 @@ export async function updateBudget(input: {
   }>;
 }): Promise<void> {
   await openDb();
-  const userId = "u_demo";
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    throw new Error("USER_NOT_LOGGED_IN");
+  }
 
   const startSec = Math.floor(input.startDate.getTime() / 1000);
   const endSec = input.endDate
@@ -192,6 +229,19 @@ export async function updateBudget(input: {
 
   // Insert new allocations
   for (const alloc of input.allocations) {
+    // Verify category exists before inserting
+    const categoryCheck = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM categories WHERE id=?`,
+      [alloc.categoryId] as any
+    );
+
+    if (!categoryCheck) {
+      console.warn(
+        `Category ${alloc.categoryId} not found, skipping allocation in update`
+      );
+      continue;
+    }
+
     const allocId = genId("alloc");
     // @ts-ignore
     await db.runAsync(
@@ -207,12 +257,22 @@ export async function updateBudget(input: {
       ] as any
     );
   }
+
+  // Trigger immediate budget alerts for updated allocations (no anti-spam)
+  try {
+    const { triggerBudgetAlertsForBudget } = await import(
+      "@/services/smartNotificationService"
+    );
+    await triggerBudgetAlertsForBudget(input.id);
+  } catch (err) {
+    console.error("Failed to trigger budget alerts after update:", err);
+  }
 }
 
 /** ===== Budget analysis ===== */
 export async function computeBudgetProgress(
   budgetId: string,
-  userId = "u_demo"
+  userId?: string
 ): Promise<{
   budget: Budget;
   allocations: Array<
@@ -225,6 +285,10 @@ export async function computeBudgetProgress(
   totalAllocated: number;
   totalSpent: number;
 }> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+
   const budget = await getBudgetById(budgetId, userId);
   if (!budget) throw new Error("Budget not found");
 
@@ -259,9 +323,13 @@ export async function computeBudgetProgress(
 
 /** ===== Active budget ===== */
 export async function getActiveBudget(
-  userId = "u_demo"
+  userId?: string
 ): Promise<Budget | undefined> {
   await openDb();
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+
   const now = Math.floor(Date.now() / 1000);
   // @ts-ignore
   return db.getFirstAsync<Budget>(

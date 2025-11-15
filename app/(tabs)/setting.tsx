@@ -4,14 +4,22 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Setting() {
-  const { colors, mode, preference, cyclePreference } = useTheme();
+  const { colors, mode, preference, setPreference } = useTheme();
   const { user } = useUser();
   const { t } = useI18n();
-  const styles = React.useMemo(() => makeStyles(colors), [colors]);
+  const styles = React.useMemo(() => makeStyles(colors, mode), [colors, mode]);
+  const [themeModalVisible, setThemeModalVisible] = React.useState(false);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -45,7 +53,7 @@ export default function Setting() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.sunBtn}
-          onPress={cyclePreference}
+          onPress={() => setThemeModalVisible(true)}
           activeOpacity={0.8}
         >
           <Ionicons
@@ -61,6 +69,23 @@ export default function Setting() {
 
       {/* Setting List */}
       <View style={styles.list}>
+        <TouchableOpacity
+          style={styles.item}
+          activeOpacity={0.9}
+          onPress={() => router.push("/setting/notifications")}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={28}
+            color={colors.icon}
+          />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.itemTitle}>Thông báo thông minh</Text>
+            <Text style={styles.itemDesc}>
+              Cấu hình nhắc nhở và cảnh báo tự động
+            </Text>
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.item}
           activeOpacity={0.9}
@@ -88,18 +113,98 @@ export default function Setting() {
           </View>
         </TouchableOpacity>
       </View>
+
+      {/* Theme Preference Modal */}
+      <Modal
+        visible={themeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setThemeModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setThemeModalVisible(false)}
+        >
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Giao diện</Text>
+            <Text style={styles.modalSubtitle}>
+              Ưu tiên theo hệ thống. Bạn có thể tuỳ chỉnh nếu muốn.
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.modalItem,
+                preference === "system" && styles.modalItemActive,
+              ]}
+              onPress={() => {
+                setPreference("system");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color={colors.icon}
+              />
+              <Text style={styles.modalItemText}>
+                Theo hệ thống (khuyến nghị)
+              </Text>
+              {preference === "system" && (
+                <Ionicons name="checkmark" size={20} color="#10B981" />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modalItem,
+                preference === "light" && styles.modalItemActive,
+              ]}
+              onPress={() => {
+                setPreference("light");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Ionicons name="sunny-outline" size={20} color={colors.icon} />
+              <Text style={styles.modalItemText}>Sáng</Text>
+              {preference === "light" && (
+                <Ionicons name="checkmark" size={20} color="#10B981" />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modalItem,
+                preference === "dark" && styles.modalItemActive,
+              ]}
+              onPress={() => {
+                setPreference("dark");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Ionicons name="moon-outline" size={20} color={colors.icon} />
+              <Text style={styles.modalItemText}>Tối</Text>
+              {preference === "dark" && (
+                <Ionicons name="checkmark" size={20} color="#10B981" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const makeStyles = (c: {
-  background: string;
-  card: string;
-  text: string;
-  subText: string;
-  divider: string;
-  icon: string;
-}) =>
+const makeStyles = (
+  c: {
+    background: string;
+    card: string;
+    text: string;
+    subText: string;
+    divider: string;
+    icon: string;
+  },
+  mode: "light" | "dark"
+) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
     header: {
@@ -174,5 +279,44 @@ const makeStyles = (c: {
     itemDesc: {
       fontSize: 13,
       color: c.subText,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.3)",
+      justifyContent: "flex-end",
+    },
+    modalSheet: {
+      backgroundColor: c.card,
+      padding: 16,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      gap: 8,
+    },
+    modalTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: c.text,
+      marginBottom: 4,
+    },
+    modalSubtitle: {
+      fontSize: 12,
+      color: c.subText,
+      marginBottom: 8,
+    },
+    modalItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.divider,
+      gap: 12,
+    },
+    modalItemActive: {
+      backgroundColor: mode === "light" ? "#F3F4F6" : "#111827",
+    },
+    modalItemText: {
+      flex: 1,
+      fontSize: 15,
+      color: c.text,
     },
   });
