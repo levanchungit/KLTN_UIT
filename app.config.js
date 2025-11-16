@@ -66,6 +66,11 @@ export default {
     extra: {
       EXPO_PUBLIC_OPENAI_API_KEY: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
       EXPO_PUBLIC_OCR_SPACE_API_KEY: process.env.EXPO_PUBLIC_OCR_SPACE_API_KEY,
+      EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID:
+        process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID,
+      IOS_GOOGLE_CLIENT_ID: process.env.IOS_GOOGLE_CLIENT_ID,
+      WEB_GOOGLE_CLIENT_ID: process.env.WEB_GOOGLE_CLIENT_ID,
+      EXPO_GOOGLE_CLIENT_ID: process.env.EXPO_GOOGLE_CLIENT_ID,
       eas: {
         projectId: "17ee9dcf-d3f4-41ef-95bb-5202d44fdc8d",
       },

@@ -29,7 +29,7 @@ export default function Setting() {
         <TouchableOpacity
           style={styles.profileButton}
           onPress={async () => {
-            if (user && user.id !== "local_user") {
+            if (user) {
               router.push("/setting/profile");
               return;
             }

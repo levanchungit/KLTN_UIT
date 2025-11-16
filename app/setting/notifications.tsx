@@ -1,6 +1,8 @@
 // app/setting/notifications.tsx - Smart notification settings
 import { useTheme } from "@/app/providers/ThemeProvider";
+import NotificationPrePermission from "@/components/NotificationPrePermission";
 import { useI18n } from "@/i18n/I18nProvider";
+import { requestNotificationPermissions } from "@/services/notificationService";
 import {
   getSettings,
   initSmartNotifications,
@@ -11,6 +13,7 @@ import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -50,7 +53,14 @@ export default function NotificationSettingsScreen() {
   };
 
   const handleToggle = async (key: keyof typeof settings) => {
-    const updated = { ...settings, [key]: !settings[key] };
+    const targetValue = !settings[key];
+    // If turning on daily reminders, show pre-permission modal first
+    if (key === "enableDaily" && targetValue) {
+      setShowPrePermission(true);
+      return;
+    }
+
+    const updated = { ...settings, [key]: targetValue };
     setSettings(updated);
     await updateSettings(updated);
 
@@ -58,6 +68,41 @@ export default function NotificationSettingsScreen() {
     if (key === "enableDaily") {
       await initSmartNotifications();
     }
+  };
+
+  const [showPrePermission, setShowPrePermission] = useState(false);
+
+  const handlePrePermissionConfirm = async () => {
+    setShowPrePermission(false);
+    try {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        Alert.alert(
+          t("permissionDeniedTitle") || "Quyền thông báo bị từ chối",
+          t("permissionDeniedDesc") ||
+            "Bạn đã từ chối nhận thông báo. Mở cài đặt để cho phép.",
+          [
+            {
+              text: t("openSettings") || "Mở cài đặt",
+              onPress: () => Linking.openSettings(),
+            },
+            { text: t("later") || "Để sau" },
+          ]
+        );
+        return;
+      }
+
+      const updated = { ...settings, enableDaily: true };
+      setSettings(updated);
+      await updateSettings(updated);
+      await initSmartNotifications();
+    } catch (e) {
+      console.warn("Failed to enable notifications:", e);
+    }
+  };
+
+  const handlePrePermissionCancel = () => {
+    setShowPrePermission(false);
   };
 
   const handleTimeConfirm = async () => {
@@ -446,6 +491,11 @@ export default function NotificationSettingsScreen() {
           </Modal>
         </Portal>
       )}
+      <NotificationPrePermission
+        visible={showPrePermission}
+        onConfirm={handlePrePermissionConfirm}
+        onCancel={handlePrePermissionCancel}
+      />
     </SafeAreaView>
   );
 }

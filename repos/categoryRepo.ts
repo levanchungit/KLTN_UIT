@@ -30,6 +30,7 @@ export async function listCategories(opts?: {
   parent_id?: string | null;
 }): Promise<Category[]> {
   const db = await openDb();
+  const userId = await getCurrentUserId();
 
   const where: string[] = [];
   const vals: any[] = [];
@@ -37,6 +38,11 @@ export async function listCategories(opts?: {
   if (opts?.type) {
     where.push("type=?");
     vals.push(opts.type);
+  }
+  // Only list categories that belong to current user
+  if (userId) {
+    where.push("user_id=?");
+    vals.push(userId);
   }
   if (opts && "parent_id" in opts) {
     if (opts.parent_id === null) {

@@ -3,25 +3,22 @@ import {
   useTheme as useAppTheme,
 } from "@/app/providers/ThemeProvider";
 import { UserProvider, useUser } from "@/context/userContext";
+import { db, openDb } from "@/db";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
 import { initSmartNotifications } from "@/services/smartNotificationService";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
 import { useFonts } from "expo-font";
-import {
-  Stack,
-  useGlobalSearchParams,
-  useRouter,
-  useSegments,
-} from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
-import { LogBox, Platform, StyleSheet, UIManager } from "react-native";
+import { useEffect } from "react";
+import { LogBox, Platform, UIManager } from "react-native";
 import { PaperProvider } from "react-native-paper";
 
 // Suppress warnings in New Architecture and Expo Go limitations
@@ -99,21 +96,57 @@ function RootLayoutNav() {
   const { user } = useUser();
   const segments = useSegments();
   const router = useRouter();
-  const params = useGlobalSearchParams();
-  const upgradeIntent = params.upgrade === "1";
-  const [authenticated, setAuthenticated] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // Ensure we only allow access to main tabs when a real session exists.
-    // If no session (user === null), redirect to auth/login.
+    // Control routing for onboarding/auth flow.
     const inAuthGroup = segments[0] === "auth";
-    if (!inAuthGroup && !user) {
-      router.replace("/auth/login");
+    const inOnboarding = segments[0] === "onboarding";
+
+    // Require a signed-in user for gating purposes.
+    const isAuthenticated = !!user;
+
+    // If not on onboarding/auth screens and not authenticated, start onboarding
+    if (!inAuthGroup && !inOnboarding && !isAuthenticated) {
+      router.replace("/onboarding/welcome");
       return;
     }
-    // If we're on auth and already logged in, go to main tabs
-    if (inAuthGroup && user) {
+
+    // Always verify a logged-in user's essential setup (accounts, categories).
+    // If missing, force the appropriate onboarding step before allowing access
+    // to the main app. Additionally preserve the 'requires_onboarding'
+    // shortcut for freshly-registered users so they continue to chatbox-intro
+    // after creating required resources.
+    if (isAuthenticated && !inOnboarding && !inAuthGroup) {
+      (async () => {
+        try {
+          await openDb();
+
+          const accRow = await db.getFirstAsync<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
+            [user.id]
+          );
+          const accCount = accRow?.cnt ?? 0;
+          if (accCount <= 0) {
+            router.replace("/onboarding/wallet-setup");
+            return;
+          }
+
+          // If the freshly-registered flag is set, continue onboarding to chatbox.
+          const requires = await AsyncStorage.getItem("requires_onboarding");
+          if (requires === user.id) {
+            router.replace("/onboarding/chatbox-intro");
+            return;
+          }
+
+          // Otherwise user is fully set up — allow normal navigation (tabs).
+        } catch (e) {
+          console.warn("Onboarding gating check failed:", e);
+        }
+      })();
+    }
+
+    // If we're on auth and already logged in with a real account, go to main tabs
+    if (inAuthGroup && isAuthenticated) {
       router.replace("/(tabs)");
     }
   }, [user, segments]);
@@ -121,6 +154,13 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={mode === "dark" ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
+        {/* Onboarding flow */}
+        <Stack.Screen name="onboarding/welcome" />
+        <Stack.Screen name="onboarding/slides" />
+        <Stack.Screen name="onboarding/wallet-setup" />
+        <Stack.Screen name="onboarding/categories-setup" />
+        <Stack.Screen name="onboarding/chatbox-intro" />
+        <Stack.Screen name="onboarding/reminder-setup" />
         <Stack.Screen name="auth/login" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chatbox" />
@@ -132,30 +172,3 @@ function RootLayoutNav() {
     </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  blockedContainer: {
-    flex: 1,
-    backgroundColor: "#0F172A",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-  },
-  blockedIcon: {
-    fontSize: 64,
-    marginBottom: 24,
-  },
-  blockedTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#F3F4F6",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  blockedText: {
-    fontSize: 16,
-    color: "#9CA3AF",
-    textAlign: "center",
-    lineHeight: 24,
-  },
-});

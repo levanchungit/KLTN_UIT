@@ -146,3 +146,45 @@ export async function loginWithPassword({
 
   return { id: user.id, username: user.username };
 }
+
+/**
+ * Create or return a user based on Google OAuth identity.
+ * We store Google users with username `google:<googleId>` to keep them unique.
+ */
+export async function loginOrCreateUserWithGoogle({
+  googleId,
+  email,
+  name,
+}: {
+  googleId: string;
+  email?: string | null;
+  name?: string | null;
+}): Promise<{ id: string; username: string }> {
+  await ensureAuthTables();
+
+  const uname = `google:${googleId}`;
+
+  // Check existing
+  const existing = await db.getFirstAsync<{ id: string; username: string }>(
+    `SELECT id, username FROM users WHERE username=?`,
+    [uname]
+  );
+  if (existing) return { id: existing.id, username: existing.username };
+
+  // Create new user record. We don't store a real password for OAuth users;
+  // instead store a random hash so the schema's not violated.
+  const randomPwd = Math.random().toString(36).slice(2, 10) + Date.now();
+  const password_hash = bcrypt.hashSync(randomPwd, 10);
+
+  const id = genId("u_");
+  const now = Math.floor(Date.now() / 1000);
+
+  await db.runAsync(
+    `INSERT INTO users(id,username,password_hash,created_at,updated_at)
+     VALUES(?,?,?,?,?)`,
+    [id, uname, password_hash, now, now]
+  );
+
+  // Optionally populate a profile table in future. For now return id/username.
+  return { id, username: uname };
+}

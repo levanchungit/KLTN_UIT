@@ -13,6 +13,7 @@ import {
   MaterialIcons,
 } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import * as AuthSession from "expo-auth-session";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,6 +48,11 @@ const VI_MONTHS = [
 ];
 const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
+const redirectUri = AuthSession.makeRedirectUri({
+  useProxy: true,
+});
+
+console.log(redirectUri);
 const startOfDay = (d: Date) => {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);

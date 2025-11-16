@@ -28,8 +28,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginSet = async (u: UserSession) => {
-    // Do NOT change local SQLite ownership on login.
-    // Login only stores session for cloud sync later; local DB remains owned by `local_user`.
+    // Persist session for authenticated user. The app requires an authenticated
+    // user during usage; there is no 'local_user' ownership mode.
     await saveSession(u);
     setUser(u);
   };

@@ -15,6 +15,7 @@
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "expo": "^54.0.23",
+    "expo-auth-session": "^7.0.8",
     "expo-constants": "~18.0.10",
     "expo-dev-client": "~6.0.17",
     "expo-document-picker": "~14.0.7",

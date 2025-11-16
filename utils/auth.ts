@@ -1,16 +1,12 @@
 // utils/auth.ts
-import { loadSession, saveSession } from "@/context/session";
-
-const LOCAL_USER_ID = "local_user";
+import { loadSession } from "@/context/session";
 
 /**
- * Get the current user's ID.
- * Returns local user ID if not logged in (for offline SQLite usage).
+ * Get the current user's ID. Throws if no user is logged in.
  */
-export async function getCurrentUserId(): Promise<string> {
-  // For all local DB operations, always use the `local_user` owner.
-  // Login should not change local SQLite ownership; syncing will upload local rows to cloud.
-  return LOCAL_USER_ID;
+export async function getCurrentUserId(): Promise<string | null> {
+  const session = await loadSession();
+  return session && session.id ? session.id : null;
 }
 
 /**
@@ -26,22 +22,15 @@ export async function isUserLoggedIn(): Promise<boolean> {
  */
 export async function requireUserId(): Promise<string> {
   const userId = await getCurrentUserId();
-  if (!userId) {
-    throw new Error("USER_NOT_LOGGED_IN");
-  }
+  if (!userId) throw new Error("USER_NOT_LOGGED_IN");
   return userId;
 }
 
 /**
  * Initialize local user session if no session exists
  */
+// Note: local_user support removed. The app requires a signed-in user to operate.
 export async function ensureLocalUser(): Promise<void> {
-  const session = await loadSession();
-  if (!session) {
-    // Create local user session for offline usage
-    await saveSession({
-      id: LOCAL_USER_ID,
-      username: "Local User",
-    });
-  }
+  // No-op kept for compatibility — previously created local user concept removed.
+  return;
 }

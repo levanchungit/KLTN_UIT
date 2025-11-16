@@ -31,7 +31,7 @@ export default function ProfileScreen() {
     ]);
   };
 
-  if (!user || user.id === "local_user") {
+  if (!user) {
     return (
       <View style={styles.container}>
         <View style={styles.notLoggedIn}>
@@ -93,7 +93,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {user.id !== "local_user" && (
+      {user && (
         <View style={styles.section}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <MaterialCommunityIcons name="logout" size={24} color="#fff" />

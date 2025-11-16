@@ -162,31 +162,8 @@ export async function runMigrations(db: SQLiteDatabase) {
   // 1) Tạo bảng/cấu trúc cơ bản
   await db.execAsync(initSQL);
 
-  // 2) Đảm bảo local user tồn tại (cho SQLite offline usage)
-  const localUser = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM users WHERE id=?`,
-    ["local_user"]
-  );
-  if (!localUser) {
-    await db.runAsync(
-      `INSERT OR IGNORE INTO users(id, username, password_hash, created_at, updated_at)
-       VALUES(?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
-      ["local_user", "Local User", ""]
-    );
-  }
-
-  // Create default account for local_user if not exists
-  const defaultAccount = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM accounts WHERE user_id=? AND name=?`,
-    ["local_user", "Ví mặc định"]
-  );
-  if (!defaultAccount) {
-    await db.runAsync(
-      `INSERT INTO accounts(id, user_id, name, icon, color, include_in_total, balance_cached, created_at, updated_at)
-       VALUES(?, ?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
-      ["acc_default", "local_user", "Ví mặc định", "wallet", "#007AFF", 1, 0]
-    );
-  }
+  // 2) No local_user mode: the app requires authenticated users. Do not
+  // create a default 'local_user' account automatically.
 
   // Keep u_demo for backward compatibility
   const demoUser = await db.getFirstAsync<{ id: string }>(
