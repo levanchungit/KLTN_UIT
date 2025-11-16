@@ -1,5 +1,6 @@
 // app/setting/notifications.tsx - Smart notification settings
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   getSettings,
   initSmartNotifications,
@@ -17,10 +18,15 @@ import {
   View,
 } from "react-native";
 import { Modal, Portal, Switch } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function NotificationSettingsScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState({
     dailyReminderTime: { hour: 19, minute: 0 },
     enableDaily: true,
@@ -66,12 +72,10 @@ export default function NotificationSettingsScreen() {
     setSettings(updated);
     await updateSettings(updated);
     await initSmartNotifications();
-    Alert.alert(
-      "Đã cập nhật",
-      `Nhắc nhở hàng ngày sẽ gửi lúc ${selectedHour}:${selectedMinute
-        .toString()
-        .padStart(2, "0")}`
-    );
+    const timeStr = `${selectedHour}:${selectedMinute
+      .toString()
+      .padStart(2, "0")}`;
+    Alert.alert(t("updated"), t("dailyReminderUpdated", { time: timeStr }));
   };
 
   const styles = StyleSheet.create({
@@ -263,26 +267,21 @@ export default function NotificationSettingsScreen() {
         >
           <Ionicons name="arrow-back" size={20} color={colors.icon} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cài đặt thông báo</Text>
+        <Text style={styles.headerTitle}>{t("notificationSettings")}</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>🔔 Thông báo thông minh</Text>
-          <Text style={styles.infoText}>
-            Hệ thống tự động gửi thông báo phù hợp dựa trên thói quen chi tiêu
-            của bạn. Tối đa 3 thông báo/ngày, cách nhau ≥1 giờ.
-          </Text>
+          <Text style={styles.infoTitle}>🔔 {t("smartNotifications")}</Text>
+          <Text style={styles.infoText}>{t("smartNotificationsDesc")}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Nhắc nhở hàng ngày</Text>
+          <Text style={styles.sectionTitle}>{t("dailyReminder")}</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingTitle}>Bật nhắc nhở</Text>
-              <Text style={styles.settingDesc}>
-                Nhắc ghi chi tiêu nếu hôm nay bạn chưa ghi
-              </Text>
+              <Text style={styles.settingTitle}>{t("enableReminder")}</Text>
+              <Text style={styles.settingDesc}>{t("reminderDesc")}</Text>
             </View>
             <Switch
               value={settings.enableDaily}
@@ -294,10 +293,8 @@ export default function NotificationSettingsScreen() {
           {settings.enableDaily && (
             <View style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <Text style={styles.settingTitle}>Thời gian nhắc</Text>
-                <Text style={styles.settingDesc}>
-                  Chọn giờ nhận thông báo mỗi ngày
-                </Text>
+                <Text style={styles.settingTitle}>{t("reminderTime")}</Text>
+                <Text style={styles.settingDesc}>{t("reminderTimeDesc")}</Text>
               </View>
               <TouchableOpacity
                 style={styles.timeButton}
@@ -316,12 +313,12 @@ export default function NotificationSettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cảnh báo không hoạt động</Text>
+          <Text style={styles.sectionTitle}>{t("inactivityWarning")}</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingTitle}>Bật cảnh báo</Text>
+              <Text style={styles.settingTitle}>{t("enableWarning")}</Text>
               <Text style={styles.settingDesc}>
-                Nhắc khi 3 ngày hoặc 7 ngày không ghi chi tiêu
+                {t("inactivityWarningDesc")}
               </Text>
             </View>
             <Switch
@@ -333,13 +330,11 @@ export default function NotificationSettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cảnh báo ngân sách</Text>
+          <Text style={styles.sectionTitle}>{t("budgetWarning")}</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingTitle}>Bật cảnh báo</Text>
-              <Text style={styles.settingDesc}>
-                Thông báo khi đạt 70%, 90%, 100% ngân sách danh mục
-              </Text>
+              <Text style={styles.settingTitle}>{t("enableWarning")}</Text>
+              <Text style={styles.settingDesc}>{t("budgetWarningDesc")}</Text>
             </View>
             <Switch
               value={settings.enableBudget}
@@ -350,13 +345,11 @@ export default function NotificationSettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Báo cáo tuần</Text>
+          <Text style={styles.sectionTitle}>{t("weeklyReport")}</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingTitle}>Bật báo cáo</Text>
-              <Text style={styles.settingDesc}>
-                Gửi Chủ nhật 20:00 nếu chi tiêu thay đổi ≥10%
-              </Text>
+              <Text style={styles.settingTitle}>{t("enableReport")}</Text>
+              <Text style={styles.settingDesc}>{t("weeklyReportDesc")}</Text>
             </View>
             <Switch
               value={settings.enableWeekly}
@@ -376,11 +369,11 @@ export default function NotificationSettingsScreen() {
             onDismiss={() => setShowTimePicker(false)}
             contentContainerStyle={styles.pickerModal}
           >
-            <Text style={styles.pickerTitle}>Chọn thời gian</Text>
+            <Text style={styles.pickerTitle}>{t("selectTime")}</Text>
 
             <View style={styles.pickerRow}>
               <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>Giờ</Text>
+                <Text style={styles.pickerLabel}>{t("hour")}</Text>
                 <View style={styles.pickerButtons}>
                   <TouchableOpacity
                     style={styles.pickerButton}
@@ -409,7 +402,7 @@ export default function NotificationSettingsScreen() {
               </Text>
 
               <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>Phút</Text>
+                <Text style={styles.pickerLabel}>{t("minute")}</Text>
                 <View style={styles.pickerButtons}>
                   <TouchableOpacity
                     style={styles.pickerButton}
@@ -439,14 +432,14 @@ export default function NotificationSettingsScreen() {
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setShowTimePicker(false)}
               >
-                <Text style={styles.buttonText}>Huỷ</Text>
+                <Text style={styles.buttonText}>{t("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.confirmButton]}
                 onPress={handleTimeConfirm}
               >
                 <Text style={[styles.buttonText, styles.confirmButtonText]}>
-                  Xong
+                  {t("confirm")}
                 </Text>
               </TouchableOpacity>
             </View>

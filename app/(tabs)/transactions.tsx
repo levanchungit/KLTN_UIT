@@ -1,9 +1,10 @@
 // app/(tabs)/Transactions.tsx
+import { useI18n } from "@/i18n/I18nProvider";
 import { listCategories } from "@/repos/categoryRepo";
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { writeAsStringAsync } from "expo-file-system";
+import { writeAsStringAsync } from "expo-file-system/legacy";
 import { router } from "expo-router";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import React, { useCallback, useRef, useState } from "react";
@@ -25,8 +26,21 @@ import { useTheme } from "../providers/ThemeProvider";
 
 // Helper to get cache directory path
 const getCacheDir = () => {
-  // Platform-specific cache directory
-  return require("expo-file-system").documentDirectory || "";
+  try {
+    const fs = require("expo-file-system/legacy");
+    const dir = fs.cacheDirectory || fs.documentDirectory || "";
+    if (!dir) return "";
+    return dir.endsWith("/") ? dir : dir + "/";
+  } catch (e) {
+    try {
+      const fs = require("expo-file-system");
+      const dir = fs.cacheDirectory || fs.documentDirectory || "";
+      if (!dir) return "";
+      return dir.endsWith("/") ? dir : dir + "/";
+    } catch {
+      return "";
+    }
+  }
 };
 
 type FilterType = "all" | "day" | "week" | "month" | "year" | "custom";
@@ -53,19 +67,32 @@ const startOfDay = (d: Date) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
-const dayLabel = (d: Date) => {
+function dayLabel(
+  d: Date,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  lang: string
+) {
   const today = startOfDay(new Date());
   const dd = startOfDay(d);
   const diff = Math.round((today.getTime() - dd.getTime()) / 86400000);
-  const dateText = d.toLocaleDateString("vi-VN", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  if (diff === 0) return "Hôm nay, " + dateText;
-  if (diff === 1) return "Hôm qua, " + dateText;
+  let dateText = "";
+  if (lang === "vi") {
+    dateText = d.toLocaleDateString("vi-VN", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } else {
+    dateText = d.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+  if (diff === 0) return t("today") + ", " + dateText;
+  if (diff === 1) return t("yesterday") + ", " + dateText;
   return dateText;
-};
+}
 const fmtMoney = (n: number) =>
   (n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 0 }) + " VND";
 
@@ -73,6 +100,7 @@ type Section = { title: string; key: string; date: Date; data: TxDetailRow[] };
 
 export default function Transactions() {
   const { colors, mode } = useTheme();
+  const { t, lang } = useI18n();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -103,22 +131,25 @@ export default function Transactions() {
   const onEndMomentumFired = useRef(false);
 
   // Group rows → sections theo ngày (LÀM Ở JS, không query từng ngày)
-  const groupByDay = useCallback((rows: TxDetailRow[]) => {
-    const map = new Map<string, Section>();
-    for (const r of rows) {
-      const day = startOfDay(new Date(r.occurred_at * 1000));
-      const key = String(day.getTime());
-      let sec = map.get(key);
-      if (!sec) {
-        sec = { title: dayLabel(day), key, date: day, data: [] };
-        map.set(key, sec);
+  const groupByDay = useCallback(
+    (rows: TxDetailRow[]) => {
+      const map = new Map<string, Section>();
+      for (const r of rows) {
+        const day = startOfDay(new Date(r.occurred_at * 1000));
+        const key = String(day.getTime());
+        let sec = map.get(key);
+        if (!sec) {
+          sec = { title: dayLabel(day, t, lang), key, date: day, data: [] };
+          map.set(key, sec);
+        }
+        sec.data.push(r);
       }
-      sec.data.push(r);
-    }
-    return [...map.values()].sort(
-      (a, b) => b.date.getTime() - a.date.getTime()
-    );
-  }, []);
+      return [...map.values()].sort(
+        (a, b) => b.date.getTime() - a.date.getTime()
+      );
+    },
+    [t, lang]
+  );
 
   // Fetch một lần theo khoảng ngày với filter
   const fetchRange = useCallback(
@@ -258,12 +289,14 @@ export default function Transactions() {
       const allTransactions = sections.flatMap((section) => section.data);
 
       if (allTransactions.length === 0) {
-        Alert.alert("Thông báo", "Không có giao dịch để xuất");
+        Alert.alert(t("notification"), t("noTransactionsToExport"));
         return;
       }
 
       // CSV header (removed ID field)
-      const csvHeader = "Số tiền,Loại,Danh mục,Ghi chú,Ngày\n";
+      const csvHeader = `${t("csvAmount")},${t("csvType")},${t(
+        "csvCategory"
+      )},${t("csvNote")},${t("csvDate")}\n`;
 
       // CSV rows
       const csvRows = allTransactions
@@ -274,7 +307,7 @@ export default function Transactions() {
           ).padStart(2, "0")}/${dateObj.getFullYear()} ${String(
             dateObj.getHours()
           ).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
-          const type = tx.type === "expense" ? "Chi tiêu" : "Thu nhập";
+          const type = tx.type === "expense" ? t("expense") : t("income");
           const amount = tx.amount.toString(); // Export as plain number without formatting
           const category = (tx.category_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
@@ -296,7 +329,7 @@ export default function Transactions() {
       if (canShare) {
         await shareAsync(fileUri, {
           mimeType: "text/csv",
-          dialogTitle: "Xuất giao dịch",
+          dialogTitle: t("exportTransactions"),
           UTI: "public.comma-separated-values-text",
         });
       } else {
@@ -312,7 +345,7 @@ export default function Transactions() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header with Add and Filter Buttons */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Giao dịch</Text>
+        <Text style={styles.headerTitle}>{t("transactions")}</Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
             style={styles.exportButton}
@@ -344,7 +377,7 @@ export default function Transactions() {
           <Ionicons name="search" size={20} color={colors.subText} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Tìm kiếm giao dịch..."
+            placeholder={t("searchTransactions")}
             placeholderTextColor={colors.subText}
             value={searchText}
             onChangeText={setSearchText}
@@ -400,19 +433,19 @@ export default function Transactions() {
               marginBottom: 16,
             }}
           >
-            Lọc giao dịch
+            {t("filterTransactions")}
           </Text>
 
           {(
             ["all", "day", "week", "month", "year", "custom"] as FilterType[]
           ).map((filter) => {
             const labels: Record<string, string> = {
-              all: "Tất cả",
-              day: "Hôm nay",
-              week: "Tuần này",
-              month: "Tháng này",
-              year: "Năm này",
-              custom: "Khoảng thời gian",
+              all: t("all"),
+              day: t("day"),
+              week: t("week"),
+              month: t("month"),
+              year: t("year"),
+              custom: t("dateRange"),
             };
 
             return (
@@ -616,7 +649,7 @@ export default function Transactions() {
                   color: !selectedCategoryFilter ? "#fff" : colors.text,
                 }}
               >
-                Tất cả danh mục
+                {t("allCategories")}
               </Text>
             </TouchableOpacity>
 

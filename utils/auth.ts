@@ -8,8 +8,9 @@ const LOCAL_USER_ID = "local_user";
  * Returns local user ID if not logged in (for offline SQLite usage).
  */
 export async function getCurrentUserId(): Promise<string> {
-  const session = await loadSession();
-  return session?.id || LOCAL_USER_ID;
+  // For all local DB operations, always use the `local_user` owner.
+  // Login should not change local SQLite ownership; syncing will upload local rows to cloud.
+  return LOCAL_USER_ID;
 }
 
 /**

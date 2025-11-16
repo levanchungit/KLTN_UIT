@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   computeBudgetProgress,
   deleteBudget,
@@ -17,6 +18,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import {
@@ -38,12 +40,10 @@ type BudgetItem = {
 
 export default function BudgetScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const styles = React.useMemo(
-    () => makeStyles(colors, insets.bottom),
-    [colors, insets.bottom]
-  );
+  const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
   const [activeTab, setActiveTab] = useState<"list" | "goals">("list");
   const [budget, setBudget] = useState<Budget | null>(null);
@@ -61,7 +61,7 @@ export default function BudgetScreen() {
     try {
       // Load all budgets with progress
       const budgets = await listBudgets();
-      
+
       // Compute progress for each budget
       const budgetsWithProgress = await Promise.all(
         budgets.map(async (b) => {
@@ -77,7 +77,7 @@ export default function BudgetScreen() {
           }
         })
       );
-      
+
       setAllBudgets(budgetsWithProgress);
 
       // Get active budget
@@ -143,22 +143,26 @@ export default function BudgetScreen() {
 
   const handleDeleteBudget = useCallback(
     async (budgetId: string, budgetName: string) => {
-      Alert.alert("Xóa ngân sách", `Bạn có chắc muốn xóa "${budgetName}"?`, [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteBudget(budgetId);
-              await loadBudget(); // Reload after delete
-            } catch (err) {
-              console.error("Delete budget error:", err);
-              Alert.alert("Lỗi", "Không thể xóa ngân sách");
-            }
+      Alert.alert(
+        t("deleteBudgetTitle"),
+        t("confirmDeleteBudget", { name: budgetName }),
+        [
+          { text: t("cancel"), style: "cancel" },
+          {
+            text: t("delete"),
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteBudget(budgetId);
+                await loadBudget(); // Reload after delete
+              } catch (err) {
+                console.error("Delete budget error:", err);
+                Alert.alert(t("error"), t("cannotDeleteBudget"));
+              }
+            },
           },
-        },
-      ]);
+        ]
+      );
     },
     [loadBudget]
   );
@@ -237,7 +241,7 @@ export default function BudgetScreen() {
                 activeTab === "list" && styles.tabTextActive,
               ]}
             >
-              Ngân sách
+              {t("budgetTab")}
             </Text>
           </Pressable>
           <Pressable
@@ -255,7 +259,7 @@ export default function BudgetScreen() {
                 activeTab === "goals" && styles.tabTextActive,
               ]}
             >
-              Mục tiêu
+              {t("goalsTab")}
             </Text>
           </Pressable>
         </View>
@@ -272,25 +276,20 @@ export default function BudgetScreen() {
             color={colors.subText}
           />
           <Text style={styles.emptyTitle}>
-            {activeTab === "list" ? "Chưa có ngân sách" : "Chưa có mục tiêu"}
+            {activeTab === "list" ? t("noBudgets") : t("noGoals")}
           </Text>
           <Text style={styles.emptyDesc}>
-            {activeTab === "list"
-              ? "Tạo kế hoạch chi tiêu thông minh với quy tắc 50/30/20"
-              : "Đặt mục tiêu tài chính và theo dõi tiến độ"}
+            {activeTab === "list" ? t("noBudgetsDesc") : t("noGoalsDesc")}
           </Text>
         </ScrollView>
 
-        {/* Floating Action Button */}
+        {/* Floating Action Button (icon-only) */}
         <Pressable style={styles.fab} onPress={handleCreateBudget}>
           <MaterialCommunityIcons
             name={activeTab === "list" ? "wallet-plus-outline" : "target"}
-            size={20}
+            size={24}
             color="#fff"
           />
-          <Text style={styles.fabText}>
-            {activeTab === "list" ? "Tạo ngân sách" : "Tạo mục tiêu"}
-          </Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -318,19 +317,22 @@ export default function BudgetScreen() {
     };
 
     if (endDate) {
-      return `Từ ${formatDate(startDate)} đến ${formatDate(endDate)}`;
+      return t("fromTo", {
+        start: formatDate(startDate),
+        end: formatDate(endDate),
+      });
     }
-    return `Từ ${formatDate(startDate)}`;
+    return t("from", { start: formatDate(startDate) });
   };
 
   const getPeriodLabel = (period: string) => {
     switch (period) {
       case "daily":
-        return "Hàng ngày";
+        return t("daily");
       case "weekly":
-        return "Hàng tuần";
+        return t("weekly");
       case "monthly":
-        return "Hàng tháng";
+        return t("monthly");
       default:
         return period;
     }
@@ -360,7 +362,7 @@ export default function BudgetScreen() {
               activeTab === "list" && styles.tabTextActive,
             ]}
           >
-            Ngân sách
+            {t("budgetTab")}
           </Text>
         </Pressable>
         <Pressable
@@ -378,13 +380,16 @@ export default function BudgetScreen() {
               activeTab === "goals" && styles.tabTextActive,
             ]}
           >
-            Mục tiêu
+            {t("goalsTab")}
           </Text>
         </Pressable>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(140, insets.bottom + 140) },
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -394,17 +399,19 @@ export default function BudgetScreen() {
             {/* Overall Summary Card */}
             <View style={styles.overallSummaryCard}>
               <Text style={styles.overallSummaryTitle}>
-                Tổng quan ngân sách
+                {t("budgetOverview")}
               </Text>
               <View style={styles.overallSummaryRow}>
                 <View style={styles.overallSummaryItem}>
-                  <Text style={styles.overallSummaryLabel}>Tổng ngân sách</Text>
+                  <Text style={styles.overallSummaryLabel}>
+                    {t("totalBudget")}
+                  </Text>
                   <Text style={styles.overallSummaryValue}>
                     {overallSummary.totalBudget.toLocaleString("vi-VN")}đ
                   </Text>
                 </View>
                 <View style={styles.overallSummaryItem}>
-                  <Text style={styles.overallSummaryLabel}>Đã chi</Text>
+                  <Text style={styles.overallSummaryLabel}>{t("spent")}</Text>
                   <Text
                     style={[
                       styles.overallSummaryValue,
@@ -415,7 +422,9 @@ export default function BudgetScreen() {
                   </Text>
                 </View>
                 <View style={styles.overallSummaryItem}>
-                  <Text style={styles.overallSummaryLabel}>Còn lại</Text>
+                  <Text style={styles.overallSummaryLabel}>
+                    {t("remaining")}
+                  </Text>
                   <Text style={styles.overallSummaryValue}>
                     {overallSummary.remaining.toLocaleString("vi-VN")}đ
                   </Text>
@@ -451,14 +460,14 @@ export default function BudgetScreen() {
                   size={20}
                   color={colors.subText}
                 />
-                <Text
+                <TextInput
                   style={styles.searchInput}
-                  onPress={() => {
-                    // TODO: Open search modal or navigate to search screen
-                  }}
-                >
-                  {searchQuery || "Tìm kiếm ngân sách..."}
-                </Text>
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder={t("searchBudgets")}
+                  placeholderTextColor={colors.subText}
+                  returnKeyType="search"
+                />
               </View>
               <View style={styles.filterRow}>
                 {(["all", "daily", "weekly", "monthly"] as const).map((p) => (
@@ -476,10 +485,10 @@ export default function BudgetScreen() {
                         filterPeriod === p && styles.filterChipTextActive,
                       ]}
                     >
-                      {p === "all" && "Tất cả"}
-                      {p === "daily" && "Ngày"}
-                      {p === "weekly" && "Tuần"}
-                      {p === "monthly" && "Tháng"}
+                      {p === "all" && t("all")}
+                      {p === "daily" && t("day")}
+                      {p === "weekly" && t("week")}
+                      {p === "monthly" && t("month")}
                     </Text>
                   </Pressable>
                 ))}
@@ -496,13 +505,15 @@ export default function BudgetScreen() {
                     color="#F59E0B"
                   />
                   <Text style={styles.recommendationTitle}>
-                    Gợi ý thông minh
+                    {t("smartRecommendations")}
                   </Text>
                 </View>
                 <Text style={styles.recommendationText}>
                   {overallSummary.percent >= 90
-                    ? "⚠️ Bạn đã chi gần hết ngân sách! Hãy cân nhắc giảm chi tiêu hoặc điều chỉnh kế hoạch."
-                    : "📊 Bạn đã chi {overallSummary.percent.toFixed(0)}% ngân sách. Hãy theo dõi chặt chẽ các khoản chi tiêu."}
+                    ? t("recommendationHigh")
+                    : t("recommendationMedium", {
+                        percent: overallSummary.percent.toFixed(0),
+                      })}
                 </Text>
               </View>
             )}
@@ -510,10 +521,12 @@ export default function BudgetScreen() {
             {/* All Budgets List */}
             {filteredBudgets.length > 0 ? (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Danh sách ngân sách</Text>
+                <Text style={styles.sectionTitle}>{t("budgetsList")}</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Hiển thị {filteredBudgets.length} / {allBudgets.length} kế
-                  hoạch
+                  {t("showingPlans", {
+                    shown: filteredBudgets.length,
+                    total: allBudgets.length,
+                  })}
                 </Text>
                 {filteredBudgets.map((b) => (
                   <BudgetListItem
@@ -533,10 +546,8 @@ export default function BudgetScreen() {
                   size={60}
                   color={colors.subText}
                 />
-                <Text style={styles.emptyTitle}>Không tìm thấy ngân sách</Text>
-                <Text style={styles.emptyDesc}>
-                  Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm
-                </Text>
+                <Text style={styles.emptyTitle}>{t("noBudgetsFound")}</Text>
+                <Text style={styles.emptyDesc}>{t("tryAdjustFilter")}</Text>
               </View>
             )}
           </>
@@ -548,24 +559,30 @@ export default function BudgetScreen() {
               size={80}
               color={colors.subText}
             />
-            <Text style={styles.emptyTitle}>Chức năng đang phát triển</Text>
-            <Text style={styles.emptyDesc}>
-              Tab Mục tiêu sẽ hiển thị danh sách mục tiêu tài chính của bạn
-            </Text>
+            <Text style={styles.emptyTitle}>{t("featureInDevelopment")}</Text>
+            <Text style={styles.emptyDesc}>{t("goalsTabDesc")}</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Floating Action Button */}
-      <Pressable style={styles.fab} onPress={handleCreateBudget}>
+      {/* Floating Action Button (icon-only) */}
+      <Pressable
+        style={[
+          styles.fab,
+          {
+            bottom: insets.bottom + 86,
+            zIndex: 1100,
+            elevation: 30,
+            shadowOpacity: 0.35,
+          },
+        ]}
+        onPress={handleCreateBudget}
+      >
         <MaterialCommunityIcons
           name={activeTab === "list" ? "wallet-plus-outline" : "target"}
-          size={20}
+          size={24}
           color="#fff"
         />
-        <Text style={styles.fabText}>
-          {activeTab === "list" ? "Tạo ngân sách" : "Tạo mục tiêu"}
-        </Text>
       </Pressable>
     </SafeAreaView>
   );
@@ -584,6 +601,7 @@ function BudgetListItem({
   onDelete: (budgetId: string, budgetName: string) => Promise<void>;
   onView: (budgetId: string) => void;
 }) {
+  const { t } = useI18n();
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     const day = date.getDate().toString().padStart(2, "0");
@@ -595,19 +613,22 @@ function BudgetListItem({
   const getPeriodLabel = (period: string) => {
     switch (period) {
       case "daily":
-        return "Hàng ngày";
+        return t("daily");
       case "weekly":
-        return "Hàng tuần";
+        return t("weekly");
       case "monthly":
-        return "Hàng tháng";
+        return t("monthly");
       default:
         return period;
     }
   };
 
   const dateRange = budget.end_date
-    ? `Từ ${formatDate(budget.start_date)} đến ${formatDate(budget.end_date)}`
-    : `Từ ${formatDate(budget.start_date)}`;
+    ? t("fromTo", {
+        start: formatDate(budget.start_date),
+        end: formatDate(budget.end_date),
+      })
+    : t("from", { start: formatDate(budget.start_date) });
 
   // Determine border color based on budget status
   const isExceeded =
@@ -668,22 +689,7 @@ function BudgetListItem({
           </Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {isActive && (
-            <View
-              style={{
-                backgroundColor: "#DCFCE7",
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 10,
-              }}
-            >
-              <Text
-                style={{ fontSize: 11, fontWeight: "600", color: "#16A34A" }}
-              >
-                Đang dùng
-              </Text>
-            </View>
-          )}
+          {/* Active badge removed as requested */}
           <Pressable
             onPress={() => onDelete(budget.id, budget.name)}
             style={{
@@ -703,6 +709,7 @@ function BudgetListItem({
 }
 
 function CategoryCard({ item, colors }: { item: BudgetItem; colors: any }) {
+  const { t } = useI18n();
   const iconName = fixIconName(
     (item.categoryIcon ?? "help-circle-outline").replace(/^mi:/, "mc:")
   ) as any;
@@ -781,23 +788,20 @@ function CategoryCard({ item, colors }: { item: BudgetItem; colors: any }) {
             marginTop: 4,
           }}
         >
-          ⚠️ Vượt quá {percentRounded}% ngân sách
+          {t("budgetExceeded", { percent: percentRounded })}
         </Text>
       )}
     </View>
   );
 }
 
-const makeStyles = (
-  c: {
-    background: string;
-    card: string;
-    text: string;
-    subText: string;
-    divider: string;
-  },
-  bottomInset: number
-) =>
+const makeStyles = (c: {
+  background: string;
+  card: string;
+  text: string;
+  subText: string;
+  divider: string;
+}) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
     header: {
@@ -849,7 +853,7 @@ const makeStyles = (
       fontWeight: "700",
     },
     title: { fontSize: 24, fontWeight: "700", color: c.text },
-    content: { padding: 16, paddingBottom: Math.max(bottomInset, 16) + 80 },
+    content: { padding: 16, paddingBottom: 80 },
     overallSummaryCard: {
       backgroundColor: c.card,
       borderRadius: 16,
@@ -1172,20 +1176,18 @@ const makeStyles = (
     fab: {
       position: "absolute",
       right: 16,
-      bottom: bottomInset + 60,
-      paddingHorizontal: 20,
+      bottom: 120,
+      width: 56,
       height: 56,
       borderRadius: 28,
       backgroundColor: "#16A34A",
-      flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
-      elevation: 8,
+      elevation: 20,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
+      shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.3,
-      shadowRadius: 8,
+      shadowRadius: 12,
     },
     fabText: {
       color: "#fff",

@@ -1,4 +1,6 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useUser } from "@/context/userContext";
+import { useI18n } from "@/i18n/I18nProvider";
 import { createBudget } from "@/repos/budgetRepo";
 import {
   generateBudgetSuggestion,
@@ -30,8 +32,10 @@ type GroupData = {
   items: (CategoryAllocation & { icon?: string; color?: string })[];
 };
 
-export default function SuggestScreen() {
+export default function BudgetSuggestScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
+  const { user } = useUser();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const styles = React.useMemo(
@@ -341,7 +345,7 @@ export default function SuggestScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#16A34A" />
           <Text style={styles.loadingText}>
-            Đang phân tích lịch sử giao dịch...
+            {t("analyzingTransactionHistory")}
           </Text>
         </View>
       </SafeAreaView>

@@ -1,5 +1,6 @@
 // app/notifications.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   AppNotification,
   clearAllNotifications,
@@ -21,7 +22,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 function groupByDate(notifications: AppNotification[]) {
   const groups: { [key: string]: AppNotification[] } = {};
@@ -58,6 +62,8 @@ function groupByDate(notifications: AppNotification[]) {
 
 export default function NotificationsScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   // Ask permissions once when screen mounts
@@ -296,7 +302,9 @@ export default function NotificationsScreen() {
             <Ionicons name="arrow-back" size={20} color={colors.icon} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
-            {unreadCount > 0 ? `Thông báo (${unreadCount})` : "Thông báo"}
+            {unreadCount > 0
+              ? `${t("notifications")} (${unreadCount})`
+              : t("notifications")}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -305,7 +313,7 @@ export default function NotificationsScreen() {
               style={styles.iconBtn}
               onPress={onMarkAll}
               activeOpacity={0.7}
-              accessibilityLabel="Đánh dấu tất cả đã đọc"
+              accessibilityLabel={t("markAllRead")}
             >
               <Ionicons
                 name="checkmark-done-outline"
@@ -319,7 +327,7 @@ export default function NotificationsScreen() {
               style={styles.iconBtn}
               onPress={onClearAll}
               activeOpacity={0.7}
-              accessibilityLabel="Xoá tất cả thông báo"
+              accessibilityLabel={t("deleteAllNotifications")}
             >
               <Ionicons name="trash-outline" size={20} color={colors.icon} />
             </TouchableOpacity>
@@ -336,8 +344,8 @@ export default function NotificationsScreen() {
             color={colors.divider}
             style={styles.emptyIcon}
           />
-          <Text style={styles.emptyTitle}>Chưa có thông báo</Text>
-          <Text style={styles.emptyText}>Các thông báo sẽ xuất hiện ở đây</Text>
+          <Text style={styles.emptyTitle}>{t("noNotifications")}</Text>
+          <Text style={styles.emptyText}>{t("noNotificationsDesc")}</Text>
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>

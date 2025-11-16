@@ -1,7 +1,8 @@
 import { useUser } from "@/context/userContext";
 import { createUserWithPassword, loginWithPassword } from "@/repos/authRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router, useGlobalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +19,8 @@ import {
 
 export default function LoginScreen() {
   const { loginSet } = useUser();
+  const params = useGlobalSearchParams();
+  const upgradeParam = params?.upgrade === "1";
   const [isLogin, setIsLogin] = useState(true); // true = login, false = register
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +37,18 @@ export default function LoginScreen() {
     try {
       const result = await loginWithPassword({ username, password });
       await loginSet({ id: result.id, username: result.username });
+      try {
+        const upgrade =
+          (await AsyncStorage.getItem("upgrade_after_login")) ||
+          (upgradeParam ? "1" : null);
+        if (upgrade === "1") {
+          await AsyncStorage.removeItem("upgrade_after_login");
+          router.replace("/sync");
+          return;
+        }
+      } catch (e) {
+        // ignore and continue
+      }
       router.replace("/(tabs)");
     } catch (error: any) {
       const msg =
@@ -74,7 +89,24 @@ export default function LoginScreen() {
       const userId = await createUserWithPassword({ username, password });
       await loginSet({ id: userId, username });
       Alert.alert("Thành công", "Đăng ký tài khoản thành công!", [
-        { text: "OK", onPress: () => router.replace("/(tabs)") },
+        {
+          text: "OK",
+          onPress: async () => {
+            try {
+              const upgrade =
+                (await AsyncStorage.getItem("upgrade_after_login")) ||
+                (upgradeParam ? "1" : null);
+              if (upgrade === "1") {
+                await AsyncStorage.removeItem("upgrade_after_login");
+                router.replace("/sync");
+                return;
+              }
+            } catch (e) {
+              // ignore
+            }
+            router.replace("/(tabs)");
+          },
+        },
       ]);
     } catch (error: any) {
       const msg =

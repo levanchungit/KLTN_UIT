@@ -2,6 +2,7 @@ import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -27,12 +28,17 @@ export default function Setting() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.profileButton}
-          onPress={() => {
-            if (user) {
+          onPress={async () => {
+            if (user && user.id !== "local_user") {
               router.push("/setting/profile");
-            } else {
-              router.push("/auth/login");
+              return;
             }
+            try {
+              await AsyncStorage.setItem("upgrade_after_login", "1");
+            } catch (e) {
+              // ignore
+            }
+            router.push("/auth/login?upgrade=1");
           }}
         >
           <View style={styles.avatar}>
@@ -80,10 +86,8 @@ export default function Setting() {
             color={colors.icon}
           />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.itemTitle}>Thông báo thông minh</Text>
-            <Text style={styles.itemDesc}>
-              Cấu hình nhắc nhở và cảnh báo tự động
-            </Text>
+            <Text style={styles.itemTitle}>{t("smartNotifications")}</Text>
+            <Text style={styles.itemDesc}>{t("smartNotificationsDesc")}</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -126,10 +130,8 @@ export default function Setting() {
           onPress={() => setThemeModalVisible(false)}
         >
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Giao diện</Text>
-            <Text style={styles.modalSubtitle}>
-              Ưu tiên theo hệ thống. Bạn có thể tuỳ chỉnh nếu muốn.
-            </Text>
+            <Text style={styles.modalTitle}>{t("appearance")}</Text>
+            <Text style={styles.modalSubtitle}>{t("infoLanguage")}</Text>
 
             <TouchableOpacity
               style={[
@@ -146,9 +148,7 @@ export default function Setting() {
                 size={20}
                 color={colors.icon}
               />
-              <Text style={styles.modalItemText}>
-                Theo hệ thống (khuyến nghị)
-              </Text>
+              <Text style={styles.modalItemText}>{t("followSystem")}</Text>
               {preference === "system" && (
                 <Ionicons name="checkmark" size={20} color="#10B981" />
               )}
@@ -165,7 +165,7 @@ export default function Setting() {
               }}
             >
               <Ionicons name="sunny-outline" size={20} color={colors.icon} />
-              <Text style={styles.modalItemText}>Sáng</Text>
+              <Text style={styles.modalItemText}>{t("lightMode")}</Text>
               {preference === "light" && (
                 <Ionicons name="checkmark" size={20} color="#10B981" />
               )}
@@ -182,7 +182,7 @@ export default function Setting() {
               }}
             >
               <Ionicons name="moon-outline" size={20} color={colors.icon} />
-              <Text style={styles.modalItemText}>Tối</Text>
+              <Text style={styles.modalItemText}>{t("darkMode")}</Text>
               {preference === "dark" && (
                 <Ionicons name="checkmark" size={20} color="#10B981" />
               )}

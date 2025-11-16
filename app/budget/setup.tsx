@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -20,6 +21,7 @@ import {
 
 export default function BudgetSetupScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const styles = React.useMemo(
@@ -38,7 +40,7 @@ export default function BudgetSetupScreen() {
   const handleCreate = async () => {
     const incomeNum = parseFloat(income.replace(/[^0-9]/g, ""));
     if (!incomeNum || incomeNum <= 0) {
-      alert("Vui lòng nhập thu nhập hợp lệ");
+      alert(t("enterValidIncome"));
       return;
     }
 
@@ -88,7 +90,7 @@ export default function BudgetSetupScreen() {
             thu nhập và lối sống của bạn.
           </Text>
 
-          <Text style={styles.label}>Thu nhập (sau thuế)</Text>
+          <Text style={styles.label}>{t("incomeAfterTax")}</Text>
           <View style={styles.inputBox}>
             <TextInput
               keyboardType="numeric"

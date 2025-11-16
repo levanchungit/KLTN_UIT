@@ -1,8 +1,9 @@
 // app/category-detail.tsx
+import { useI18n } from "@/i18n/I18nProvider";
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { writeAsStringAsync } from "expo-file-system";
+import { writeAsStringAsync } from "expo-file-system/legacy";
 import { router, useLocalSearchParams } from "expo-router";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import React, { useCallback, useRef, useState } from "react";
@@ -18,12 +19,29 @@ import {
 } from "react-native";
 import CalendarPicker from "react-native-calendar-picker";
 import { Modal, Portal } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useTheme } from "./providers/ThemeProvider";
 
 // Helper to get cache directory path
 const getCacheDir = () => {
-  return require("expo-file-system").documentDirectory || "";
+  try {
+    const fs = require("expo-file-system/legacy");
+    const dir = fs.cacheDirectory || fs.documentDirectory || "";
+    if (!dir) return "";
+    return dir.endsWith("/") ? dir : dir + "/";
+  } catch (e) {
+    try {
+      const fs = require("expo-file-system");
+      const dir = fs.cacheDirectory || fs.documentDirectory || "";
+      if (!dir) return "";
+      return dir.endsWith("/") ? dir : dir + "/";
+    } catch {
+      return "";
+    }
+  }
 };
 
 type FilterType = "all" | "day" | "week" | "month" | "year" | "custom";
@@ -70,6 +88,8 @@ type Section = { title: string; key: string; date: Date; data: TxDetailRow[] };
 
 export default function CategoryDetail() {
   const { colors, mode } = useTheme();
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams();
   const categoryId = params.categoryId as string;
@@ -234,7 +254,7 @@ export default function CategoryDetail() {
       const allTransactions = sections.flatMap((section) => section.data);
 
       if (allTransactions.length === 0) {
-        Alert.alert("Thông báo", "Không có giao dịch để xuất");
+        Alert.alert(t("notification"), t("noTransactionsToExport"));
         return;
       }
 
@@ -247,7 +267,7 @@ export default function CategoryDetail() {
           ).padStart(2, "0")}/${dateObj.getFullYear()} ${String(
             dateObj.getHours()
           ).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
-          const type = tx.type === "expense" ? "Chi tiêu" : "Thu nhập";
+          const type = tx.type === "expense" ? t("expense") : t("income");
           const amount = tx.amount.toString();
           const category = (tx.category_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
@@ -265,7 +285,7 @@ export default function CategoryDetail() {
       if (canShare) {
         await shareAsync(fileUri, {
           mimeType: "text/csv",
-          dialogTitle: "Xuất giao dịch",
+          dialogTitle: t("exportTransactions"),
           UTI: "public.comma-separated-values-text",
         });
       } else {
@@ -366,7 +386,7 @@ export default function CategoryDetail() {
           />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Tìm kiếm giao dịch..."
+            placeholder={t("searchTransactions")}
             placeholderTextColor={colors.subText}
             value={searchText}
             onChangeText={setSearchText}
@@ -402,19 +422,19 @@ export default function CategoryDetail() {
               marginBottom: 16,
             }}
           >
-            Lọc giao dịch
+            {t("filterTransactions")}
           </Text>
 
           {(
             ["all", "day", "week", "month", "year", "custom"] as FilterType[]
           ).map((filter) => {
             const labels: Record<string, string> = {
-              all: "Tất cả",
-              day: "Hôm nay",
-              week: "Tuần này",
-              month: "Tháng này",
-              year: "Năm này",
-              custom: "Khoảng thời gian",
+              all: t("all"),
+              day: t("day"),
+              week: t("week"),
+              month: t("month"),
+              year: t("year"),
+              custom: t("dateRange"),
             };
 
             return (

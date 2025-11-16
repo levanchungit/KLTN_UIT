@@ -65,11 +65,23 @@ export async function createUserWithPassword({
   const id = genId("u_");
   const now = Math.floor(Date.now() / 1000);
 
-  await db.runAsync(
-    `INSERT INTO users(id,username,password_hash,created_at,updated_at)
+  await db
+    .runAsync(
+      `INSERT INTO users(id,username,password_hash,created_at,updated_at)
      VALUES(?,?,?,?,?)`,
-    [id, uname, password_hash, now, now]
-  );
+      [id, uname, password_hash, now, now]
+    )
+    .catch((err: any) => {
+      // Convert SQLITE UNIQUE constraint into a friendly error code
+      const message = String(err?.message || err);
+      if (
+        message.includes("UNIQUE constraint failed") &&
+        message.includes("users.username")
+      ) {
+        throw new Error("USERNAME_TAKEN");
+      }
+      throw err;
+    });
 
   return id;
 }

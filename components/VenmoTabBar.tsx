@@ -1,5 +1,6 @@
 // components/VenmoTabBar.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
@@ -22,6 +23,7 @@ export default function VenmoTabBar({
   const insets = useSafeAreaInsets();
   const { width } = Dimensions.get("window");
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [showMenu, setShowMenu] = useState(false);
 
   // Chỉ lấy 4 tab chính theo data của bạn
@@ -81,6 +83,9 @@ export default function VenmoTabBar({
         right: 0,
         bottom: 0,
         height: BAR_H,
+        // Ensure tab bar appears above other content
+        zIndex: 60,
+        elevation: 16,
       }}
     >
       {/* Nền có rãnh */}
@@ -97,9 +102,9 @@ export default function VenmoTabBar({
           bottom: 0,
           height: BAR_H,
           shadowColor: "#000",
-          shadowOpacity: 0.06,
-          shadowRadius: 6,
-          elevation: 8,
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          elevation: 12,
         }}
       />
 
@@ -334,7 +339,7 @@ export default function VenmoTabBar({
                 flex: 1,
               }}
             >
-              ChatboxAI
+              {t("chatboxAI")}
             </Text>
           </TouchableOpacity>
 
@@ -380,7 +385,7 @@ export default function VenmoTabBar({
                 flex: 1,
               }}
             >
-              Tạo giao dịch thủ công
+              {t("manualTransaction")}
             </Text>
           </TouchableOpacity>
         </Modal>

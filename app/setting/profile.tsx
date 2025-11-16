@@ -1,5 +1,7 @@
 import { useUser } from "@/context/userContext";
+import { useI18n } from "@/i18n/I18nProvider";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -13,12 +15,13 @@ import {
 
 export default function ProfileScreen() {
   const { user, logout } = useUser();
+  const { t } = useI18n();
 
   const handleLogout = () => {
-    Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất?", [
-      { text: "Hủy", style: "cancel" },
+    Alert.alert(t("logout"), t("logoutConfirm"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Đăng xuất",
+        text: t("logout"),
         style: "destructive",
         onPress: async () => {
           await logout();
@@ -28,7 +31,7 @@ export default function ProfileScreen() {
     ]);
   };
 
-  if (!user) {
+  if (!user || user.id === "local_user") {
     return (
       <View style={styles.container}>
         <View style={styles.notLoggedIn}>
@@ -37,12 +40,19 @@ export default function ProfileScreen() {
             size={80}
             color="#ccc"
           />
-          <Text style={styles.notLoggedInText}>Chưa đăng nhập</Text>
+          <Text style={styles.notLoggedInText}>{t("notLoggedIn")}</Text>
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={() => router.push("/auth/login?upgrade=1")}
+            onPress={async () => {
+              try {
+                await AsyncStorage.setItem("upgrade_after_login", "1");
+              } catch (e) {
+                // ignore
+              }
+              router.push("/auth/login?upgrade=1");
+            }}
           >
-            <Text style={styles.loginButtonText}>Đăng nhập</Text>
+            <Text style={styles.loginButtonText}>{t("loginNow")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -87,7 +97,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <MaterialCommunityIcons name="logout" size={24} color="#fff" />
-            <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+            <Text style={styles.logoutButtonText}>{t("logout")}</Text>
           </TouchableOpacity>
         </View>
       )}

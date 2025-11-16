@@ -28,11 +28,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginSet = async (u: UserSession) => {
+    // Do NOT change local SQLite ownership on login.
+    // Login only stores session for cloud sync later; local DB remains owned by `local_user`.
     await saveSession(u);
     setUser(u);
   };
 
   const logout = async () => {
+    // Do NOT migrate or change DB ownership on logout. Clear saved session only.
     await clearSession();
     setUser(null);
   };

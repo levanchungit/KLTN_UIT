@@ -47,6 +47,7 @@ const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 export default function AddTransactionScreen() {
   const { colors, mode } = useTheme();
   const { t } = useI18n();
+
   const params = useLocalSearchParams();
   const txId = params.id as string | undefined;
   const isEditMode = !!txId;
@@ -86,7 +87,7 @@ export default function AddTransactionScreen() {
       }
     } catch (error) {
       console.error("Error loading transaction:", error);
-      Alert.alert("Lỗi", "Không thể tải giao dịch");
+      Alert.alert(t("error"), t("cannotLoadTransaction"));
     } finally {
       setLoading(false);
     }
@@ -124,12 +125,12 @@ export default function AddTransactionScreen() {
 
   const handleSave = async () => {
     if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert(t("error"), "Vui lòng nhập số tiền hợp lệ");
+      Alert.alert(t("error"), t("enterValidAmount"));
       return;
     }
 
     if (!selectedCategory) {
-      Alert.alert(t("error"), "Vui lòng chọn danh mục");
+      Alert.alert(t("error"), t("selectCategory"));
       return;
     }
 
@@ -139,7 +140,7 @@ export default function AddTransactionScreen() {
         accounts.find((a: any) => a.include_in_total === 1) || accounts[0];
 
       if (!defaultAccount) {
-        Alert.alert(t("error"), "Không tìm thấy tài khoản");
+        Alert.alert(t("error"), t("accountNotFound"));
         return;
       }
 
@@ -154,7 +155,7 @@ export default function AddTransactionScreen() {
           note: note.trim(),
           when: selectedDate,
         });
-        Alert.alert("Thành công", "Đã cập nhật giao dịch");
+        Alert.alert(t("success"), t("transactionUpdated"));
       } else {
         // Create new transaction
         const txData = {
@@ -171,32 +172,32 @@ export default function AddTransactionScreen() {
         } else {
           await addIncome(txData as any);
         }
-        Alert.alert("Thành công", "Đã thêm giao dịch");
+        Alert.alert(t("success"), t("transactionAdded"));
       }
 
       router.back();
     } catch (error) {
       console.error("Error saving transaction:", error);
-      Alert.alert(t("error"), "Không thể lưu giao dịch");
+      Alert.alert(t("error"), t("cannotSaveTransaction"));
     }
   };
 
   const handleDelete = async () => {
     if (!txId) return;
 
-    Alert.alert("Xác nhận xóa", "Bạn có chắc chắn muốn xóa giao dịch này?", [
-      { text: "Hủy", style: "cancel" },
+    Alert.alert(t("confirmDelete"), t("confirmDeleteTransaction"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Xóa",
+        text: t("deleteCategory"),
         style: "destructive",
         onPress: async () => {
           try {
             await deleteTx(txId);
-            Alert.alert("Thành công", "Đã xóa giao dịch");
+            Alert.alert(t("success"), t("transactionDeleted"));
             router.back();
           } catch (error) {
             console.error("Error deleting transaction:", error);
-            Alert.alert("Lỗi", "Không thể xóa giao dịch");
+            Alert.alert(t("error"), t("cannotDeleteTransaction"));
           }
         },
       },
@@ -419,7 +420,7 @@ export default function AddTransactionScreen() {
           <MaterialCommunityIcons name="close" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {isEditMode ? "Chỉnh sửa giao dịch" : t("addTransaction")}
+          {isEditMode ? t("editTransaction") : t("addTransaction")}
         </Text>
         <View style={{ width: 32 }} />
       </View>
@@ -443,7 +444,7 @@ export default function AddTransactionScreen() {
                 type === "expense" && styles.typeButtonTextActive,
               ]}
             >
-              {t("expenditure")}
+              {t("expense")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity

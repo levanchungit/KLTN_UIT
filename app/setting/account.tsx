@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AccountSettings() {
   const { colors } = useTheme();
@@ -12,7 +13,7 @@ export default function AccountSettings() {
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -52,7 +53,7 @@ export default function AccountSettings() {
           <Ionicons name="chevron-forward" size={20} color={colors.subText} />
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Language = {
   code: string;
@@ -31,7 +32,7 @@ export default function LanguageSettings() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -77,7 +78,7 @@ export default function LanguageSettings() {
         />
         <Text style={styles.infoText}>{t("infoLanguage")}</Text>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

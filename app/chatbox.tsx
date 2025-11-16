@@ -768,6 +768,7 @@ type Msg =
 export default function Chatbox() {
   const { t } = useI18n();
   const { colors, mode } = useTheme();
+
   const [items, setItems] = useState<Category[]>([]);
   const [model, setModel] = useState<LRModel | null>(null);
   const [priors, setPriors] = useState<{

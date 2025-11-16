@@ -1,8 +1,17 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  authenticateWithBiometric,
+  getBiometricType,
+  isBiometricEnabled,
+  isBiometricSupported,
+  setBiometricEnabled as saveBiometricEnabled,
+} from "@/utils/biometric";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Switch,
@@ -10,7 +19,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Modal, Portal } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Currency = {
@@ -30,6 +38,7 @@ const CURRENCIES: Currency[] = [
 
 export default function WalletSettingsScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
@@ -38,6 +47,35 @@ export default function WalletSettingsScreen() {
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [initialBalance, setInitialBalance] = useState(0);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  // Map biometric type to localized string
+  const { lang } = useI18n();
+  const [biometricType, setBiometricType] = useState("Sinh trắc học");
+  const getLocalizedBiometricType = (type: string) => {
+    if (type.toLowerCase().includes("finger")) {
+      return lang === "vi" ? "Vân tay" : "Fingerprint";
+    }
+    if (type.toLowerCase().includes("face")) {
+      return lang === "vi" ? "Khuôn mặt" : "Face";
+    }
+    return lang === "vi" ? "Sinh trắc học" : "Biometric";
+  };
+
+  useEffect(() => {
+    // Load biometric settings
+    (async () => {
+      const supported = await isBiometricSupported();
+      setBiometricSupported(supported);
+
+      if (supported) {
+        const enabled = await isBiometricEnabled();
+        setBiometricEnabled(enabled);
+
+        const type = await getBiometricType();
+        setBiometricType(type);
+      }
+    })();
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -46,7 +84,7 @@ export default function WalletSettingsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cài đặt ví và danh mục</Text>
+        <Text style={styles.headerTitle}>{t("walletSettings")}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -54,34 +92,6 @@ export default function WalletSettingsScreen() {
         style={styles.content}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        {/* Tên ví */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Tên ví</Text>
-          <View style={styles.card}>
-            <Text style={styles.cardValue}>{walletName}</Text>
-          </View>
-        </View>
-
-        {/* Tiền tệ */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => setCurrencyModalVisible(true)}
-          >
-            <Text style={styles.cardValue}>
-              Tiền tệ -{selectedCurrency.code} ({selectedCurrency.symbol})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Số dư ban đầu */}
-        <View style={styles.section}>
-          <TouchableOpacity style={styles.card}>
-            <Text style={styles.cardLabel}>Số dư ban đầu</Text>
-            <Text style={styles.cardAmount}>₫{initialBalance}</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Quản lý danh mục */}
         <View style={styles.section}>
           <TouchableOpacity
@@ -94,82 +104,58 @@ export default function WalletSettingsScreen() {
               color={colors.text}
               style={{ marginRight: 12 }}
             />
-            <Text style={styles.cardValue}>Quản lý danh mục</Text>
+            <Text style={styles.cardValue}>{t("manageCategories")}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Ví yêu cầu mở khóa sinh trắc học */}
-        <View style={styles.section}>
-          <View style={styles.switchCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.switchLabel}>
-                Ví yêu cầu mở khóa sinh trắc học 🔒
-              </Text>
-            </View>
-            <Switch
-              value={biometricEnabled}
-              onValueChange={setBiometricEnabled}
-              trackColor={{ false: colors.divider, true: "#34C759" }}
-              thumbColor="#fff"
-            />
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Bottom Buttons */}
-      <View
-        style={[styles.bottomButtons, { paddingBottom: insets.bottom + 16 }]}
-      >
-        <TouchableOpacity style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Lưu</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteButton}>
-          <Text style={styles.deleteButtonText}>Xóa ví</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Modal chọn tiền tệ */}
-      <Portal>
-        <Modal
-          visible={currencyModalVisible}
-          onDismiss={() => setCurrencyModalVisible(false)}
-          contentContainerStyle={[
-            styles.currencyModal,
-            { backgroundColor: colors.card },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]}>
-            Chọn tiền tệ
-          </Text>
-          <ScrollView>
-            {CURRENCIES.map((currency) => (
-              <TouchableOpacity
-                key={currency.code}
-                style={styles.currencyItem}
-                onPress={() => {
-                  setSelectedCurrency(currency);
-                  setCurrencyModalVisible(false);
+        {/* Biometric unlock (localized) */}
+        {biometricSupported && (
+          <View style={styles.section}>
+            <View style={styles.switchCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>
+                  {t("biometricUnlock", {
+                    type: getLocalizedBiometricType(biometricType),
+                  })}
+                </Text>
+                <Text style={styles.switchDesc}>
+                  {t("biometricUnlockDesc")}
+                </Text>
+              </View>
+              <Switch
+                value={biometricEnabled}
+                onValueChange={async (value) => {
+                  if (value) {
+                    // Require authentication before enabling
+                    const success = await authenticateWithBiometric(
+                      t("biometricRegister", { type: biometricType })
+                    );
+                    if (success) {
+                      setBiometricEnabled(true);
+                      await saveBiometricEnabled(true);
+                      Alert.alert(
+                        t("success"),
+                        t("biometricSuccess", { type: biometricType })
+                      );
+                    } else {
+                      Alert.alert(
+                        t("biometricFailed"),
+                        t("biometricFailedDesc")
+                      );
+                    }
+                  } else {
+                    // Disable without authentication
+                    setBiometricEnabled(false);
+                    await saveBiometricEnabled(false);
+                  }
                 }}
-              >
-                <Text style={styles.currencyIcon}>{currency.icon}</Text>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.currencyName, { color: colors.text }]}>
-                    {currency.name}
-                  </Text>
-                  <Text
-                    style={[styles.currencyCode, { color: colors.subText }]}
-                  >
-                    {currency.code} ({currency.symbol})
-                  </Text>
-                </View>
-                {selectedCurrency.code === currency.code && (
-                  <Ionicons name="checkmark" size={24} color="#10B981" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </Modal>
-      </Portal>
+                trackColor={{ false: colors.divider, true: "#34C759" }}
+                thumbColor="#fff"
+              />
+            </View>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -207,6 +193,7 @@ const makeStyles = (c: {
     },
     card: {
       backgroundColor: c.card,
+      marginTop: 12,
       borderRadius: 16,
       padding: 20,
       flexDirection: "row",
@@ -247,6 +234,12 @@ const makeStyles = (c: {
     switchLabel: {
       fontSize: 15,
       color: c.text,
+      fontWeight: "600",
+    },
+    switchDesc: {
+      fontSize: 12,
+      color: c.subText,
+      marginTop: 4,
     },
     bottomButtons: {
       paddingHorizontal: 16,

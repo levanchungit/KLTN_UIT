@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   createCategory,
   deleteCategory,
@@ -35,6 +36,7 @@ type Tab = "expense" | "income";
 
 export default function CategoriesScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
 
@@ -164,7 +166,7 @@ export default function CategoriesScreen() {
 
   const handleSave = async () => {
     if (!formName.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập tên danh mục");
+      Alert.alert(t("error"), t("enterCategoryName"));
       return;
     }
 
@@ -187,23 +189,23 @@ export default function CategoriesScreen() {
       setShowAllIcons(false);
       loadCategories();
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu danh mục");
+      Alert.alert(t("error"), t("cannotSaveCategory"));
       console.error(error);
     }
   };
 
   const handleDelete = (cat: Category) => {
-    Alert.alert("Xác nhận", `Xóa danh mục "${cat.name}"?`, [
-      { text: "Hủy", style: "cancel" },
+    Alert.alert(t("confirm"), t("confirmDeleteCategory", { name: cat.name }), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Xóa",
+        text: t("deleteCategory"),
         style: "destructive",
         onPress: async () => {
           try {
             await deleteCategory(cat.id);
             loadCategories();
-          } catch (error) {
-            Alert.alert("Lỗi", "Không thể xóa danh mục");
+          } catch (deleteError) {
+            Alert.alert(t("error"), t("cannotDeleteCategory"));
             console.error(error);
           }
         },
@@ -281,7 +283,7 @@ export default function CategoriesScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Quản lý danh mục</Text>
+        <Text style={styles.headerTitle}>{t("manageCategories")}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -296,7 +298,7 @@ export default function CategoriesScreen() {
               activeTab === "expense" && styles.tabTextActive,
             ]}
           >
-            Chi phí
+            {t("expense")}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -309,7 +311,7 @@ export default function CategoriesScreen() {
               activeTab === "income" && styles.tabTextActive,
             ]}
           >
-            Thu nhập
+            {t("income")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -320,12 +322,12 @@ export default function CategoriesScreen() {
       >
         {loading && (
           <Text style={[styles.emptyText, { color: colors.subText }]}>
-            Đang tải...
+            {t("loading")}
           </Text>
         )}
         {!loading && categories.length === 0 && (
           <Text style={[styles.emptyText, { color: colors.subText }]}>
-            Chưa có danh mục nào
+            {t("noCategories")}
           </Text>
         )}
         {categories.map((cat) => (
@@ -341,7 +343,7 @@ export default function CategoriesScreen() {
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.itemName}>{cat.name}</Text>
               <Text style={styles.itemType}>
-                {cat.type === "expense" ? "Chi phí" : "Thu nhập"}
+                {cat.type === "expense" ? t("expense") : t("income")}
               </Text>
             </View>
             <TouchableOpacity
@@ -365,7 +367,7 @@ export default function CategoriesScreen() {
       >
         <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
           <Ionicons name="add" size={24} color="#fff" />
-          <Text style={styles.addButtonText}>Thêm danh mục</Text>
+          <Text style={styles.addButtonText}>{t("addCategory")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -389,12 +391,12 @@ export default function CategoriesScreen() {
             ]}
           >
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {editingCategory ? "Sửa danh mục" : "Thêm danh mục"}
+              {editingCategory ? t("editCategoryTitle") : t("addCategory")}
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={[styles.label, { color: colors.text }]}>
-                Tên danh mục
+                {t("categoryName")}
               </Text>
               <TextInput
                 style={[
@@ -405,14 +407,14 @@ export default function CategoriesScreen() {
                     borderColor: colors.divider,
                   },
                 ]}
-                placeholder="Nhập tên danh mục"
+                placeholder={t("categoryName")}
                 placeholderTextColor={colors.subText}
                 value={formName}
                 onChangeText={setFormName}
               />
 
               <Text style={[styles.label, { color: colors.text }]}>
-                Chọn biểu tượng
+                {t("categoryIcon")}
               </Text>
               <View
                 style={[
@@ -441,17 +443,6 @@ export default function CategoriesScreen() {
                       formIcon === option.icon ? "#FFFFFF" : colors.icon,
                       24
                     )}
-                    <Text
-                      style={[
-                        styles.iconOptionName,
-                        {
-                          color:
-                            formIcon === option.icon ? "#fff" : colors.subText,
-                        },
-                      ]}
-                    >
-                      {option.name}
-                    </Text>
                   </TouchableOpacity>
                 ))}
                 {!showAllIcons && (
@@ -471,14 +462,9 @@ export default function CategoriesScreen() {
                       color={colors.icon}
                     />
                     <Text
-                      style={[
-                        styles.iconOptionName,
-                        {
-                          color: colors.subText,
-                        },
-                      ]}
+                      style={[styles.iconOptionName, { color: colors.subText }]}
                     >
-                      Xem thêm
+                      {t("showMore")}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -487,7 +473,7 @@ export default function CategoriesScreen() {
               <Text
                 style={[styles.label, { color: colors.text, marginTop: 6 }]}
               >
-                Màu sắc
+                {t("categoryColor")}
               </Text>
               <ScrollView
                 horizontal
@@ -571,14 +557,16 @@ export default function CategoriesScreen() {
                   setShowAllIcons(false);
                 }}
               >
-                <Text style={{ color: colors.text }}>Hủy</Text>
+                <Text style={{ color: colors.text }}>{t("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.btnSave, !formColor && { opacity: 0.5 }]}
                 disabled={!formColor}
                 onPress={handleSave}
               >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Lưu</Text>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                  {t("save")}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -605,7 +593,7 @@ export default function CategoriesScreen() {
                     { color: colors.text, marginBottom: 0, flex: 1 },
                   ]}
                 >
-                  Chọn màu tùy chỉnh
+                  {t("customColor")}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setCustomColorVisible(false)}
@@ -641,7 +629,7 @@ export default function CategoriesScreen() {
                         fontSize: 14,
                       }}
                     >
-                      Trình chọn màu không khả dụng
+                      {t("colorPickerUnavailable")}
                     </Text>
                   </View>
                 )}
@@ -670,7 +658,7 @@ export default function CategoriesScreen() {
                         { color: colors.subText },
                       ]}
                     >
-                      Màu đã chọn
+                      {t("selectedColor")}
                     </Text>
                     <Text
                       style={[styles.colorPreviewHex, { color: colors.text }]}
@@ -697,7 +685,7 @@ export default function CategoriesScreen() {
                       fontWeight: "600",
                     }}
                   >
-                    Hủy
+                    {t("cancel")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -721,7 +709,7 @@ export default function CategoriesScreen() {
                       marginLeft: 6,
                     }}
                   >
-                    Áp dụng màu này
+                    {t("applyColor")}
                   </Text>
                 </TouchableOpacity>
               </View>

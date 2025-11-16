@@ -169,7 +169,7 @@ export async function runMigrations(db: SQLiteDatabase) {
   );
   if (!localUser) {
     await db.runAsync(
-      `INSERT INTO users(id, username, password_hash, created_at, updated_at)
+      `INSERT OR IGNORE INTO users(id, username, password_hash, created_at, updated_at)
        VALUES(?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
       ["local_user", "Local User", ""]
     );
@@ -195,7 +195,7 @@ export async function runMigrations(db: SQLiteDatabase) {
   );
   if (!demoUser) {
     await db.runAsync(
-      `INSERT INTO users(id, username, password_hash, created_at, updated_at)
+      `INSERT OR IGNORE INTO users(id, username, password_hash, created_at, updated_at)
        VALUES(?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
       ["u_demo", "demo", "demo_hash"]
     );

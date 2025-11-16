@@ -19,7 +19,10 @@ import {
 import CalendarPicker from "react-native-calendar-picker";
 import { BarChart } from "react-native-gifted-charts";
 import { Modal, Portal } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type TimeRange = "Ngày" | "Tuần" | "Tháng" | "Năm" | "Khoảng thời gian";
 
@@ -112,6 +115,7 @@ function getRange(kind: TimeRange, anchor: Date) {
 
 export default function ChartsScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [timeRange, setTimeRange] = useState<TimeRange>("Tháng");
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [rangeStart, setRangeStart] = useState<Date>(new Date());

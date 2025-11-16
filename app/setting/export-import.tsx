@@ -5,7 +5,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { getCurrentUserId } from "@/utils/auth";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { readAsStringAsync, writeAsStringAsync } from "expo-file-system";
+import { readAsStringAsync, writeAsStringAsync } from "expo-file-system/legacy";
 import { router } from "expo-router";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import React, { useState } from "react";
@@ -17,11 +17,25 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // Helper to get cache directory path
 const getCacheDir = () => {
-  // Platform-specific cache directory
-  return require("expo-file-system").cacheDirectory || "";
+  try {
+    const fs = require("expo-file-system/legacy");
+    const dir = fs.cacheDirectory || fs.documentDirectory || "";
+    if (!dir) return "";
+    return dir.endsWith("/") ? dir : dir + "/";
+  } catch (e) {
+    try {
+      const fs = require("expo-file-system");
+      const dir = fs.cacheDirectory || fs.documentDirectory || "";
+      if (!dir) return "";
+      return dir.endsWith("/") ? dir : dir + "/";
+    } catch {
+      return "";
+    }
+  }
 };
 
 export default function ExportImportSettings() {
@@ -51,16 +65,18 @@ export default function ExportImportSettings() {
         LEFT JOIN accounts a ON t.account_id = a.id
         WHERE t.user_id = ?
         ORDER BY t.occurred_at DESC`,
-        [userId]
+        [userId] as any
       );
 
       if (transactions.length === 0) {
-        Alert.alert(t("error"), "Không có giao dịch để xuất");
+        Alert.alert(t("error"), t("noTransactionsToExport"));
         return;
       }
 
       // CSV header (removed ID field - same as transactions tab)
-      const csvHeader = "Số tiền,Loại,Danh mục,Ghi chú,Ngày\n";
+      const csvHeader = `${t("csvAmount")},${t("csvType")},${t(
+        "csvCategory"
+      )},${t("csvNote")},${t("csvDate")}\n`;
 
       // CSV rows
       const csvRows = transactions
@@ -71,7 +87,7 @@ export default function ExportImportSettings() {
           ).padStart(2, "0")}/${dateObj.getFullYear()} ${String(
             dateObj.getHours()
           ).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
-          const type = tx.type === "income" ? "Thu nhập" : "Chi tiêu";
+          const type = tx.type === "income" ? t("income") : t("expense");
           const amount = tx.amount.toString(); // Export as plain number without formatting
           const category = (tx.category_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
@@ -92,7 +108,7 @@ export default function ExportImportSettings() {
       if (isAvailable) {
         await shareAsync(fileUri, {
           mimeType: "text/csv",
-          dialogTitle: "Xuất giao dịch",
+          dialogTitle: t("exportTransactions"),
           UTI: "public.comma-separated-values-text",
         });
         Alert.alert(
@@ -141,7 +157,7 @@ export default function ExportImportSettings() {
       // Check if user is logged in
       const userId = await getCurrentUserId();
       if (!userId) {
-        Alert.alert(t("error"), "Vui lòng đăng nhập để nhập dữ liệu");
+        Alert.alert(t("error"), t("pleaseLoginToImport"));
         setLoading(false);
         return;
       }
@@ -238,7 +254,7 @@ export default function ExportImportSettings() {
           // Get default account
           const account = await db.getFirstAsync<{ id: string }>(
             `SELECT id FROM accounts WHERE user_id = ? LIMIT 1`,
-            [userId]
+            [userId] as any
           );
           const accountId = account?.id || "acc_default";
 
@@ -273,20 +289,19 @@ export default function ExportImportSettings() {
 
       Alert.alert(
         t("success"),
-        `Đã nhập ${imported} giao dịch thành công${
-          failed > 0 ? `\n${failed} giao dịch bị lỗi` : ""
-        }`
+        t("importedSuccess", { count: imported }) +
+          (failed > 0 ? ` (${failed} ${t("error").toLowerCase()})` : "")
       );
     } catch (error) {
       console.error("Import error:", error);
-      Alert.alert(t("error"), "Không thể nhập file CSV: " + error);
+      Alert.alert(t("error"), `${t("cannotImportCSV")}: ${error}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -360,7 +375,7 @@ export default function ExportImportSettings() {
           <Text style={styles.warningText}>{t("warningImport")}</Text>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

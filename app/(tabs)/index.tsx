@@ -1,5 +1,6 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
+import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {
@@ -26,10 +27,7 @@ import {
 import CalendarPicker from "react-native-calendar-picker";
 import { PieChart } from "react-native-gifted-charts";
 import { Modal, Portal } from "react-native-paper";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Tab = "Chi phí" | "Thu nhập";
 type RangeKind = "Ngày" | "Tuần" | "Tháng" | "Năm" | "Khoảng thời gian";
@@ -447,10 +445,27 @@ function CategoryRow({
 }
 
 export default function DashboardScreen() {
-  const insets = useSafeAreaInsets();
   const { colors, mode } = useTheme();
   const { user } = useUser();
+  const { t } = useI18n();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
+
+  // Helper function to translate time range labels for UI display
+  const translateTimeRange = (range: RangeKind): string => {
+    const map: Record<RangeKind, string> = {
+      Ngày: t("day"),
+      Tuần: t("week"),
+      Tháng: t("month"),
+      Năm: t("year"),
+      "Khoảng thời gian": t("dateRange"),
+    };
+    return map[range] || range;
+  };
+
+  // Helper function to translate tab labels for UI display
+  const translateTab = (tab: Tab): string => {
+    return tab === "Chi phí" ? t("expense") : t("income");
+  };
 
   const [activeTab, setActiveTab] = useState<Tab>("Chi phí");
   const [time, setTime] = useState<RangeKind>("Tuần");
@@ -965,7 +980,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.background }}
         contentContainerStyle={{
-          paddingBottom: insets.bottom + 80,
+          paddingBottom: 80,
           rowGap: 12,
         }}
         keyboardShouldPersistTaps="handled"
@@ -985,7 +1000,7 @@ export default function DashboardScreen() {
             >
               <View style={styles.balanceContent}>
                 <View style={styles.balanceInfo}>
-                  <Text style={styles.balanceLabel}>Tổng tài sản</Text>
+                  <Text style={styles.balanceLabel}>{t("totalAssets")}</Text>
                   <Text style={styles.balanceAmount}>
                     {fmtMoney(cashTotal)}
                   </Text>
@@ -1004,7 +1019,7 @@ export default function DashboardScreen() {
                       {netChange >= 0 ? "+" : ""}
                       {fmtMoney(netChange)}
                     </Text>
-                    <Text style={styles.netChangePeriod}> trong kỳ</Text>
+                    <Text style={styles.netChangePeriod}> {t("inPeriod")}</Text>
                   </View>
                 </View>
                 <TouchableOpacity style={styles.walletIconButton}>
@@ -1056,7 +1071,7 @@ export default function DashboardScreen() {
                       isActive && styles.timeFilterTextActive,
                     ]}
                   >
-                    {item}
+                    {translateTimeRange(item)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1166,7 +1181,7 @@ export default function DashboardScreen() {
               <Ionicons name="arrow-down" size={20} color="#EF4444" />
             </View>
             <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Chi phí</Text>
+              <Text style={styles.statLabel}>{t("expense")}</Text>
               <Text
                 style={[styles.statValue, { color: "#EF4444" }]}
                 numberOfLines={1}
@@ -1186,7 +1201,7 @@ export default function DashboardScreen() {
               <Ionicons name="arrow-up" size={20} color="#10B981" />
             </View>
             <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Thu nhập</Text>
+              <Text style={styles.statLabel}>{t("income")}</Text>
               <Text
                 style={[styles.statValue, { color: "#10B981" }]}
                 numberOfLines={1}
@@ -1199,7 +1214,7 @@ export default function DashboardScreen() {
         </View>
         {/* Tabs Chi phí / Thu nhập */}
         <View style={styles.tabsContainer}>
-          <Text style={styles.sectionTitle}>Chi tiết giao dịch</Text>
+          <Text style={styles.sectionTitle}>{t("transactionDetail")}</Text>
           <View style={styles.tabsWrapper}>
             {(["Chi phí", "Thu nhập"] as Tab[]).map((item) => {
               const isActive = item === activeTab;
@@ -1215,7 +1230,7 @@ export default function DashboardScreen() {
                       isActive && styles.tabButtonTextActive,
                     ]}
                   >
-                    {item}
+                    {translateTab(item)}
                   </Text>
                 </TouchableOpacity>
               );
