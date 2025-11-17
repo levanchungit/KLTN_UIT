@@ -935,11 +935,7 @@ export default function DashboardScreen() {
         <View style={styles.shortcutRow}>
           <View style={styles.logoContainer}>
             <Image
-              source={
-                mode === "dark"
-                  ? require("../../assets/images/logo64x64_white.png")
-                  : require("../../assets/images/logo64x64_black.png")
-              }
+              source={require("../../assets/images/logo64x64_black.png")}
               style={styles.logo}
             />
             <View>
