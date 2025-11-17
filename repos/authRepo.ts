@@ -11,6 +11,8 @@ export type AppUser = {
   id: string;
   username: string;
   password: string;
+  name?: string | null;
+  image?: string | null;
   created_at: number;
 };
 
@@ -21,6 +23,8 @@ export async function ensureAuthTables() {
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      name TEXT,
+      image TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -96,7 +100,12 @@ export async function loginWithPassword({
 }: {
   username: string;
   password: string;
-}): Promise<{ id: string; username: string }> {
+}): Promise<{
+  id: string;
+  username: string;
+  name?: string | null;
+  image?: string | null;
+}> {
   await ensureAuthTables();
 
   const uname = String(username ?? "")
@@ -111,8 +120,10 @@ export async function loginWithPassword({
     id: string;
     username: string;
     password_hash: string;
+    name?: string | null;
+    image?: string | null;
   }>(
-    `SELECT id, username, password_hash
+    `SELECT id, username, password_hash, name, image
      FROM users
      WHERE username = ?`,
     [uname]
@@ -144,7 +155,12 @@ export async function loginWithPassword({
     // Không critical; có thể bỏ qua nếu schema chưa có last_login_at
   }
 
-  return { id: user.id, username: user.username };
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    image: user.image,
+  };
 }
 
 /**
@@ -155,21 +171,41 @@ export async function loginOrCreateUserWithGoogle({
   googleId,
   email,
   name,
+  image,
 }: {
   googleId: string;
   email?: string | null;
   name?: string | null;
-}): Promise<{ id: string; username: string }> {
+  image?: string | null;
+}): Promise<{
+  id: string;
+  username: string;
+  name?: string | null;
+  image?: string | null;
+}> {
   await ensureAuthTables();
+  // Prefer using the user's email as the username when available so Google
+  // accounts are stored as their email. Fall back to `google:<id>` when
+  // no email is provided.
+  const emailNorm = email ? String(email).trim().toLowerCase() : null;
 
-  const uname = `google:${googleId}`;
-
-  // Check existing
+  // Check existing user by that username (this will also link to an
+  // existing local account that used the same email).
   const existing = await db.getFirstAsync<{ id: string; username: string }>(
     `SELECT id, username FROM users WHERE username=?`,
-    [uname]
+    [emailNorm]
   );
-  if (existing) return { id: existing.id, username: existing.username };
+  if (existing) {
+    // Update profile fields if provided (non-destructive)
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      await db.runAsync(
+        `UPDATE users SET name = COALESCE(?, name), image = COALESCE(?, image), updated_at = ? WHERE id = ?`,
+        [name ?? null, image ?? null, now, existing.id]
+      );
+    } catch (_) {}
+    return { id: existing.id, username: existing.username };
+  }
 
   // Create new user record. We don't store a real password for OAuth users;
   // instead store a random hash so the schema's not violated.
@@ -180,11 +216,16 @@ export async function loginOrCreateUserWithGoogle({
   const now = Math.floor(Date.now() / 1000);
 
   await db.runAsync(
-    `INSERT INTO users(id,username,password_hash,created_at,updated_at)
-     VALUES(?,?,?,?,?)`,
-    [id, uname, password_hash, now, now]
+    `INSERT INTO users(id,username,password_hash,name,image,created_at,updated_at)
+     VALUES(?,?,?,?,?,?,?)`,
+    [id, emailNorm, password_hash, name ?? null, image ?? null, now, now]
   );
 
   // Optionally populate a profile table in future. For now return id/username.
-  return { id, username: uname };
+  return {
+    id,
+    username: emailNorm || `google:${googleId}`,
+    name: name ?? null,
+    image: image ?? null,
+  };
 }

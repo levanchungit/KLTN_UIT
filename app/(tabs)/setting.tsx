@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -42,15 +43,26 @@ export default function Setting() {
           }}
         >
           <View style={styles.avatar}>
-            <Ionicons
-              name={user ? "person" : "person-outline"}
-              size={24}
-              color="#fff"
-            />
+            {user && user.image ? (
+              <Image
+                source={{ uri: user.image }}
+                style={{ width: 48, height: 48, borderRadius: 24 }}
+              />
+            ) : (
+              <Ionicons
+                name={user ? "person" : "person-outline"}
+                size={24}
+                color="#fff"
+              />
+            )}
           </View>
           <View style={{ marginLeft: 12 }}>
-            <Text style={styles.profileName}>
-              {user ? user.username : "Chưa đăng nhập"}
+            <Text
+              style={styles.profileName}
+              numberOfLines={1}
+              ellipsizeMode="middle"
+            >
+              {user ? user.name ?? user.username : "Chưa đăng nhập"}
             </Text>
             <Text style={styles.profileDesc}>
               {user ? "Xem hồ sơ" : "Đăng nhập ngay"}
@@ -231,6 +243,8 @@ const makeStyles = (
       fontSize: 16,
       fontWeight: "600",
       color: c.text,
+      maxWidth: 200,
+      flexShrink: 1,
     },
     profileDesc: {
       fontSize: 13,

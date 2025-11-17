@@ -86,3 +86,73 @@ Notes and troubleshooting:
 - When running in Expo Go, using `useProxy: true` (the default in the app) often makes the flow simpler — but platform client IDs may still be required for Android/iOS behavior.
 - For standalone builds or dev clients, make sure redirect URIs in Google Cloud Console match your app's scheme (see `app.config.js` `scheme` value).
 - If the Google button shows a configuration alert, verify the env vars are set and restart Metro/Expo.
+
+## Google Sign-In (Native) — `@react-native-google-signin/google-signin`
+
+Phiên bản native sử dụng `@react-native-google-signin/google-signin` cho trải nghiệm Google Sign-In ổn định hơn trên dev-client/standalone. Lưu ý: native module yêu cầu build native (EAS dev-client hoặc native build), không hoạt động trong Expo Go.
+
+Các bước cài đặt tóm tắt:
+
+1. Cài dependency:
+
+```bash
+yarn add @react-native-google-signin/google-signin
+# hoặc
+npm install @react-native-google-signin/google-signin
+```
+
+2. Android: thêm `google-services.json` vào `android/app/` và cấu hình Gradle theo hướng dẫn của thư viện.
+   - Tạo OAuth Client trong Google Cloud Console với loại **Android**.
+   - Client phải được tạo cho `applicationId` (package name) của app và SHA-1 của keystore bạn dùng để build.
+   - Lấy SHA-1 (debug keystore) bằng lệnh (Windows `cmd.exe`):
+
+```cmd
+keytool -list -v -keystore %USERPROFILE%\.android\debug.keystore -alias androiddebugkey -storepass android -keypass android
+```
+
+- Thêm `google-services.json` (từ Firebase / Google Cloud) vào `android/app/`.
+
+3. iOS: thêm `GoogleService-Info.plist` vào Xcode project (nếu dùng Firebase) hoặc cấu hình reversed client ID trong `Info.plist` theo hướng dẫn thư viện.
+   - Chạy `pod install` trong thư mục `ios/` sau khi cài package:
+
+```bash
+cd ios && pod install && cd ..
+```
+
+4. Build dev-client / native app:
+   - Với EAS (khuyến nghị):
+
+```bash
+eas build --profile development --platform android
+eas build --profile development --platform ios
+```
+
+- Hoặc dùng prebuild & chạy trực tiếp nếu đang ở bare workflow.
+
+5. Kiểm tra flow:
+   - Mở app trên thiết bị cài dev-client/ứng dụng native (không phải Expo Go).
+   - Nhấn nút "Đăng nhập bằng Google" — native module sẽ gọi Google Sign-In UI.
+
+Ghi chú quan trọng:
+
+- OAuth client Android yêu cầu SHA-1 khớp với keystore dùng để build dev-client/ứng dụng. Nếu SHA-1 không đúng, Google Sign-In sẽ lỗi.
+- Đảm bảo `loginOrCreateUserWithGoogle` (trong `repos/authRepo.ts`) chấp nhận `idToken` và/hoặc `googleId` để backend xác thực/khởi tạo user.
+- Nếu bạn vẫn muốn thử nhanh trong Expo Go, giữ flow dự phòng `expo-auth-session` (web/proxy) — nhưng hiện tại file `app/auth/login.tsx` đã chuyển sang native flow và sẽ hiển thị hướng dẫn khi chạy trong Expo Go.
+
+Lệnh tóm tắt (Windows `cmd.exe`) để thử cục bộ với dev-client/EAS:
+
+```cmd
+REM cài dependency
+yarn add @react-native-google-signin/google-signin
+
+REM iOS pods
+cd ios && pod install && cd ..
+
+REM build dev-client (EAS) cho Android
+eas build --platform android --profile development
+
+REM hoặc cho iOS
+eas build --platform ios --profile development
+```
+
+Nếu muốn, tôi có thể thêm hướng dẫn cụ thể cho `app.config.js` và cách lưu client IDs an toàn bằng EAS secrets.

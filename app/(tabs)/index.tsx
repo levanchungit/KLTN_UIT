@@ -940,8 +940,12 @@ export default function DashboardScreen() {
             />
             <View>
               <Text style={styles.greeting}>Xin chào 👋</Text>
-              <Text style={styles.username}>
-                {user ? user.username : "Người dùng (demo)"}
+              <Text
+                style={styles.username}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+              >
+                {user ? user.name ?? user.username : "Người dùng (demo)"}
               </Text>
             </View>
           </View>
@@ -1397,6 +1401,8 @@ const makeStyles = (c: {
       fontSize: 17,
       color: c.text,
       fontWeight: "700",
+      maxWidth: 220,
+      flexShrink: 1,
     },
     iconButton: {
       width: 40,

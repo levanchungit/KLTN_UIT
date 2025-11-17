@@ -1,3 +1,4 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import {
   createUserWithPassword,
@@ -6,11 +7,10 @@ import {
 } from "@/repos/authRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Google from "expo-auth-session/providers/google";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import Constants from "expo-constants";
 import { router, useGlobalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,11 +26,11 @@ import {
 
 export default function LoginScreen() {
   const { loginSet } = useUser();
-  WebBrowser.maybeCompleteAuthSession();
   const params = useGlobalSearchParams();
   const upgradeParam = params?.upgrade === "1";
   const onboardingParam = params?.onboarding === "1";
-  const [isLogin, setIsLogin] = useState(true); // true = login, false = register
+
+  const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,105 +39,74 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Read client IDs from config or env. We'll only mount the Google auth
-  // component when a platform-appropriate client id is present to avoid
-  // expo-auth-session throwing during initialization.
+  // client ids from app config or env
   const androidClientId =
-    (Constants?.expoConfig?.extra as any)
+    (Constants as any)?.expoConfig?.extra
       ?.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID ||
-    (Constants as any).manifest?.extra?.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID ||
     process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID;
   const iosClientId =
-    (Constants?.expoConfig?.extra as any)?.IOS_GOOGLE_CLIENT_ID ||
-    (Constants as any).manifest?.extra?.IOS_GOOGLE_CLIENT_ID ||
+    (Constants as any)?.expoConfig?.extra?.IOS_GOOGLE_CLIENT_ID ||
     process.env.IOS_GOOGLE_CLIENT_ID;
-  const expoClientId =
-    (Constants?.expoConfig?.extra as any)?.EXPO_GOOGLE_CLIENT_ID ||
-    (Constants as any).manifest?.extra?.EXPO_GOOGLE_CLIENT_ID ||
-    process.env.EXPO_GOOGLE_CLIENT_ID;
   const webClientId =
-    (Constants?.expoConfig?.extra as any)?.WEB_GOOGLE_CLIENT_ID ||
-    (Constants as any).manifest?.extra?.WEB_GOOGLE_CLIENT_ID ||
-    process.env.WEB_GOOGLE_CLIENT_ID;
+    "413389631553-2vlf4boj5gtm0tgq9a62njcohasp581b.apps.googleusercontent.com";
 
-  const canUseGoogle =
-    Platform.OS === "android"
-      ? Boolean(androidClientId)
-      : Platform.OS === "ios"
-      ? Boolean(iosClientId || expoClientId)
-      : Boolean(webClientId || expoClientId);
-
-  function GoogleSignIn() {
-    const [request, response, promptAsync] = Google.useAuthRequest({
-      androidClientId,
-      iosClientId,
-      expoClientId,
-      webClientId,
+  // Cấu hình GoogleSignin, không check Expo / NativeModules nữa
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: webClientId || undefined,
+      iosClientId: iosClientId || undefined,
+      offlineAccess: false,
+      scopes: ["profile", "email"],
     });
+  }, [webClientId, iosClientId]);
 
-    React.useEffect(() => {
-      (async () => {
-        if (response?.type === "success") {
-          const token = response.authentication?.accessToken;
-          if (!token) return;
-          try {
-            const profileRes = await fetch(
-              "https://www.googleapis.com/userinfo/v2/me",
-              {
-                headers: { Authorization: `Bearer ${token}` },
-              }
-            );
-            const profile = await profileRes.json();
-            const gId = profile.id;
-            if (!gId) throw new Error("No Google id returned");
+  async function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    try {
+      if (
+        Platform.OS === "android" &&
+        typeof GoogleSignin.hasPlayServices === "function"
+      ) {
+        await GoogleSignin.hasPlayServices({
+          showPlayServicesUpdateDialog: true,
+        });
+      }
 
-            const acct = await loginOrCreateUserWithGoogle({
-              googleId: String(gId),
-              email: profile.email,
-              name: profile.name,
-            });
+      const userInfo = await GoogleSignin.signIn();
+      console.log(userInfo);
+      const profile = userInfo.data.user;
+      const idToken = userInfo.data.idToken;
+      const photo =
+        userInfo.data.photo || (profile && (profile.photo || profile.picture));
 
-            await loginSet({ id: acct.id, username: acct.username });
-            try {
-              await AsyncStorage.setItem("requires_onboarding", acct.id);
-            } catch (e) {
-              console.warn("Could not set requires_onboarding flag", e);
-            }
-            router.replace("/onboarding/wallet-setup");
-          } catch (err) {
-            console.error("Google sign-in failed:", err);
-            Alert.alert("Lỗi", "Đăng nhập bằng Google thất bại");
-          }
-        }
-      })();
-    }, [response]);
+      const acct = await loginOrCreateUserWithGoogle({
+        googleId: String(profile.id),
+        email: profile.email,
+        name: profile.name,
+        image: photo,
+        idToken,
+      } as any);
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.submitButton,
-          { backgroundColor: "#DB4437", marginTop: 12 },
-        ]}
-        onPress={async () => {
-          if (!request) {
-            Alert.alert(
-              "Cấu hình Google",
-              "Google Sign-In chưa được cấu hình đúng. Vui lòng kiểm tra client IDs."
-            );
-            return;
-          }
-          try {
-            await promptAsync({ useProxy: true, showInRecents: true });
-          } catch (e) {
-            console.error("promptAsync error:", e);
-            Alert.alert("Lỗi", "Không thể mở trình đăng nhập Google");
-          }
-        }}
-      >
-        <Text style={styles.submitButtonText}>Đăng nhập bằng Google</Text>
-      </TouchableOpacity>
-    );
+      await loginSet({
+        id: acct.id,
+        username: acct.username,
+        name: acct.name ?? null,
+        image: acct.image ?? null,
+      });
+      try {
+        await AsyncStorage.setItem("requires_onboarding", acct.id);
+      } catch (e) {
+        console.warn("Could not set requires_onboarding flag", e);
+      }
+      router.replace("/onboarding/wallet-setup");
+    } catch (err: any) {
+      console.log("GoogleSignin error:", err);
+      Alert.alert("Lỗi", "Đăng nhập bằng Google thất bại");
+    } finally {
+      setGoogleLoading(false);
+    }
   }
 
   const handleLogin = async () => {
@@ -145,13 +114,16 @@ export default function LoginScreen() {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
       return;
     }
-
     setLoading(true);
     try {
       const result = await loginWithPassword({ username, password });
-      await loginSet({ id: result.id, username: result.username });
+      await loginSet({
+        id: result.id,
+        username: result.username,
+        name: (result as any).name ?? null,
+        image: (result as any).image ?? null,
+      });
       try {
-        // If onboarding flow requested, send user into onboarding wallet setup
         const onboarding = onboardingParam;
         const upgrade =
           (await AsyncStorage.getItem("upgrade_after_login")) ||
@@ -166,9 +138,9 @@ export default function LoginScreen() {
           return;
         }
       } catch (e) {
-        // ignore and continue
+        // ignore
       }
-      router.replace("/(tabs)");
+      (router as any).replace("(tabs)");
     } catch (error: any) {
       const msg =
         error.message === "WRONG_CREDENTIALS"
@@ -187,44 +159,28 @@ export default function LoginScreen() {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
       return;
     }
-
     if (password !== confirmPassword) {
       Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp");
       return;
     }
-
     if (username.length < 3) {
       Alert.alert("Lỗi", "Username phải có ít nhất 3 ký tự");
       return;
     }
-
     if (password.length < 4) {
       Alert.alert("Lỗi", "Password phải có ít nhất 4 ký tự");
       return;
     }
-
     setLoading(true);
     try {
       const userId = await createUserWithPassword({ username, password });
       await loginSet({ id: userId, username });
-      // mark this freshly-registered user as requiring onboarding
       try {
         await AsyncStorage.setItem("requires_onboarding", userId);
       } catch (e) {
         console.warn("Could not set requires_onboarding flag", e);
       }
-      try {
-        const onboarding = onboardingParam;
-        const upgrade =
-          (await AsyncStorage.getItem("upgrade_after_login")) ||
-          (upgradeParam ? "1" : null);
-        // Always send newly registered users into onboarding flow
-        router.replace("/onboarding/wallet-setup");
-        return;
-      } catch (e) {
-        // ignore
-      }
-      router.replace("/(tabs)");
+      router.replace("/onboarding/wallet-setup");
     } catch (error: any) {
       const msg =
         error.message === "USERNAME_TAKEN"
@@ -239,6 +195,72 @@ export default function LoginScreen() {
       setLoading(false);
     }
   };
+
+  const { colors } = useTheme();
+
+  const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: "center",
+      padding: 20,
+      paddingBottom: 40,
+    },
+    header: { alignItems: "center", marginBottom: 40 },
+    title: {
+      fontSize: 32,
+      fontWeight: "bold",
+      color: colors.text,
+      marginTop: 16,
+    },
+    subtitle: { fontSize: 16, color: colors.subText, marginTop: 8 },
+    form: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 24,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    tabContainer: {
+      flexDirection: "row",
+      marginBottom: 24,
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 4,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: "center",
+      borderRadius: 6,
+    },
+    tabActive: { backgroundColor: "#007AFF" },
+    tabText: { fontSize: 16, color: colors.subText, fontWeight: "500" },
+    tabTextActive: { color: "#fff", fontWeight: "600" },
+    inputContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 8,
+      marginBottom: 16,
+      paddingHorizontal: 12,
+      backgroundColor: colors.background,
+    },
+    inputIcon: { marginRight: 8 },
+    input: { flex: 1, paddingVertical: 14, fontSize: 16, color: colors.text },
+    submitButton: {
+      backgroundColor: "#007AFF",
+      paddingVertical: 16,
+      borderRadius: 8,
+      alignItems: "center",
+      marginTop: 8,
+    },
+    submitButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  });
 
   return (
     <KeyboardAvoidingView
@@ -290,16 +312,15 @@ export default function LoginScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Username"
+              placeholder="Tên đăng nhập"
+              placeholderTextColor={colors.subText}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType={isLogin ? "done" : "next"}
               onSubmitEditing={() => {
-                if (!isLogin) {
-                  passwordRef.current?.focus();
-                }
+                if (!isLogin) passwordRef.current?.focus();
               }}
             />
           </View>
@@ -313,7 +334,8 @@ export default function LoginScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Password"
+              placeholder="Mật khẩu"
+              placeholderTextColor={colors.subText}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -347,7 +369,8 @@ export default function LoginScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Xác nhận password"
+                placeholder="Xác nhận mật khẩu"
+                placeholderTextColor={colors.subText}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirm}
@@ -383,129 +406,22 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Google Sign-In: only mount the hook when a platform-appropriate client id exists */}
-          {canUseGoogle ? (
-            <GoogleSignIn />
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                { backgroundColor: "#DB4437", marginTop: 12 },
-              ]}
-              onPress={() => {
-                Alert.alert(
-                  "Cấu hình Google",
-                  "Google Sign-In chưa được cấu hình cho nền tảng này. Vui lòng đặt client IDs trong biến môi trường hoặc `app.config.js` extra."
-                );
-              }}
-            >
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              { backgroundColor: "#DB4437", marginTop: 12 },
+            ]}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
               <Text style={styles.submitButtonText}>Đăng nhập bằng Google</Text>
-            </TouchableOpacity>
-          )}
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    padding: 20,
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#333",
-    marginTop: 16,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#666",
-    marginTop: 8,
-  },
-  form: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  tabContainer: {
-    flexDirection: "row",
-    marginBottom: 24,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderRadius: 6,
-  },
-  tabActive: {
-    backgroundColor: "#007AFF",
-  },
-  tabText: {
-    fontSize: 16,
-    color: "#666",
-    fontWeight: "500",
-  },
-  tabTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    backgroundColor: "#fafafa",
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: "#333",
-  },
-  submitButton: {
-    backgroundColor: "#007AFF",
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  submitButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  skipButton: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  skipButtonText: {
-    color: "#007AFF",
-    fontSize: 14,
-  },
-});

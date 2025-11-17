@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import React from "react";
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -63,10 +64,18 @@ export default function ProfileScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.avatar}>
-          <MaterialCommunityIcons name="account" size={60} color="#fff" />
+          {user.image ? (
+            <Image
+              source={{ uri: user.image }}
+              style={{ width: 100, height: 100, borderRadius: 50 }}
+            />
+          ) : (
+            <MaterialCommunityIcons name="account" size={60} color="#fff" />
+          )}
         </View>
-        <Text style={styles.username}>{user.username}</Text>
-        {user.email && <Text style={styles.email}>{user.email}</Text>}
+        <Text style={styles.username} numberOfLines={1} ellipsizeMode="middle">
+          {user.name ?? user.username}
+        </Text>
       </View>
 
       <View style={styles.section}>
@@ -153,10 +162,14 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#fff",
     marginBottom: 4,
+    maxWidth: "90%",
+    flexShrink: 1,
   },
   email: {
     fontSize: 14,
     color: "rgba(255,255,255,0.8)",
+    maxWidth: "90%",
+    flexShrink: 1,
   },
   section: {
     backgroundColor: "#fff",

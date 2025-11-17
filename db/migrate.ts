@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  name TEXT,
+  image TEXT,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
@@ -237,4 +239,7 @@ export async function runMigrations(db: SQLiteDatabase) {
     "INTEGER",
     `UPDATE users SET updated_at = strftime('%s','now')`
   );
+  // Add new optional profile columns
+  await ensureColumn(db, "users", "name", "TEXT");
+  await ensureColumn(db, "users", "image", "TEXT");
 }

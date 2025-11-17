@@ -4,7 +4,8 @@ import * as SecureStore from "expo-secure-store";
 export type UserSession = {
   id: string;
   username: string;
-  email?: string;
+  name?: string | null;
+  image?: string | null;
 };
 
 const KEY = "user_session";

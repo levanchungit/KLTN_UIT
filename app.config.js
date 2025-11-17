@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 export default {
   expo: {
     name: "KLTN_UIT",
@@ -69,8 +71,8 @@ export default {
       EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID:
         process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID,
       IOS_GOOGLE_CLIENT_ID: process.env.IOS_GOOGLE_CLIENT_ID,
-      WEB_GOOGLE_CLIENT_ID: process.env.WEB_GOOGLE_CLIENT_ID,
-      EXPO_GOOGLE_CLIENT_ID: process.env.EXPO_GOOGLE_CLIENT_ID,
+      WEB_GOOGLE_CLIENT_ID: process.env.EXPO_PUBLIC_WEB_GOOGLE_CLIENT_ID,
+      EXPO_GOOGLE_CLIENT_ID: process.env.EXPO_PUBLIC_EXPO_GOOGLE_CLIENT_ID,
       eas: {
         projectId: "17ee9dcf-d3f4-41ef-95bb-5202d44fdc8d",
       },
