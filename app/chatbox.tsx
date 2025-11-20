@@ -220,133 +220,396 @@ async function processReceiptImage(imageUri: string): Promise<{
         };
       }
 
-      // Extract amount from OCR text
+      // Extract final total amount from OCR text (ưu tiên miễn phí, rule-based)
       const extractAmount = (text: string): number | null => {
         console.log("🔍 Extracting amount from text:", text);
 
-        // Normalize text for better matching
-        const normalizedText = text
-          .replace(/\s+/g, " ") // normalize spaces
-          .replace(/[oO]/g, "0") // O -> 0
-          .replace(/[lI]/g, "1") // l/I -> 1
-          .trim();
+        if (!text || !text.trim()) return null;
 
-        console.log("📝 Normalized text:", normalizedText);
+        // --- Chuẩn hoá & tách dòng ---
+        const rawLines = text
+          .split(/[\r\n]+/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
 
-        // Split into lines for analysis
-        const lines = normalizedText.split(/[\n\r]+/);
-        console.log("📋 Total lines:", lines.length);
+        if (rawLines.length === 0) return null;
 
-        // Focus on BOTTOM HALF of receipt (where total is usually located)
-        const bottomHalfStart = Math.floor(lines.length / 2);
-        const bottomHalfLines = lines.slice(bottomHalfStart);
-        const bottomHalfText = bottomHalfLines.join("\n");
+        const totalLines = rawLines.length;
+        const bottomStart = Math.floor(totalLines * 0.4); // lấy ~40% cuối
+        const bottomLines = rawLines.slice(bottomStart);
 
-        console.log(
-          `🎯 Analyzing bottom half (lines ${bottomHalfStart} to ${lines.length})`
-        );
+        // -----------------------------
+        // 🔥 1) Hàm chuyển "bằng chữ" → số
+        // -----------------------------
+        const wordsToNumberVN = (s: string): number | null => {
+          if (!s) return null;
 
-        // PRIORITY 1: Find "TỔNG CỘNG" in bottom half
-        const grandTotalKeywords = [
-          /tổng\s*cộng/i,
-          /tong\s*cong/i,
-          /grand\s*total/i,
+          const mapUnit: Record<string, number> = {
+            không: 0,
+            khong: 0,
+            một: 1,
+            mot: 1,
+            mốt: 1,
+            mot1: 1,
+            hai: 2,
+            ba: 3,
+            bốn: 4,
+            bon: 4,
+            tư: 4,
+            tu: 4,
+            năm: 5,
+            nam: 5,
+            lăm: 5,
+            lam: 5,
+            sáu: 6,
+            sau: 6,
+            bảy: 7,
+            bay: 7,
+            tám: 8,
+            tam: 8,
+            chín: 9,
+            chin: 9,
+          };
+
+          const mapMul: Record<string, number> = {
+            mươi: 10,
+            muoi: 10,
+            mười: 10,
+            chục: 10,
+            chuc: 10,
+            trăm: 100,
+            tram: 100,
+            nghìn: 1000,
+            nghin: 1000,
+            ngàn: 1000,
+            ngan: 1000,
+            triệu: 1000000,
+            trieu: 1000000,
+            tỷ: 1000000000,
+            ty: 1000000000,
+          };
+
+          const cleaned = s
+            .toLowerCase()
+            .replace(
+              /[^a-z0-9\sáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ\-]/g,
+              " "
+            )
+            .replace(/\-+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          if (!cleaned) return null;
+          const tokens = cleaned.split(" ");
+
+          let total = 0;
+          let current = 0;
+
+          for (let i = 0; i < tokens.length; i++) {
+            const w = tokens[i];
+            if (!w) continue;
+
+            // bỏ các từ nối / filler
+            if (
+              w === "và" ||
+              w === "va" ||
+              w === "lẻ" ||
+              w === "le" ||
+              w === "linh" ||
+              w === "chẵn" ||
+              w === "chan"
+            )
+              continue;
+
+            if (mapUnit[w] !== undefined) {
+              current += mapUnit[w];
+              continue;
+            }
+
+            if (mapMul[w] !== undefined) {
+              const mul = mapMul[w];
+
+              if (mul >= 1000) {
+                // nghìn / triệu / tỷ
+                const base = current || 1;
+                total += base * mul;
+                current = 0;
+              } else if (mul === 10) {
+                if (current === 0) {
+                  current = 10;
+                } else {
+                  const hundreds = Math.floor(current / 100) * 100;
+                  let ones = current - hundreds;
+
+                  if (ones === 0) {
+                    current = hundreds + 10;
+                  } else {
+                    current = hundreds + ones * 10;
+                  }
+                }
+              } else {
+                if (current === 0) current = 1;
+                current = current * mul;
+              }
+              continue;
+            }
+
+            const num = parseInt(w.replace(/[^0-9]/g, ""), 10);
+            if (!isNaN(num)) {
+              current += num;
+              continue;
+            }
+          }
+
+          const result = total + current;
+          if (!result || result < 100) return null;
+          return Math.round(result);
+        };
+
+        const wordKeywords = [
+          "một",
+          "hai",
+          "ba",
+          "bốn",
+          "tư",
+          "năm",
+          "lăm",
+          "sáu",
+          "bảy",
+          "tám",
+          "chín",
+          "mươi",
+          "mười",
+          "trăm",
+          "nghìn",
+          "ngàn",
+          "triệu",
+          "tỷ",
+          "dong",
+          "đồng",
+          "dong.",
+          "đồng.",
+          "vnd",
+          "vnđ",
         ];
 
-        for (let i = bottomHalfLines.length - 1; i >= 0; i--) {
-          const line = bottomHalfLines[i];
-          for (const keyword of grandTotalKeywords) {
-            if (keyword.test(line)) {
-              console.log(`📄 Found GRAND TOTAL:`, line);
-
-              const formattedMatch = line.match(/(\d{1,3}(?:[,\.]\d{3})+)/);
-              if (formattedMatch) {
-                const amount = parseInt(
-                  formattedMatch[1].replace(/[,\.]/g, "")
-                );
-                if (!isNaN(amount) && amount >= 10000 && amount <= 100000000) {
-                  console.log(`✅ GRAND TOTAL: ${amount}`);
-                  return amount;
-                }
-              }
-
-              const numberMatch = line.match(/(\d{4,})/);
-              if (numberMatch) {
-                const amount = parseInt(numberMatch[1]);
-                if (!isNaN(amount) && amount >= 10000 && amount <= 100000000) {
-                  console.log(`✅ GRAND TOTAL: ${amount}`);
-                  return amount;
-                }
-              }
-            }
-          }
-        }
-
-        // PRIORITY 2: Find "THANH TOÁN" or "PAYMENT" in bottom half
-        const paymentKeywords = [/thanh\s*toán/i, /thanh\s*toan/i, /payment/i];
-
-        for (let i = bottomHalfLines.length - 1; i >= 0; i--) {
-          const line = bottomHalfLines[i];
-          // Skip "thành tiền" (item subtotal)
-          if (/(thành\s*tiền|thanh\s*tien)/i.test(line)) {
-            continue;
-          }
-
-          for (const keyword of paymentKeywords) {
-            if (keyword.test(line)) {
-              console.log(`📄 Found PAYMENT:`, line);
-
-              const formattedMatch = line.match(/(\d{1,3}(?:[,\.]\d{3})+)/);
-              if (formattedMatch) {
-                const amount = parseInt(
-                  formattedMatch[1].replace(/[,\.]/g, "")
-                );
-                if (!isNaN(amount) && amount >= 10000 && amount <= 100000000) {
-                  console.log(`✅ PAYMENT: ${amount}`);
-                  return amount;
-                }
-              }
-
-              const numberMatch = line.match(/(\d{4,})/);
-              if (numberMatch) {
-                const amount = parseInt(numberMatch[1]);
-                if (!isNaN(amount) && amount >= 10000 && amount <= 100000000) {
-                  console.log(`✅ PAYMENT: ${amount}`);
-                  return amount;
-                }
-              }
-            }
-          }
-        }
-
-        // PRIORITY 3: Find ALL numbers in bottom half, return the LARGEST
-        const allNumbers = bottomHalfText.match(
-          /\d{1,3}(?:[,\.]\d{3})+|\d{4,}/g
+        const wordRe = new RegExp(
+          `(?:${wordKeywords.join("|")})(?:[\\s\\-]+(?:${wordKeywords.join(
+            "|"
+          )}))*`,
+          "i"
         );
 
-        if (allNumbers && allNumbers.length > 0) {
-          const amounts = allNumbers
-            .map((n) => parseInt(n.replace(/[,\.]/g, "")))
-            .filter((n) => {
-              // Exclude phone numbers (10-11 digits)
-              const isPhone = n >= 900000000 && n < 10000000000;
-              // Only accept reasonable amounts
-              const isValidAmount = n >= 10000 && n <= 100000000;
-              return !isNaN(n) && !isPhone && isValidAmount;
-            })
-            .sort((a, b) => b - a); // Sort descending - largest first
+        const hasMoneyUnit = (line: string) =>
+          /(đồng|dong|vnđ|vnd)/i.test(line);
 
-          console.log("💰 All valid numbers in bottom half:", amounts);
+        // ------------------------------------------
+        // 🔥 2) ƯU TIÊN LẤY "SỐ TIỀN BẰNG CHỮ"
+        //    - Chỉ parse phần sau "bằng chữ" tới trước "đồng"
+        // ------------------------------------------
+        const tryExtractByWordsLine = (lines: string[]): number | null => {
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i];
+            const lower = line.toLowerCase();
 
-          if (amounts.length > 0) {
-            const largestAmount = amounts[0];
-            console.log(`✅ LARGEST NUMBER in bottom half: ${largestAmount}`);
-            return largestAmount;
+            if (/(bằng\s*chữ|bang\s*chu|in\s*words)/i.test(lower)) {
+              // dạng: "Số tiền bằng chữ: Năm trăm nghìn đồng chẵn."
+              const m =
+                line.match(/bằng\s*chữ[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
+                line.match(/bang\s*chu[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
+                line.match(/in\s*words[:\-]?\s*(.+)$/i);
+
+              let phrase = "";
+              if (m && m[1]) {
+                phrase = m[1];
+              } else {
+                // fallback: lấy cụm "từ đầu tới 'đồng'"
+                const m2 = line.match(/(.+?)(đồng|dong|vnđ|vnd)/i);
+                if (m2 && m2[1]) phrase = m2[1];
+              }
+
+              if (!phrase) {
+                // cuối cùng: dùng wordRe trên cả dòng
+                const m3 = line.match(wordRe);
+                if (m3) phrase = m3[0];
+              }
+
+              if (!phrase) continue;
+
+              const v = wordsToNumberVN(phrase);
+              if (v && v >= 1000) {
+                console.log(
+                  "✅ Detected amount by VN words (bằng chữ):",
+                  v,
+                  " | line:",
+                  line
+                );
+                return v;
+              }
+            }
           }
+          return null;
+        };
+
+        // 2a) quét phần cuối trước
+        const amountFromWordsBottom = tryExtractByWordsLine(bottomLines);
+        if (amountFromWordsBottom) return amountFromWordsBottom;
+
+        // 2b) fallback: quét toàn bộ hoá đơn
+        const amountFromWordsAll = tryExtractByWordsLine(rawLines);
+        if (amountFromWordsAll) return amountFromWordsAll;
+
+        // ------------------------------------------
+        // 🔥 3) Nếu không có "bằng chữ": thử các dòng
+        //     có đơn vị tiền + nhiều từ số
+        // ------------------------------------------
+        const tryWordsNoLabel = (lines: string[]): number | null => {
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i];
+            if (!hasMoneyUnit(line)) continue;
+            if (!wordRe.test(line)) continue;
+
+            const m = line.match(wordRe);
+            if (!m) continue;
+            const v = wordsToNumberVN(m[0]);
+            if (v && v >= 1000) {
+              console.log(
+                "✅ Detected amount by VN words (no label):",
+                v,
+                " | line:",
+                line
+              );
+              return v;
+            }
+          }
+          return null;
+        };
+
+        const vBottomNoLabel = tryWordsNoLabel(bottomLines);
+        if (vBottomNoLabel) return vBottomNoLabel;
+
+        const vAllNoLabel = tryWordsNoLabel(rawLines);
+        if (vAllNoLabel) return vAllNoLabel;
+
+        // ------------------------------------------
+        // 🔥 4) Fallback: heuristic theo số (giống bản cũ),
+        //     chấm điểm từng dòng và chọn score cao nhất
+        // ------------------------------------------
+        const FINAL_TOTAL_KEYWORDS = [
+          /tổng\s*cộng/i,
+          /tong\s*cong/i,
+          /tổng\s*thanh\s*toán/i,
+          /tong\s*thanh\s*toan/i,
+          /tổng\s*tiền\s*thanh\s*toán/i,
+          /tổng\s*phải\s*trả/i,
+          /grand\s*total/i,
+          /amount\s*due/i,
+          /total\s*due/i,
+          /total\s*payment/i,
+          /balance\s*due/i,
+        ];
+
+        const SUBTOTAL_KEYWORDS = [
+          /cộng\s*tiền\s*hàng/i,
+          /cong\s*tien\s*hang/i,
+          /tạm\s*tính/i,
+          /tam\s*tinh/i,
+          /subtotal/i,
+          /total\s*before\s*tax/i,
+        ];
+
+        const TAX_KEYWORDS = [/thuế/i, /thue/i, /vat/i, /gtgt/i, /tax/i];
+
+        const TAX_CODE_KEYWORDS = [/\bmst\b/i, /mã\s*số\s*thuế/i];
+
+        const extractNumericAmountFromLine = (line: string): number | null => {
+          const normalized = line.replace(/[oO]/g, "0").replace(/[lI]/g, "1");
+
+          const matches = normalized.match(
+            /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d{4,}/g
+          );
+          if (!matches) return null;
+
+          const nums = matches
+            .map((raw) => {
+              const n = parseInt(raw.replace(/[,\.]/g, ""), 10);
+              if (isNaN(n)) return null;
+              const isPhone = n >= 900000000 && n < 10000000000; // 9–11 chữ số
+              const isValid = n >= 1000 && n <= 100000000000; // tới 100 tỷ
+              return !isPhone && isValid ? n : null;
+            })
+            .filter((n) => n !== null) as number[];
+
+          if (!nums.length) return null;
+          return Math.max(...nums);
+        };
+
+        const scoreLine = (
+          line: string,
+          amount: number,
+          index: number,
+          total: number
+        ): number => {
+          let score = 0;
+          const lower = line.toLowerCase();
+
+          if (TAX_CODE_KEYWORDS.some((re) => re.test(lower))) {
+            return -9999;
+          }
+
+          if (
+            TAX_KEYWORDS.some((re) => re.test(lower)) &&
+            !FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))
+          ) {
+            score -= 3;
+          }
+
+          if (SUBTOTAL_KEYWORDS.some((re) => re.test(lower))) {
+            score += 1;
+          }
+
+          if (FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))) {
+            score += 10;
+          }
+
+          if (total > 1) {
+            const pos = index / (total - 1); // 0..1
+            score += pos * 4; // tối đa +4
+          }
+
+          const mag = Math.log10(amount + 1);
+          score += mag;
+
+          return score;
+        };
+
+        type Candidate = {
+          line: string;
+          amount: number;
+          index: number;
+          score: number;
+        };
+
+        const candidates: Candidate[] = [];
+
+        rawLines.forEach((line, idx) => {
+          const amount = extractNumericAmountFromLine(line);
+          if (amount == null) return;
+          const s = scoreLine(line, amount, idx, totalLines);
+          if (s > -1000) {
+            candidates.push({ line, amount, index: idx, score: s });
+          }
+        });
+
+        if (!candidates.length) {
+          console.log("❌ No numeric amount candidate found");
+          return null;
         }
 
-        console.log("❌ No valid amount found in bottom half");
-        return null;
+        candidates.sort((a, b) => b.score - a.score);
+        const best = candidates[0];
+        console.log("✅ Best numeric candidate:", best);
+        return best.amount;
       };
 
       // Extract merchant name from first line
@@ -895,7 +1158,7 @@ export default function Chatbox() {
            FROM transactions
            WHERE user_id=? AND occurred_at>=? AND occurred_at<=?
            GROUP BY category_id, type`,
-          [userId, fromSec, nowSec]
+          [Number(userId || 0), fromSec, nowSec] as any
         );
         const outP: Record<string, number> = {};
         const inP: Record<string, number> = {};
