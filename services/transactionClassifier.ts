@@ -70,20 +70,19 @@ class TransactionClassifier {
   }> {
     await openDb();
 
-    // Get all expense categories
+    // Get all expense and income categories
     const categories: Category[] = await db.getAllAsync<Category>(
-      "SELECT * FROM categories WHERE type = ?",
-      "expense"
+      "SELECT * FROM categories WHERE type = 'expense' OR type = 'income'"
     );
 
-    // Get all transactions with notes
+    // Get all transactions with notes (expense or income)
     const transactions = await db.getAllAsync<{
       note: string;
       category_id: string;
     }>(`
       SELECT t.note, t.category_id 
       FROM transactions t
-      WHERE t.type = 'expense' 
+      WHERE (t.type = 'expense' OR t.type = 'income')
         AND t.note IS NOT NULL 
         AND t.note != ''
         AND t.category_id IS NOT NULL
@@ -189,11 +188,10 @@ class TransactionClassifier {
       const { data, categories } = await this.fetchTrainingData();
 
       if (data.length < MIN_TRAINING_SAMPLES) {
-        this.isTraining = false;
-        return {
-          success: false,
-          message: `Need at least ${MIN_TRAINING_SAMPLES} transactions with notes to train. Currently have ${data.length}.`,
-        };
+        console.warn(
+          `Warning: Only ${data.length} transactions with notes. Model may be less accurate.`
+        );
+        // Vẫn tiếp tục train với số lượng ít
       }
 
       console.log(

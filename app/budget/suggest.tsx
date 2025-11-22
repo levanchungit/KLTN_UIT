@@ -6,10 +6,11 @@ import {
   generateBudgetSuggestion,
   type CategoryAllocation,
 } from "@/repos/budgetSuggestion";
+import { suggestFullBudget } from "@/utils/budgetAi";
 import { fixIconName } from "@/utils/iconMapper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -61,6 +62,18 @@ export default function BudgetSuggestScreen() {
   const [wants, setWants] = useState<GroupData | null>(null);
   const [savings, setSavings] = useState<GroupData | null>(null);
 
+  // AI suggestion tổng quan (ratio + giải thích + fixedExpenses)
+  const aiSuggestion = useMemo(() => {
+    if (!income) return null;
+    const nIncome = Number(String(income).replace(/[^0-9]/g, ""));
+    if (!nIncome) return null;
+
+    return suggestFullBudget({
+      incomeAfterTax: nIncome,
+      lifestyleDesc: lifestyleDesc || "",
+    });
+  }, [income, lifestyleDesc]);
+
   useEffect(() => {
     loadSuggestion();
   }, []);
@@ -84,7 +97,7 @@ export default function BudgetSuggestScreen() {
           color: categoryMap.get(item.categoryId)?.color || "#7EC5E8",
         }));
 
-      // If edit mode, load existing budget data
+      // === CASE EDIT: dùng allocations đã lưu ===
       if (isEditMode && budgetId) {
         const { getBudgetById, listBudgetAllocations } = await import(
           "@/repos/budgetRepo"
@@ -93,7 +106,6 @@ export default function BudgetSuggestScreen() {
         const allocations = await listBudgetAllocations(budgetId);
 
         if (budget && allocations) {
-          // Set budget name from existing budget
           setBudgetName(budget.name);
 
           const needsItems = allocations.filter(
@@ -146,20 +158,88 @@ export default function BudgetSuggestScreen() {
         }
       }
 
-      // Otherwise, generate new suggestion
+      // === CASE TẠO MỚI: dùng generateBudgetSuggestion + AI ratio ===
+
+      // 1. Gợi ý theo lịch sử giao dịch / logic cũ → để lấy category list
       const suggestion = await generateBudgetSuggestion({
         totalIncome: incomeNum,
         period: (period as any) || "monthly",
         lifestyleDesc: lifestyleDesc || "",
       });
 
-      // Generate default budget name based on period (if custom name not provided)
+      // 2. Lấy target theo AI (đã xét lối sống, fixedExpenses, flags)
+      const ai = suggestFullBudget({
+        incomeAfterTax: incomeNum,
+        lifestyleDesc: lifestyleDesc || "",
+      });
+
+      const targetNeedsTotal = ai.groupSummary.needs.target;
+      const targetWantsTotal = ai.groupSummary.wants.target;
+      const targetSavingsTotal = ai.groupSummary.savings.target;
+
+      // 3. Scale 1 group cho khớp target AI
+      const scaleGroup = (
+        items: CategoryAllocation[],
+        targetTotal: number
+      ): { items: CategoryAllocation[]; total: number } => {
+        if (items.length === 0) return { items: [], total: 0 };
+
+        const currentTotal = items.reduce((s, a) => s + a.allocatedAmount, 0);
+
+        // Nếu hiện tại đều 0 → chia đều
+        if (currentTotal === 0) {
+          const base = Math.floor(targetTotal / items.length);
+          let remain = targetTotal - base * items.length;
+          const newItems = items.map((item, idx) => {
+            const extra = idx < remain ? 1 : 0;
+            return {
+              ...item,
+              allocatedAmount: base + extra,
+            };
+          });
+          return { items: newItems, total: targetTotal };
+        }
+
+        const factor = targetTotal / currentTotal;
+
+        let newItems = items.map((item) => ({
+          ...item,
+          allocatedAmount: Math.round(item.allocatedAmount * factor),
+        }));
+
+        // Fix sai số do round
+        let newTotal = newItems.reduce((s, a) => s + a.allocatedAmount, 0);
+        let diff = targetTotal - newTotal;
+
+        if (diff !== 0) {
+          let idxMax = 0;
+          let maxVal = newItems[0].allocatedAmount;
+          newItems.forEach((it, idx) => {
+            if (it.allocatedAmount > maxVal) {
+              maxVal = it.allocatedAmount;
+              idxMax = idx;
+            }
+          });
+          newItems[idxMax] = {
+            ...newItems[idxMax],
+            allocatedAmount: newItems[idxMax].allocatedAmount + diff,
+          };
+          newTotal = newItems.reduce((s, a) => s + a.allocatedAmount, 0);
+        }
+
+        return { items: newItems, total: newTotal };
+      };
+
+      const scaledNeeds = scaleGroup(suggestion.needs, targetNeedsTotal);
+      const scaledWants = scaleGroup(suggestion.wants, targetWantsTotal);
+      const scaledSavings = scaleGroup(suggestion.savings, targetSavingsTotal);
+
+      // 4. Đặt tên ngân sách như cũ
       const periodType = (period as any) || "monthly";
       const now = new Date();
       let defaultName = "";
 
       if (customBudgetName && customBudgetName.trim()) {
-        // Use custom name from setup if provided
         defaultName = customBudgetName.trim();
       } else if (periodType === "monthly") {
         const monthName = now.toLocaleDateString("vi-VN", {
@@ -184,20 +264,21 @@ export default function BudgetSuggestScreen() {
 
       setBudgetName(defaultName);
 
+      // 5. Gán vào state (đã enrich icon/color + scale theo AI)
       setNeeds({
         title: "Nhu cầu",
-        total: suggestion.needs.reduce((s, a) => s + a.allocatedAmount, 0),
-        items: enrichItems(suggestion.needs),
+        total: scaledNeeds.total,
+        items: enrichItems(scaledNeeds.items),
       });
       setWants({
         title: "Mong muốn",
-        total: suggestion.wants.reduce((s, a) => s + a.allocatedAmount, 0),
-        items: enrichItems(suggestion.wants),
+        total: scaledWants.total,
+        items: enrichItems(scaledWants.items),
       });
       setSavings({
         title: "Tiết kiệm",
-        total: suggestion.savings.reduce((s, a) => s + a.allocatedAmount, 0),
-        items: enrichItems(suggestion.savings),
+        total: scaledSavings.total,
+        items: enrichItems(scaledSavings.items),
       });
     } catch (err) {
       console.error("loadSuggestion error:", err);
@@ -270,11 +351,8 @@ export default function BudgetSuggestScreen() {
       let endDate: Date | undefined;
 
       if (periodType === "monthly") {
-        // Start from first day of current month
         startDate.setDate(1);
         startDate.setHours(0, 0, 0, 0);
-
-        // End of current month
         endDate = new Date(
           startDate.getFullYear(),
           startDate.getMonth() + 1,
@@ -284,27 +362,20 @@ export default function BudgetSuggestScreen() {
           59
         );
       } else if (periodType === "weekly") {
-        // Start from Monday of current week
         const dayOfWeek = startDate.getDay();
-        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday is 0, Monday is 1
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
         startDate.setDate(startDate.getDate() - daysFromMonday);
         startDate.setHours(0, 0, 0, 0);
-
-        // End on Sunday of current week
         endDate = new Date(startDate);
         endDate.setDate(startDate.getDate() + 6);
         endDate.setHours(23, 59, 59, 999);
       } else if (periodType === "daily") {
-        // Start from beginning of today
         startDate.setHours(0, 0, 0, 0);
-
-        // End of today
         endDate = new Date(startDate);
         endDate.setHours(23, 59, 59, 999);
       }
 
       if (isEditMode && budgetId) {
-        // Update existing budget
         const { updateBudget } = await import("@/repos/budgetRepo");
         await updateBudget({
           id: budgetId,
@@ -317,7 +388,6 @@ export default function BudgetSuggestScreen() {
           allocations: allAllocations,
         });
       } else {
-        // Create new budget
         await createBudget({
           name: budgetName,
           totalIncome: incomeNum,
@@ -329,7 +399,6 @@ export default function BudgetSuggestScreen() {
         });
       }
 
-      // Navigate back to budget list
       router.replace("/(tabs)/budget");
     } catch (err) {
       console.error("handleConfirm error:", err);
@@ -380,6 +449,7 @@ export default function BudgetSuggestScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* AI Info Card */}
           <View style={styles.infoCard}>
             <View
               style={{
@@ -389,9 +459,9 @@ export default function BudgetSuggestScreen() {
               }}
             >
               <MaterialCommunityIcons
-                name="lightbulb-on-outline"
+                name="robot-happy-outline"
                 size={20}
-                color="#F59E0B"
+                color="#16A34A"
               />
               <Text
                 style={[
@@ -399,19 +469,72 @@ export default function BudgetSuggestScreen() {
                   { marginLeft: 8, marginBottom: 0, fontWeight: "600" },
                 ]}
               >
-                Kế hoạch thông minh 50/30/20
+                {aiSuggestion
+                  ? "Kế hoạch ngân sách do AI gợi ý"
+                  : "Kế hoạch ngân sách thông minh"}
               </Text>
             </View>
-            <Text style={styles.infoText}>
-              Phân bổ {totalIncome.toLocaleString("vi-VN")}đ/
-              {period === "monthly"
-                ? "tháng"
-                : period === "weekly"
-                ? "tuần"
-                : "ngày"}{" "}
-              thành 50% nhu cầu, 30% mong muốn, 20% tiết kiệm dựa trên lịch sử
-              giao dịch. Bạn có thể chỉnh sửa trực tiếp.
-            </Text>
+
+            {aiSuggestion ? (
+              <>
+                <Text style={styles.infoText}>
+                  Thu nhập:{" "}
+                  {aiSuggestion.incomeAfterTax.toLocaleString("vi-VN")}đ/
+                  {period === "monthly"
+                    ? "tháng"
+                    : period === "weekly"
+                    ? "tuần"
+                    : "ngày"}
+                </Text>
+                <Text style={styles.infoText}>
+                  Gợi ý phân bổ: {(aiSuggestion.ratio.needs * 100).toFixed(0)}%
+                  nhu cầu · {(aiSuggestion.ratio.wants * 100).toFixed(0)}% mong
+                  muốn · {(aiSuggestion.ratio.savings * 100).toFixed(0)}% tiết
+                  kiệm
+                </Text>
+                <Text style={[styles.infoText, { marginTop: 6 }]}>
+                  {aiSuggestion.explanation}
+                </Text>
+
+                {aiSuggestion.fixedExpenses.length > 0 && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text
+                      style={[
+                        styles.infoText,
+                        { fontWeight: "600", marginBottom: 4 },
+                      ]}
+                    >
+                      Một số khoản chi cố định đã phát hiện:
+                    </Text>
+                    {aiSuggestion.fixedExpenses.slice(0, 3).map((e, idx) => (
+                      <Text key={idx} style={styles.infoText}>
+                        • {e.rawText} ({e.amount.toLocaleString("vi-VN")}đ ·{" "}
+                        {e.groupType === "needs"
+                          ? "Nhu cầu"
+                          : e.groupType === "wants"
+                          ? "Mong muốn"
+                          : "Tiết kiệm"}
+                        )
+                      </Text>
+                    ))}
+                    {aiSuggestion.fixedExpenses.length > 3 && (
+                      <Text style={styles.infoText}>• ...</Text>
+                    )}
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={styles.infoText}>
+                Phân bổ {totalIncome.toLocaleString("vi-VN")}đ/
+                {period === "monthly"
+                  ? "tháng"
+                  : period === "weekly"
+                  ? "tuần"
+                  : "ngày"}{" "}
+                thành 50% nhu cầu, 30% mong muốn, 20% tiết kiệm. Bạn có thể
+                chỉnh sửa trực tiếp.
+              </Text>
+            )}
           </View>
 
           {/* Budget Name Input */}
@@ -545,7 +668,6 @@ function EditableCategoryRow({
   };
 
   const handleBlur = () => {
-    // Re-format on blur
     const num = parseFloat(localValue.replace(/[^0-9]/g, ""));
     if (!isNaN(num)) {
       setLocalValue(num.toLocaleString("vi-VN"));
