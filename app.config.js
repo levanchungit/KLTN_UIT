@@ -34,6 +34,7 @@ export default {
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
       ],
+      package: "com.anonymous.SpeectToTextApp",
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: "com.levanchung.it.KLTN_UIT",
@@ -61,6 +62,7 @@ export default {
           sounds: [],
         },
       ],
+      ["@react-native-voice/voice"],
     ],
     experiments: {
       typedRoutes: true,
