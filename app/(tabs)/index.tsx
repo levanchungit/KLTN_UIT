@@ -943,9 +943,16 @@ export default function DashboardScreen() {
               <Text
                 style={styles.username}
                 numberOfLines={1}
-                ellipsizeMode="middle"
+                ellipsizeMode="tail"
               >
-                {user ? user.name ?? user.username : "Người dùng (demo)"}
+                {(() => {
+                  const displayName = user
+                    ? user.name ?? user.username
+                    : "Người dùng (demo)";
+                  return displayName.length > 15
+                    ? displayName.substring(0, 15) + "..."
+                    : displayName;
+                })()}
               </Text>
             </View>
           </View>
@@ -1402,6 +1409,7 @@ const makeStyles = (c: {
       color: c.text,
       fontWeight: "700",
       maxWidth: 220,
+      flex: 1,
       flexShrink: 1,
     },
     iconButton: {

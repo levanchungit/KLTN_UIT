@@ -1,4 +1,5 @@
 // src/userContext.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { NativeModules } from "react-native";
 import { clearSession, loadSession, saveSession, UserSession } from "./session";
@@ -9,17 +10,28 @@ type Ctx = {
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   loginSet: (u: UserSession) => Promise<void>;
+  isLoading: boolean;
 };
 
 const UserCtx = createContext<Ctx | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    console.log("UserProvider: Loading session on mount");
     (async () => {
-      const u = await loadSession();
-      setUser(u);
+      try {
+        const u = await loadSession();
+        console.log("UserProvider: Loaded user:", u);
+        setUser(u);
+      } catch (error) {
+        console.log("UserProvider: Error loading session:", error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, []);
 
@@ -33,15 +45,35 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // user during usage; there is no 'local_user' ownership mode.
     await saveSession(u);
     setUser(u);
+    setIsLoading(false);
   };
 
   const logout = async () => {
+    console.log("Logging out user...");
     // Do NOT migrate or change DB ownership on logout. Clear saved session only.
     await clearSession();
+
+    // Clear AsyncStorage cache to allow fresh login with different Google account
+    try {
+      console.log("Clearing AsyncStorage cache...");
+      await AsyncStorage.multiRemove([
+        "requires_onboarding",
+        "upgrade_after_login",
+        // Clear any cached user preferences or settings
+        "user_preferences",
+        "notification_settings",
+        "theme_settings",
+        // Add any other cache keys that should be cleared on logout
+      ]);
+      console.log("AsyncStorage cache cleared");
+    } catch (e) {
+      console.warn("Failed to clear AsyncStorage cache:", e);
+    }
     // Try to sign out the native GoogleSignin module so the next Google login
     // can pick a different account. Guard against running in Expo Go or when
     // the native module isn't registered.
     try {
+      console.log("Signing out from Google...");
       if (NativeModules && (NativeModules as any).RNGoogleSignin) {
         // Require dynamically to avoid top-level native import that crashes in Expo Go
         // if the native module isn't present.
@@ -51,10 +83,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         } = require("@react-native-google-signin/google-signin");
         if (GoogleSignin && typeof GoogleSignin.signOut === "function") {
           await GoogleSignin.signOut();
+          console.log("Google sign out completed");
         }
         if (GoogleSignin && typeof GoogleSignin.revokeAccess === "function") {
           // revokeAccess is optional but ensures tokens/consent are cleared
           await GoogleSignin.revokeAccess().catch(() => {});
+          console.log("Google revoke access completed");
         }
       }
     } catch (e) {
@@ -63,10 +97,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(null);
+    setIsLoading(false);
+    console.log("Logout completed");
   };
 
   return (
-    <UserCtx.Provider value={{ user, setUser, refresh, logout, loginSet }}>
+    <UserCtx.Provider
+      value={{ user, setUser, refresh, logout, loginSet, isLoading }}
+    >
       {children}
     </UserCtx.Provider>
   );

@@ -66,10 +66,11 @@ export async function listCategories(opts?: {
 
 export async function getCategoryById(id: string) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   return db.getFirstAsync<Category>(
     `SELECT id, user_id, name, type, icon, color, parent_id
-     FROM categories WHERE id=?`,
-    [id]
+     FROM categories WHERE id=? AND user_id=?`,
+    [id, userId]
   );
 }
 
@@ -108,6 +109,7 @@ export async function updateCategory(
   }
 ) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   const set: string[] = [];
   const vals: any[] = [];
 
@@ -135,15 +137,19 @@ export async function updateCategory(
   // luôn cập nhật updated_at
   set.push("updated_at=strftime('%s','now')");
 
-  await db.runAsync(`UPDATE categories SET ${set.join(",")} WHERE id=?`, [
-    ...vals,
-    id,
-  ]);
+  await db.runAsync(
+    `UPDATE categories SET ${set.join(",")} WHERE id=? AND user_id=?`,
+    [...vals, id, userId]
+  );
 }
 
 export async function deleteCategory(id: string) {
   const db = await openDb();
-  await db.runAsync(`DELETE FROM categories WHERE id=?`, [id]);
+  const userId = await getCurrentUserId();
+  await db.runAsync(`DELETE FROM categories WHERE id=? AND user_id=?`, [
+    id,
+    userId,
+  ]);
 }
 
 /** ===== Seed (tùy chọn) ===== */

@@ -17,8 +17,8 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     // General
     language: "Ngôn ngữ",
     accountSettings: "Cài đặt tài khoản",
-    walletAndCategories: "Cài đặt ví và danh mục",
-    walletAndCategories_desc: "Thể loại, Tiền tệ",
+    walletAndCategories: "Ví & Danh mục",
+    walletAndCategories_desc: "Danh mục, mở khoá sinh trắc học",
     accountSettings_desc: "Ngôn ngữ, Xuất/Nhập CSV",
     home: "Trang chủ",
     transactions: "Giao dịch",
@@ -102,7 +102,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     lastMonth: "Tháng trước",
     customRange: "Tùy chỉnh",
     // Wallet & Categories
-    walletSettings: "Cài đặt ví và danh mục",
+    walletSettings: "Ví & danh mục",
     walletName: "Tên ví",
     currency: "Tiền tệ",
     selectCurrency: "Chọn tiền tệ",
@@ -247,7 +247,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     language: "Language",
     accountSettings: "Account Settings",
     walletAndCategories: "Wallet & Categories",
-    walletAndCategories_desc: "Categories, Currency",
+    walletAndCategories_desc: "Categories, Biometric Unlock",
     accountSettings_desc: "Language, Export/Import CSV",
     home: "Home",
     transactions: "Transactions",
@@ -329,7 +329,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     lastMonth: "Last Month",
     customRange: "Custom Range",
     // Wallet & Categories
-    walletSettings: "Wallet & Categories Settings",
+    walletSettings: "Wallet & Categories",
     walletName: "Wallet Name",
     currency: "Currency",
     selectCurrency: "Select Currency",

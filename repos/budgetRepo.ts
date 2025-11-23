@@ -80,8 +80,8 @@ export async function createBudget(input: {
   for (const alloc of input.allocations) {
     // Verify category exists before inserting
     const categoryCheck = await db.getFirstAsync<{ id: string }>(
-      `SELECT id FROM categories WHERE id=?`,
-      [alloc.categoryId] as any
+      `SELECT id FROM categories WHERE id=? AND user_id=?`,
+      [alloc.categoryId, userId] as any
     );
 
     if (!categoryCheck) {
@@ -231,8 +231,8 @@ export async function updateBudget(input: {
   for (const alloc of input.allocations) {
     // Verify category exists before inserting
     const categoryCheck = await db.getFirstAsync<{ id: string }>(
-      `SELECT id FROM categories WHERE id=?`,
-      [alloc.categoryId] as any
+      `SELECT id FROM categories WHERE id=? AND user_id=?`,
+      [alloc.categoryId, userId] as any
     );
 
     if (!categoryCheck) {

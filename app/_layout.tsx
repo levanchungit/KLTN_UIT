@@ -93,11 +93,19 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const { mode } = useAppTheme();
-  const { user } = useUser();
+  const { user, isLoading } = useUser();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
+    // Don't do routing while still loading session
+    if (isLoading) {
+      console.log(
+        "RootLayoutNav: Still loading session, skipping routing logic"
+      );
+      return;
+    }
+
     // Control routing for onboarding/auth flow.
     const inAuthGroup = segments[0] === "auth";
     const inOnboarding = segments[0] === "onboarding";
@@ -105,8 +113,17 @@ function RootLayoutNav() {
     // Require a signed-in user for gating purposes.
     const isAuthenticated = !!user;
 
+    console.log("RootLayoutNav: Routing check", {
+      inAuthGroup,
+      inOnboarding,
+      isAuthenticated,
+      user: user?.username,
+      segments,
+    });
+
     // If not on onboarding/auth screens and not authenticated, start onboarding
     if (!inAuthGroup && !inOnboarding && !isAuthenticated) {
+      console.log("RootLayoutNav: Redirecting to onboarding/welcome");
       router.replace("/onboarding/welcome");
       return;
     }
@@ -149,7 +166,7 @@ function RootLayoutNav() {
     if (inAuthGroup && isAuthenticated) {
       router.replace("/(tabs)");
     }
-  }, [user, segments]);
+  }, [user, segments, isLoading]);
 
   return (
     <ThemeProvider value={mode === "dark" ? DarkTheme : DefaultTheme}>

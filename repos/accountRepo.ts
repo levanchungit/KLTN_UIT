@@ -16,19 +16,22 @@ const genId = () => "acc_" + Math.random().toString(36).slice(2, 10);
 
 export async function listAccounts(): Promise<Account[]> {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   return db.getAllAsync<Account>(
     `SELECT id,name,icon,color,balance_cached,include_in_total
-     FROM accounts ORDER BY updated_at DESC NULLS LAST, name ASC`
+     FROM accounts WHERE user_id=? ORDER BY updated_at DESC NULLS LAST, name ASC`,
+    [userId]
   );
 }
 
 export async function getAccountById(id: string) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   // chọn thêm created_at để xác định default theo thời gian tạo
   return db.getFirstAsync<Account>(
     `SELECT id,name,icon,color,balance_cached,include_in_total,created_at
-     FROM accounts WHERE id=?`,
-    [id]
+     FROM accounts WHERE id=? AND user_id=?`,
+    [id, userId]
   );
 }
 
@@ -96,25 +99,29 @@ export async function updateAccount(
 
   set.push("updated_at=strftime('%s','now')");
 
-  await db.runAsync(`UPDATE accounts SET ${set.join(",")} WHERE id=?`, [
-    ...vals,
-    id,
-  ]);
+  await db.runAsync(
+    `UPDATE accounts SET ${set.join(",")} WHERE id=? AND user_id=?`,
+    [...vals, id, userId]
+  );
 }
 
 // ===== Helpers cho xoá với luật "mặc định không xoá" =====
 export async function countAccounts(): Promise<number> {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   const row = await db.getFirstAsync<{ cnt: number }>(
-    `SELECT COUNT(*) as cnt FROM accounts`
+    `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
+    [userId]
   );
   return row?.cnt ?? 0;
 }
 
 export async function getDefaultAccountId(): Promise<string | null> {
   const db = await openDb();
+  const userId = await getCurrentUserId();
   const row = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM accounts ORDER BY created_at ASC LIMIT 1`
+    `SELECT id FROM accounts WHERE user_id=? ORDER BY created_at ASC LIMIT 1`,
+    [userId]
   );
   return row?.id ?? null;
 }
@@ -126,6 +133,7 @@ export async function isDefaultAccount(id: string): Promise<boolean> {
 
 export async function deleteAccount(id: string) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
 
   // Không cho xoá nếu là tài khoản mặc định
   if (await isDefaultAccount(id)) {
@@ -143,7 +151,10 @@ export async function deleteAccount(id: string) {
   }
 
   // Xoá
-  await db.runAsync(`DELETE FROM accounts WHERE id=?`, [id]);
+  await db.runAsync(`DELETE FROM accounts WHERE id=? AND user_id=?`, [
+    id,
+    userId,
+  ]);
   // Lưu ý FK: nếu có bảng giao dịch tham chiếu accounts mà không ON DELETE CASCADE,
   // thao tác có thể fail → khi đó cân nhắc dùng soft-delete hoặc báo lỗi người dùng.
 }

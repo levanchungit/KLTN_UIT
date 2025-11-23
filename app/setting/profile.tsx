@@ -73,8 +73,13 @@ export default function ProfileScreen() {
             <MaterialCommunityIcons name="account" size={60} color="#fff" />
           )}
         </View>
-        <Text style={styles.username} numberOfLines={1} ellipsizeMode="middle">
-          {user.name ?? user.username}
+        <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
+          {(() => {
+            const displayName = user.name ?? user.username;
+            return displayName.length > 15
+              ? displayName.substring(0, 15) + "..."
+              : displayName;
+          })()}
         </Text>
       </View>
 
@@ -163,6 +168,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     marginBottom: 4,
     maxWidth: "90%",
+    flex: 1,
     flexShrink: 1,
   },
   email: {

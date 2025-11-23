@@ -33,17 +33,25 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 
 // ===== Notification Log Management =====
 
-async function getNotificationLog(): Promise<NotificationLog[]> {
+async function getNotificationLog(userId?: string): Promise<NotificationLog[]> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATION_LOG_KEY}_${userId}`;
   try {
-    const raw = await AsyncStorage.getItem(NOTIFICATION_LOG_KEY);
+    const raw = await AsyncStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-async function logNotification(type: string, metadata?: any) {
-  const log = await getNotificationLog();
+async function logNotification(type: string, metadata?: any, userId?: string) {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATION_LOG_KEY}_${userId}`;
+  const log = await getNotificationLog(userId);
   const now = Date.now();
   log.push({
     id: `${now}-${Math.random().toString(36).slice(2, 6)}`,
@@ -53,12 +61,16 @@ async function logNotification(type: string, metadata?: any) {
   });
   // Keep only last 100 entries
   const trimmed = log.slice(-100);
-  await AsyncStorage.setItem(NOTIFICATION_LOG_KEY, JSON.stringify(trimmed));
+  await AsyncStorage.setItem(key, JSON.stringify(trimmed));
 }
 
-async function getSettings(): Promise<NotificationSettings> {
+async function getSettings(userId?: string): Promise<NotificationSettings> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATION_SETTINGS_KEY}_${userId}`;
   try {
-    const raw = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
+    const raw = await AsyncStorage.getItem(key);
     return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
@@ -66,20 +78,28 @@ async function getSettings(): Promise<NotificationSettings> {
 }
 
 export async function updateSettings(
-  partial: Partial<NotificationSettings>
+  partial: Partial<NotificationSettings>,
+  userId?: string
 ): Promise<void> {
-  const current = await getSettings();
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATION_SETTINGS_KEY}_${userId}`;
+  const current = await getSettings(userId);
   const updated = { ...current, ...partial };
-  await AsyncStorage.setItem(
-    NOTIFICATION_SETTINGS_KEY,
-    JSON.stringify(updated)
-  );
+  await AsyncStorage.setItem(key, JSON.stringify(updated));
 }
 
 // ===== Anti-spam Rules =====
 
-async function canSendNotification(type: string): Promise<boolean> {
-  const log = await getNotificationLog();
+async function canSendNotification(
+  type: string,
+  userId?: string
+): Promise<boolean> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const log = await getNotificationLog(userId);
   const now = Date.now();
   const last24h = log.filter((n) => now - n.sentAt < 24 * 60 * 60 * 1000);
 
@@ -109,21 +129,28 @@ async function sendSmartNotification(
   options?: {
     bypassAntiSpam?: boolean;
     uiType?: "reminder" | "warning" | "info" | "success" | "error";
-  }
+  },
+  userId?: string
 ) {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
   if (!options?.bypassAntiSpam) {
-    if (!(await canSendNotification(type))) {
+    if (!(await canSendNotification(type, userId))) {
       console.log(`Skipped notification (anti-spam): ${type}`);
       return;
     }
   }
 
-  await saveNotification({
-    title,
-    message,
-    type: options?.uiType ?? "reminder",
-  });
-  await logNotification(type, metadata);
+  await saveNotification(
+    {
+      title,
+      message,
+      type: options?.uiType ?? "reminder",
+    },
+    userId
+  );
+  await logNotification(type, metadata, userId);
 
   try {
     await Notifications.scheduleNotificationAsync({
@@ -140,21 +167,31 @@ async function sendBudgetNotificationImmediate(
   type: string,
   title: string,
   message: string,
-  metadata?: any
+  metadata?: any,
+  userId?: string
 ) {
-  return sendSmartNotification(type, title, message, metadata, {
-    bypassAntiSpam: true,
-    uiType: "warning",
-  });
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  return sendSmartNotification(
+    type,
+    title,
+    message,
+    metadata,
+    {
+      bypassAntiSpam: true,
+      uiType: "warning",
+    },
+    userId
+  );
 }
 
 // ===== 1) Daily Reminder =====
 
 export async function checkDailyReminder() {
-  const settings = await getSettings();
-  if (!settings.enableDaily) return;
-
   const userId = await getCurrentUserId();
+  const settings = await getSettings(userId);
+  if (!settings.enableDaily) return;
 
   await openDb();
 
@@ -178,7 +215,7 @@ export async function checkDailyReminder() {
   }
 
   // Check if already sent daily reminder today
-  const log = await getNotificationLog();
+  const log = await getNotificationLog(userId);
   const todaySent = log.find(
     (n) => n.type === "daily" && n.sentAt >= todayStart.getTime()
   );
@@ -191,17 +228,19 @@ export async function checkDailyReminder() {
   await sendSmartNotification(
     "daily",
     "Nhắc nhở chi tiêu 💸",
-    "Đừng quên ghi chi tiêu hôm nay nha!"
+    "Đừng quên ghi chi tiêu hôm nay nha!",
+    undefined,
+    undefined,
+    userId
   );
 }
 
 // ===== 2) Inactivity Reminder =====
 
 export async function checkInactivityReminder() {
-  const settings = await getSettings();
-  if (!settings.enableInactivity) return;
-
   const userId = await getCurrentUserId();
+  const settings = await getSettings(userId);
+  if (!settings.enableInactivity) return;
 
   await openDb();
 
@@ -216,7 +255,7 @@ export async function checkInactivityReminder() {
 
   const daysSinceLastTx = (nowSec - lastTx.occurred_at) / 86400;
 
-  const log = await getNotificationLog();
+  const log = await getNotificationLog(userId);
   const last24h = log.filter(
     (n) => Date.now() - n.sentAt < 24 * 60 * 60 * 1000
   );
@@ -238,7 +277,10 @@ export async function checkInactivityReminder() {
       await sendSmartNotification(
         "inactivity_3d",
         "Bạn ổn chứ? 🤔",
-        "Đã 3 ngày bạn chưa ghi chi tiêu. Hãy cập nhật để theo dõi tốt hơn nhé!"
+        "Đã 3 ngày bạn chưa ghi chi tiêu. Hãy cập nhật để theo dõi tốt hơn nhé!",
+        undefined,
+        undefined,
+        userId
       );
     }
   }
@@ -254,7 +296,10 @@ export async function checkInactivityReminder() {
       await sendSmartNotification(
         "inactivity_7d",
         "Chúng tôi nhớ bạn! 💙",
-        "Đã 1 tuần rồi! Quay lại ghi chi tiêu để kiểm soát tài chính tốt hơn nhé."
+        "Đã 1 tuần rồi! Quay lại ghi chi tiêu để kiểm soát tài chính tốt hơn nhé.",
+        undefined,
+        undefined,
+        userId
       );
     }
   }
@@ -263,10 +308,9 @@ export async function checkInactivityReminder() {
 // ===== 3) Budget Alert =====
 
 export async function checkBudgetAlert(categoryId: string, amount: number) {
-  const settings = await getSettings();
-  if (!settings.enableBudget) return;
-
   const userId = await getCurrentUserId();
+  const settings = await getSettings(userId);
+  if (!settings.enableBudget) return;
 
   await openDb();
 
@@ -404,10 +448,9 @@ export async function triggerBudgetAlertsForBudget(budgetId: string) {
 // ===== 4) Weekly Insight =====
 
 export async function checkWeeklyInsight() {
-  const settings = await getSettings();
-  if (!settings.enableWeekly) return;
-
   const userId = await getCurrentUserId();
+  const settings = await getSettings(userId);
+  if (!settings.enableWeekly) return;
 
   await openDb();
 
@@ -449,7 +492,7 @@ export async function checkWeeklyInsight() {
   }
 
   // Check if already sent this week
-  const log = await getNotificationLog();
+  const log = await getNotificationLog(userId);
   const thisWeekSent = log.find(
     (n) => n.type === "weekly" && n.sentAt >= thisWeekStart.getTime()
   );
@@ -467,7 +510,10 @@ export async function checkWeeklyInsight() {
     `Báo cáo tuần ${emoji}`,
     `Chi tiêu tuần này ${trend} ${Math.round(
       changePercent
-    )}% so với tuần trước!`
+    )}% so với tuần trước!`,
+    undefined,
+    undefined,
+    userId
   );
 }
 
@@ -476,8 +522,9 @@ export async function checkWeeklyInsight() {
 export async function initSmartNotifications() {
   console.log("Initializing smart notifications...");
 
+  const userId = await getCurrentUserId();
   // Schedule daily reminder
-  const settings = await getSettings();
+  const settings = await getSettings(userId);
   if (settings.enableDaily) {
     await Notifications.cancelAllScheduledNotificationsAsync();
     await Notifications.scheduleNotificationAsync({

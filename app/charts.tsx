@@ -48,7 +48,8 @@ const fmtMoney = (n: number) =>
 
 // Format số tiền theo kiểu Việt Nam (1tr, 12tr, 1.2tỷ)
 const fmtMoneyVN = (n: number) => {
-  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}tỷ`;
+  if (n >= 1000000000)
+    return `${(n / 1000000000).toFixed(1).replace(".0", "")}tỷ`;
   if (n >= 1000000) return `${Math.round(n / 1000000)}tr`;
   if (n >= 1000) return `${Math.round(n / 1000)}k`;
   return n.toString();
@@ -217,7 +218,7 @@ export default function ChartsScreen() {
                 fontSize: 10,
                 color: colors.text,
                 fontWeight: "700",
-                textAlign: "center"
+                textAlign: "center",
               }}
             >
               {fmtMoneyVN(r.total || 0)}
@@ -253,7 +254,7 @@ export default function ChartsScreen() {
                 fontSize: 10,
                 color: colors.text,
                 fontWeight: "700",
-                textAlign: "center"
+                textAlign: "center",
               }}
             >
               {fmtMoneyVN(expenseTotal)}
@@ -270,7 +271,7 @@ export default function ChartsScreen() {
                 fontSize: 10,
                 color: colors.text,
                 fontWeight: "700",
-                textAlign: "center"
+                textAlign: "center",
               }}
             >
               {fmtMoneyVN(incomeTotal)}
@@ -1046,9 +1047,15 @@ export default function ChartsScreen() {
                 maxValue={Math.max(...chartData.map((d) => d.value)) * 1.2}
                 yAxisLabelTexts={[
                   "0",
-                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) / 4),
-                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) / 2),
-                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) * 3 / 4),
+                  fmtMoneyVN(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 4
+                  ),
+                  fmtMoneyVN(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 2
+                  ),
+                  fmtMoneyVN(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2 * 3) / 4
+                  ),
                   fmtMoneyVN(Math.max(...chartData.map((d) => d.value)) * 1.2),
                 ]}
                 isAnimated
@@ -1108,10 +1115,21 @@ export default function ChartsScreen() {
                 maxValue={Math.max(...comparisonData.map((d) => d.value)) * 1.2}
                 yAxisLabelTexts={[
                   "0",
-                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 4),
-                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 2),
-                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) * 3 / 4),
-                  fmtMoneyVN(Math.max(...comparisonData.map((d) => d.value)) * 1.2),
+                  fmtMoneyVN(
+                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 4
+                  ),
+                  fmtMoneyVN(
+                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 2
+                  ),
+                  fmtMoneyVN(
+                    (Math.max(...comparisonData.map((d) => d.value)) *
+                      1.2 *
+                      3) /
+                      4
+                  ),
+                  fmtMoneyVN(
+                    Math.max(...comparisonData.map((d) => d.value)) * 1.2
+                  ),
                 ]}
                 isAnimated
                 animationDuration={800}

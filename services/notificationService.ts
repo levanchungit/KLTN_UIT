@@ -1,3 +1,4 @@
+import { getCurrentUserId } from "@/utils/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -141,10 +142,15 @@ export async function getExpoPushToken(): Promise<string | null> {
 
 // Save notification to storage
 export async function saveNotification(
-  notification: Omit<StoredNotification, "id" | "timestamp" | "isRead">
+  notification: Omit<StoredNotification, "id" | "timestamp" | "isRead">,
+  userId?: string
 ): Promise<void> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    const data = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+    const data = await AsyncStorage.getItem(key);
     const stored: StoredNotification[] = data ? JSON.parse(data) : [];
     const newNotif: StoredNotification = {
       ...notification,
@@ -153,7 +159,7 @@ export async function saveNotification(
       isRead: false,
     };
     stored.unshift(newNotif);
-    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(stored));
+    await AsyncStorage.setItem(key, JSON.stringify(stored));
     notifySubscribers();
   } catch (error) {
     console.error("Error saving notification:", error);
@@ -161,9 +167,15 @@ export async function saveNotification(
 }
 
 // Get all notifications
-export async function getAllNotifications(): Promise<AppNotification[]> {
+export async function getAllNotifications(
+  userId?: string
+): Promise<AppNotification[]> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    const data = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+    const data = await AsyncStorage.getItem(key);
     const stored: StoredNotification[] = data ? JSON.parse(data) : [];
     return stored.map((n) => ({
       id: n.id,
@@ -180,9 +192,9 @@ export async function getAllNotifications(): Promise<AppNotification[]> {
 }
 
 // Get unread count
-export async function getUnreadCount(): Promise<number> {
+export async function getUnreadCount(userId?: string): Promise<number> {
   try {
-    const notifications = await getAllNotifications();
+    const notifications = await getAllNotifications(userId);
     return notifications.filter((n) => !n.read).length;
   } catch (error) {
     return 0;
@@ -190,14 +202,18 @@ export async function getUnreadCount(): Promise<number> {
 }
 
 // Mark as read
-export async function markAsRead(id: string): Promise<void> {
+export async function markAsRead(id: string, userId?: string): Promise<void> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    const data = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+    const data = await AsyncStorage.getItem(key);
     const stored: StoredNotification[] = data ? JSON.parse(data) : [];
     const updated = stored.map((n) =>
       n.id === id ? { ...n, isRead: true } : n
     );
-    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     notifySubscribers();
   } catch (error) {
     console.error("Error marking as read:", error);
@@ -205,12 +221,16 @@ export async function markAsRead(id: string): Promise<void> {
 }
 
 // Mark all as read
-export async function markAllAsRead(): Promise<void> {
+export async function markAllAsRead(userId?: string): Promise<void> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    const data = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+    const data = await AsyncStorage.getItem(key);
     const stored: StoredNotification[] = data ? JSON.parse(data) : [];
     const updated = stored.map((n) => ({ ...n, isRead: true }));
-    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     notifySubscribers();
   } catch (error) {
     console.error("Error marking all as read:", error);
@@ -218,12 +238,19 @@ export async function markAllAsRead(): Promise<void> {
 }
 
 // Delete notification
-export async function deleteNotification(id: string): Promise<void> {
+export async function deleteNotification(
+  id: string,
+  userId?: string
+): Promise<void> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    const data = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+    const data = await AsyncStorage.getItem(key);
     const stored: StoredNotification[] = data ? JSON.parse(data) : [];
     const filtered = stored.filter((n) => n.id !== id);
-    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(filtered));
+    await AsyncStorage.setItem(key, JSON.stringify(filtered));
     notifySubscribers();
   } catch (error) {
     console.error("Error deleting notification:", error);
@@ -231,9 +258,13 @@ export async function deleteNotification(id: string): Promise<void> {
 }
 
 // Clear all notifications
-export async function clearAllNotifications(): Promise<void> {
+export async function clearAllNotifications(userId?: string): Promise<void> {
+  if (!userId) {
+    userId = await getCurrentUserId();
+  }
+  const key = `${NOTIFICATIONS_KEY}_${userId}`;
   try {
-    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem(key, JSON.stringify([]));
     notifySubscribers();
   } catch (error) {
     console.error("Error clearing notifications:", error);

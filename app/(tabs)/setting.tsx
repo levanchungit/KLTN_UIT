@@ -60,9 +60,16 @@ export default function Setting() {
             <Text
               style={styles.profileName}
               numberOfLines={1}
-              ellipsizeMode="middle"
+              ellipsizeMode="tail"
             >
-              {user ? user.name ?? user.username : "Chưa đăng nhập"}
+              {(() => {
+                const displayName = user
+                  ? user.name ?? user.username
+                  : "Chưa đăng nhập";
+                return displayName.length > 15
+                  ? displayName.substring(0, 15) + "..."
+                  : displayName;
+              })()}
             </Text>
             <Text style={styles.profileDesc}>
               {user ? "Xem hồ sơ" : "Đăng nhập ngay"}
@@ -135,6 +142,8 @@ export default function Setting() {
         visible={themeModalVisible}
         transparent
         animationType="fade"
+        // set marginbottom inset bottom
+        style={{ marginBottom: 34, marginTop: 34 }}
         onRequestClose={() => setThemeModalVisible(false)}
       >
         <Pressable
@@ -222,7 +231,6 @@ const makeStyles = (
     header: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: 12,
       paddingHorizontal: 20,
       justifyContent: "space-between",
     },
@@ -298,6 +306,7 @@ const makeStyles = (
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.3)",
       justifyContent: "flex-end",
+      marginBottom: 34,
     },
     modalSheet: {
       backgroundColor: c.card,
