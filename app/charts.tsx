@@ -114,6 +114,13 @@ function getRange(kind: TimeRange, anchor: Date) {
   };
 }
 
+function isCurrentPeriod(startSec: number, endSec: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const t = today.getTime() / 1000;
+  return t >= startSec && t < endSec;
+}
+
 export default function ChartsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -158,6 +165,9 @@ export default function ChartsScreen() {
       }`,
     };
   }, [timeRange, anchor, rangeStart, rangeEnd]);
+
+  const atCurrentPeriod = isCurrentPeriod(startSec, endSec);
+  const canGoNext = !atCurrentPeriod;
 
   const loadChartData = useCallback(async () => {
     setLoading(true);
@@ -220,26 +230,16 @@ export default function ChartsScreen() {
   );
 
   const shiftAnchor = (dir: -1 | 1) => {
+    if (dir === 1 && !canGoNext) return;
     const a = new Date(anchor);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (timeRange === "Ngày") {
+    if (timeRange === "Ngày" || timeRange === "Khoảng thời gian")
       a.setDate(a.getDate() + dir);
-      if (dir > 0 && a > today) return; // Không cho chọn tương lai
-    } else if (timeRange === "Tuần") {
-      a.setDate(a.getDate() + dir * 7);
-      if (dir > 0 && a > today) return;
-    } else if (timeRange === "Tháng") {
-      a.setMonth(a.getMonth() + dir);
-      const endOfMonth = new Date(a.getFullYear(), a.getMonth() + 1, 0);
-      if (dir > 0 && endOfMonth > today) return;
-    } else if (timeRange === "Năm") {
-      a.setFullYear(a.getFullYear() + dir);
-      if (dir > 0 && a.getFullYear() > today.getFullYear()) return;
-    }
+    else if (timeRange === "Tuần") a.setDate(a.getDate() + dir * 7);
+    else if (timeRange === "Tháng") a.setMonth(a.getMonth() + dir);
+    else if (timeRange === "Năm") a.setFullYear(a.getFullYear() + dir);
     setAnchor(a);
   };
+  const goToCurrentPeriod = () => setAnchor(new Date());
 
   const addDays = (d: Date, n: number) => {
     const x = new Date(d);
@@ -811,9 +811,6 @@ export default function ChartsScreen() {
                   alignItems: "center",
                 }}
               >
-                {/* Fast forward to current period */}
-                {/* Logic giống dashboard, nhưng nếu muốn thêm thì mở comment dưới */}
-                {/*
                 {!atCurrentPeriod && (
                   <TouchableOpacity
                     onPress={goToCurrentPeriod}
@@ -826,44 +823,15 @@ export default function ChartsScreen() {
                     />
                   </TouchableOpacity>
                 )}
-                */}
-                {/* Next button */}
-                {(() => {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  let canNext = false;
-                  if (timeRange === "Ngày") {
-                    const nextDay = new Date(anchor);
-                    nextDay.setDate(nextDay.getDate() + 1);
-                    canNext = nextDay <= today;
-                  } else if (timeRange === "Tuần") {
-                    const nextWeek = new Date(anchor);
-                    nextWeek.setDate(nextWeek.getDate() + 7);
-                    canNext = nextWeek <= today;
-                  } else if (timeRange === "Tháng") {
-                    const nextMonth = new Date(anchor);
-                    nextMonth.setMonth(nextMonth.getMonth() + 1);
-                    const endOfNextMonth = new Date(
-                      nextMonth.getFullYear(),
-                      nextMonth.getMonth() + 1,
-                      0
-                    );
-                    canNext = endOfNextMonth <= today;
-                  } else if (timeRange === "Năm") {
-                    const nextYear = new Date(anchor);
-                    nextYear.setFullYear(nextYear.getFullYear() + 1);
-                    canNext = nextYear.getFullYear() <= today.getFullYear();
-                  }
-                  return canNext ? (
-                    <TouchableOpacity onPress={() => shiftAnchor(1)}>
-                      <MaterialIcons
-                        name="keyboard-arrow-right"
-                        size={28}
-                        color={colors.icon}
-                      />
-                    </TouchableOpacity>
-                  ) : null;
-                })()}
+                {canGoNext ? (
+                  <TouchableOpacity onPress={() => shiftAnchor(1)}>
+                    <MaterialIcons
+                      name="keyboard-arrow-right"
+                      size={28}
+                      color={colors.icon}
+                    />
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           )}
