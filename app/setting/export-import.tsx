@@ -235,19 +235,61 @@ export default function ExportImportSettings() {
             occurredAt = Math.floor(Date.now() / 1000);
           }
 
-          // Find or use default category
-          const categories = await db.getAllAsync<{ id: string; name: string }>(
-            `SELECT id, name FROM categories WHERE type = ? LIMIT 10`,
-            [type] as any
-          );
-
+          // Find or create category
           let categoryId = null;
           if (categoryName) {
-            const matchedCat = categories.find(
+            const categories = await db.getAllAsync<{
+              id: string;
+              name: string;
+            }>(
+              `SELECT id, name FROM categories WHERE type = ? AND user_id = ?`,
+              [type, userId] as any
+            );
+
+            let matchedCat = categories.find(
               (c) => c.name.toLowerCase() === categoryName.toLowerCase()
             );
-            categoryId = matchedCat?.id || categories[0]?.id || null;
+
+            if (!matchedCat) {
+              // Create new category
+              const catId = `cat_import_${Date.now()}_${Math.random()
+                .toString(36)
+                .substr(2, 9)}`;
+              const pickColor = () => {
+                const palette = [
+                  "#EF4444",
+                  "#F59E0B",
+                  "#10B981",
+                  "#3B82F6",
+                  "#8B5CF6",
+                  "#EC4899",
+                ];
+                return palette[Math.floor(Math.random() * palette.length)];
+              };
+
+              await db.runAsync(
+                `INSERT INTO categories(id, user_id, name, type, icon, color, created_at, updated_at)
+                 VALUES(?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))`,
+                [
+                  catId,
+                  userId,
+                  categoryName,
+                  type,
+                  "mc:help-circle-outline",
+                  pickColor(),
+                ] as any
+              );
+
+              categoryId = catId;
+            } else {
+              categoryId = matchedCat.id;
+            }
           } else {
+            // Use default category if no category name
+            const categories = await db.getAllAsync<{ id: string }>(
+              `SELECT id FROM categories WHERE type = ? AND user_id = ? LIMIT 1`,
+              [type, userId] as any
+            );
             categoryId = categories[0]?.id || null;
           }
 

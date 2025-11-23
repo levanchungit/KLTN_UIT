@@ -17,16 +17,19 @@ import {
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
-import { parseTransactionText } from "@/utils/textPreprocessing";
+import { parseTransactionText, parseAmountVN as parseAmountVNFromUtils } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
+import * as FileSystem from "expo-file-system";
+// import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Image,
@@ -42,6 +45,24 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+type Msg =
+  | { role: "bot"; text: string }
+  | { role: "user"; text: string; imageUri?: string }
+  | { role: "typing" }
+  | {
+      role: "card";
+      transactionId: string;
+      accountId: string;
+      amount: number | null;
+      io: "IN" | "OUT";
+      categoryId: string;
+      categoryName: string;
+      categoryIcon?: string;
+      categoryColor?: string;
+      note: string;
+      when: string;
+    };
 
 const OPENAI_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || "";
@@ -181,6 +202,68 @@ function BackBar() {
 }
 
 /* ---------------- OCR: OCR.space API (Free 25,000 requests/month) ---------------- */
+/*
+async function optimizeImageForOCR(imageUri: string): Promise<string> {
+  try {
+    // Get image info to check size
+    const imageInfo = await FileSystem.getInfoAsync(imageUri);
+
+    // OCR.space limit is 1024KB (1MB)
+    const maxSizeBytes = 1024 * 1024; // 1MB
+    if (imageInfo.exists && imageInfo.size && imageInfo.size > maxSizeBytes) {
+      console.log(
+        `📏 Image too large (${(imageInfo.size / 1024 / 1024).toFixed(
+          2
+        )}MB), resizing for OCR.space limit (1MB)`
+      );
+
+      // Calculate target dimensions to fit within 1MB
+      // Assuming JPEG compression ratio of ~10:1, target uncompressed size ~10MB
+      // But we'll be conservative and resize to smaller dimensions
+      const manipulatedImage = await manipulateAsync(
+        imageUri,
+        [{ resize: { width: 800, height: 800 } }], // Smaller than 1024x1024
+        { compress: 0.5, format: SaveFormat.JPEG } // Lower quality for smaller size
+      );
+
+      // Check final size
+      const finalInfo = await FileSystem.getInfoAsync(manipulatedImage.uri);
+      if (finalInfo.exists && finalInfo.size && finalInfo.size > maxSizeBytes) {
+        console.log(
+          `⚠️ Still too large after resize (${(finalInfo.size / 1024).toFixed(
+            0
+          )}KB), using even lower quality`
+        );
+
+        // If still too large, reduce quality further
+        const finalImage = await manipulateAsync(
+          manipulatedImage.uri,
+          [], // Keep same size
+          { compress: 0.3, format: SaveFormat.JPEG } // Very low quality
+        );
+        return finalImage.uri;
+      }
+
+      return manipulatedImage.uri;
+    }
+
+    return imageUri;
+  } catch (error) {
+    console.warn("Failed to optimize image:", error);
+    // If optimization fails, try to warn user about potential size issues
+    const imageInfo = await FileSystem.getInfoAsync(imageUri).catch(() => null);
+    if (imageInfo?.exists && imageInfo.size && imageInfo.size > 1024 * 1024) {
+      console.warn(
+        `⚠️ Image is ${(imageInfo.size / 1024 / 1024).toFixed(
+          2
+        )}MB, may exceed OCR.space 1MB limit`
+      );
+    }
+    return imageUri; // Return original on error
+  }
+}
+*/
+
 async function processReceiptImage(imageUri: string): Promise<{
   amount: number | null;
   text: string;
@@ -189,10 +272,14 @@ async function processReceiptImage(imageUri: string): Promise<{
   try {
     console.log("📷 Processing receipt with OCR.space:", imageUri);
 
+    // Optimize image size before uploading (using ImagePicker quality only)
+    // const optimizedUri = await optimizeImageForOCR(imageUri);
+    const optimizedUri = imageUri; // Use original image with quality=0.6 from ImagePicker
+
     // Upload image to OCR.space API (free 25,000 requests/month)
     const formData = new FormData();
     formData.append("file", {
-      uri: imageUri,
+      uri: optimizedUri,
       type: "image/jpeg",
       name: "receipt.jpg",
     } as any);
@@ -631,7 +718,7 @@ async function processReceiptImage(imageUri: string): Promise<{
       const errorMsg = result.ErrorMessage?.[0] || "Không thể đọc được văn bản";
       return {
         amount: null,
-        text: `❌ ${errorMsg}\n\nVui lòng thử ảnh rõ hơn.`,
+        text: `❌ ${errorMsg}\n\nVui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
         merchantName: "",
       };
     }
@@ -647,46 +734,20 @@ async function processReceiptImage(imageUri: string): Promise<{
   }
 }
 
-/* ---------------- Helpers: VN money + IN/OUT ---------------- */
-const parseAmountVN = (text: string): number | null => {
+/* ---------------- Helpers: VN money parsing ---------------- */
+const parseAmountVN = async (text: string): Promise<number | null> => {
   if (!text || typeof text !== "string") return null;
 
-  // Remove common non-numeric characters but keep numbers, dots, commas
-  const cleaned = text.replace(/[^\d.,ktrmđvnd]/gi, " ").trim();
-
-  // Try to find number patterns
-  // Pattern 1: 123,456 or 123.456 (Vietnamese thousand separator)
-  const pattern1 = cleaned.match(/(\d{1,3}([,\.]\d{3})+)/g);
-  if (pattern1) {
-    const num = parseFloat(pattern1[0].replace(/[,.]/g, ""));
-    if (!isNaN(num) && num > 0) return Math.round(num);
+  // Use the original regex parsing
+  console.log("Using regex parsing for amount extraction...");
+  const amount = parseAmountVNFromUtils(text);
+  if (amount !== null) {
+    console.log("Regex found amount:", amount);
+    return amount;
   }
 
-  // Pattern 2: Simple numbers with units (25k, 100tr)
-  const pattern2 = text.match(
-    /(\d+(?:[.,]\d+)?)\s*(k|nghìn|ng|tr|triệu|trieu|m)/i
-  );
-  if (pattern2) {
-    const num = parseFloat(pattern2[1].replace(",", "."));
-    const unit = pattern2[2].toLowerCase();
-    const factor =
-      unit[0] === "k" || unit[0] === "n"
-        ? 1000
-        : unit[0] === "t" || unit[0] === "m"
-        ? 1000000
-        : 1;
-    return Math.round(num * factor);
-  }
-
-  // Pattern 3: Any sequence of digits (fallback)
-  const pattern3 = cleaned.match(/\d+/g);
-  if (pattern3) {
-    // Take the longest number
-    const longest = pattern3.sort((a, b) => b.length - a.length)[0];
-    const num = parseInt(longest);
-    if (!isNaN(num) && num > 0) return num;
-  }
-
+  // No amount found
+  console.log("Regex failed to find amount");
   return null;
 };
 const detectInOut = (text: string): "IN" | "OUT" => {
@@ -1008,24 +1069,69 @@ async function createTransaction(draft: {
   return { id, ...draft, accountId: acc.id };
 }
 
-/* ---------------- Chat types ---------------- */
-type Msg =
-  | { role: "bot"; text: string }
-  | { role: "user"; text: string; imageUri?: string }
-  | { role: "typing" }
-  | {
-      role: "card";
-      transactionId: string;
-      accountId: string;
-      amount: number | null;
-      io: "IN" | "OUT";
-      categoryId: string;
-      categoryName: string;
-      categoryIcon?: string;
-      categoryColor?: string;
-      note: string;
-      when: string;
+/* ---------------- Typing Indicator Component ---------------- */
+function TypingIndicator({ colors }: { colors: any }) {
+  const [animations] = useState([
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+  ]);
+
+  useEffect(() => {
+    const animateDots = () => {
+      const sequence = animations.map((anim, index) =>
+        Animated.sequence([
+          Animated.delay(index * 200), // Delay each dot
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0.3,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+
+      Animated.loop(Animated.parallel(sequence)).start();
     };
+
+    animateDots();
+
+    return () => {
+      animations.forEach((anim) => anim.stopAnimation());
+    };
+  }, [animations]);
+
+  return (
+    <View
+      style={[
+        styles.bubble,
+        styles.left,
+        {
+          flexDirection: "row",
+          gap: 4,
+          backgroundColor: colors.card,
+          borderColor: colors.divider,
+        },
+      ]}
+    >
+      {animations.map((anim, index) => (
+        <Animated.View
+          key={index}
+          style={[
+            styles.dot,
+            { backgroundColor: colors.subText, opacity: anim },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/* ---------------- Component ---------------- */
 
 /* ---------------- Component ---------------- */
 export default function Chatbox() {
@@ -1351,6 +1457,7 @@ export default function Chatbox() {
 
     setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
+    setMessages((m) => [...m, { role: "typing" }]);
     scrollToEnd();
 
     // Parse amount and clean note from text
@@ -1360,7 +1467,7 @@ export default function Chatbox() {
 
     const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
     const best = ranked[0];
-    const amount = parsedAmount || parseAmountVN(text);
+    const amount = parsedAmount || (await parseAmountVN(text));
 
     const ai = await getEmotionalReplyDirect({
       io,
@@ -1378,7 +1485,10 @@ export default function Chatbox() {
 
     // Nếu chưa có amount → nhắn nhắc người dùng bổ sung và dừng
     if (!ai.amount || ai.amount <= 0) {
-      setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
+      setMessages((m) => [
+        ...m.slice(0, -1), // remove typing
+        { role: "bot", text: t("askAmount") },
+      ]);
       scrollToEnd();
       return;
     }
@@ -1398,12 +1508,20 @@ export default function Chatbox() {
       });
     } catch {}
     if (!finalCategoryId || lowConfidence) {
+      setMessages((m) => [
+        ...m.slice(0, -1), // remove typing
+        {
+          role: "bot",
+          text: "Tôi không chắc danh mục nào phù hợp. Bạn chọn nhé:",
+        },
+      ]);
       setPendingPick({
         text: cleanNote,
         amount: ai.amount,
         io: ai.io,
         choices: ranked.slice(0, 4), // Show top 4 suggestions
       });
+      scrollToEnd();
       return; // đợi user chọn trước khi tạo
     }
 
@@ -1419,7 +1537,7 @@ export default function Chatbox() {
       const when = new Date().toLocaleDateString();
       const selectedCategory = items.find((c) => c.id === finalCategoryId);
       setMessages((m) => [
-        ...m,
+        ...m.slice(0, -1), // remove typing
         {
           role: "card",
           transactionId: txn.id,
@@ -1447,7 +1565,7 @@ export default function Chatbox() {
       scrollToEnd();
     } catch (e: any) {
       setMessages((m) => [
-        ...m,
+        ...m.slice(0, -1), // remove typing
         {
           role: "bot",
           text:
@@ -1586,21 +1704,75 @@ export default function Chatbox() {
   // ----- Image Receipt Handler -----
   const handleImagePress = async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Quyền truy cập", "Cần quyền truy cập thư viện ảnh");
-        return;
+      // Ask user to choose between camera or gallery
+      const choice = await new Promise<"camera" | "gallery" | null>(
+        (resolve) => {
+          Alert.alert(
+            "Chọn nguồn ảnh",
+            "Bạn muốn chụp ảnh mới hay chọn từ thư viện?",
+            [
+              { text: "Chụp ảnh", onPress: () => resolve("camera") },
+              { text: "Chọn từ thư viện", onPress: () => resolve("gallery") },
+              { text: "Hủy", style: "cancel", onPress: () => resolve(null) },
+            ]
+          );
+        }
+      );
+
+      if (!choice) return;
+
+      let permissionStatus;
+      let pickerResult;
+
+      if (choice === "camera") {
+        // Request camera permissions
+        const cameraPermission =
+          await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraPermission.status !== "granted") {
+          Alert.alert(
+            "Quyền truy cập",
+            "Cần quyền truy cập camera để chụp ảnh"
+          );
+          return;
+        }
+
+        pickerResult = await ImagePicker.launchCameraAsync({
+          mediaTypes: "images" as any,
+          allowsEditing: true,
+          quality: 0.6,
+        });
+      } else {
+        // Request media library permissions
+        const mediaPermission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (mediaPermission.status !== "granted") {
+          Alert.alert("Quyền truy cập", "Cần quyền truy cập thư viện ảnh");
+          return;
+        }
+
+        pickerResult = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: "images" as any,
+          allowsEditing: true,
+          quality: 0.6,
+        });
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: "images" as any,
-        allowsEditing: true,
-        quality: 0.8,
-      });
+      if (pickerResult.canceled) return;
+      const imageUri = pickerResult.assets[0].uri;
 
-      if (result.canceled) return;
-      const imageUri = result.assets[0].uri;
+      // Check image size before processing
+      const imageInfo = await FileSystem.getInfoAsync(imageUri).catch(
+        () => null
+      );
+      if (imageInfo?.exists && imageInfo.size && imageInfo.size > 1024 * 1024) {
+        Alert.alert(
+          "Ảnh quá lớn",
+          `Ảnh có kích thước ${(imageInfo.size / 1024 / 1024).toFixed(
+            2
+          )}MB. OCR.space chỉ hỗ trợ tối đa 1MB. Ảnh sẽ được tự động nén.`,
+          [{ text: "Tiếp tục" }]
+        );
+      }
 
       // Show image and processing message
       setMessages((m) => [
@@ -1625,7 +1797,7 @@ export default function Chatbox() {
             role: "bot",
             text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${
               ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
-            }Vui lòng thử ảnh rõ hơn hoặc chọn ảnh khác.`,
+            }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
           },
         ]);
         scrollToEnd();
@@ -1707,7 +1879,7 @@ export default function Chatbox() {
     const parsedAmount = parsed.amount;
 
     // Parse and classify with AI
-    const amt = parsedAmount || parseAmountVN(userText);
+    const amt = parsedAmount || (await parseAmountVN(userText));
     const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
 
     if (!ranked || ranked.length === 0) {
@@ -1952,30 +2124,7 @@ export default function Chatbox() {
               );
             }
             if (item.role === "typing") {
-              return (
-                <View
-                  style={[
-                    styles.bubble,
-                    styles.left,
-                    {
-                      flexDirection: "row",
-                      gap: 4,
-                      backgroundColor: colors.card,
-                      borderColor: colors.divider,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[styles.dot, { backgroundColor: colors.subText }]}
-                  />
-                  <View
-                    style={[styles.dot, { backgroundColor: colors.subText }]}
-                  />
-                  <View
-                    style={[styles.dot, { backgroundColor: colors.subText }]}
-                  />
-                </View>
-              );
+              return <TypingIndicator colors={colors} />;
             }
 
             return (
@@ -2142,7 +2291,7 @@ export default function Chatbox() {
               justifyContent: "flex-end",
             }}
           >
-            <View
+            <SafeAreaView
               style={{
                 backgroundColor: colors.card,
                 borderTopLeftRadius: 20,
@@ -2150,6 +2299,7 @@ export default function Chatbox() {
                 padding: 20,
                 maxHeight: "80%",
               }}
+              edges={["bottom"]}
             >
               <View
                 style={{
@@ -2427,7 +2577,7 @@ export default function Chatbox() {
                   {t("saveChanges")}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </SafeAreaView>
           </View>
         </Modal>
 

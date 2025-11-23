@@ -74,7 +74,13 @@ export default function LoginScreen() {
         });
       }
 
-      const userInfo = await GoogleSignin.signIn();
+      try {
+        await GoogleSignin.signOut();
+      } catch (e) {
+        // ignore if not signed in
+      }
+
+      const userInfo = await GoogleSignin.signIn({ prompt: "select_account" });
       console.log(userInfo);
       const profile = userInfo.data.user;
       const idToken = userInfo.data.idToken;
@@ -95,12 +101,61 @@ export default function LoginScreen() {
         name: acct.name ?? null,
         image: acct.image ?? null,
       });
+
+      // Check if user has completed onboarding by checking categories count
+      try {
+        const { db, openDb } = await import("@/db");
+        await openDb();
+        const catRow = await db.getFirstAsync<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM categories WHERE user_id=?`,
+          acct.id as any
+        );
+        const catCount = catRow?.cnt ?? 0;
+        if (catCount >= 3) {
+          router.replace("/(tabs)");
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to check categories:", e);
+      }
+
+      // Create default account if not exists
+      try {
+        const { db, openDb } = await import("@/db");
+        await openDb();
+        const accRow = await db.getFirstAsync<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
+          acct.id as any
+        );
+        const accCount = accRow?.cnt ?? 0;
+        if (accCount === 0) {
+          const id = `acc_default_${acct.id}`;
+          await db.runAsync(
+            `INSERT INTO accounts(id,user_id,name,icon,color,include_in_total,balance_cached,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?)`,
+            [
+              id,
+              acct.id,
+              "Ví mặc định",
+              "wallet",
+              "#007AFF",
+              1,
+              0,
+              Math.floor(Date.now() / 1000),
+              null,
+            ] as any
+          );
+        }
+      } catch (e) {
+        console.warn("Failed to create default account:", e);
+      }
+
       try {
         await AsyncStorage.setItem("requires_onboarding", acct.id);
       } catch (e) {
         console.warn("Could not set requires_onboarding flag", e);
       }
-      router.replace("/onboarding/wallet-setup");
+      router.replace("/onboarding/categories-setup");
     } catch (err: any) {
       console.log("GoogleSignin error:", err);
       Alert.alert("Lỗi", "Đăng nhập bằng Google thất bại");
@@ -175,12 +230,61 @@ export default function LoginScreen() {
     try {
       const userId = await createUserWithPassword({ username, password });
       await loginSet({ id: userId, username });
+
+      // Check if user has completed onboarding by checking categories count
+      try {
+        const { db, openDb } = await import("@/db");
+        await openDb();
+        const catRow = await db.getFirstAsync<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM categories WHERE user_id=?`,
+          userId as any
+        );
+        const catCount = catRow?.cnt ?? 0;
+        if (catCount >= 3) {
+          router.replace("/(tabs)");
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to check categories:", e);
+      }
+
+      // Create default account if not exists
+      try {
+        const { db, openDb } = await import("@/db");
+        await openDb();
+        const accRow = await db.getFirstAsync<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
+          userId as any
+        );
+        const accCount = accRow?.cnt ?? 0;
+        if (accCount === 0) {
+          const id = `acc_default_${userId}`;
+          await db.runAsync(
+            `INSERT INTO accounts(id,user_id,name,icon,color,include_in_total,balance_cached,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?)`,
+            [
+              id,
+              userId,
+              "Ví mặc định",
+              "wallet",
+              "#007AFF",
+              1,
+              0,
+              Math.floor(Date.now() / 1000),
+              null,
+            ] as any
+          );
+        }
+      } catch (e) {
+        console.warn("Failed to create default account:", e);
+      }
+
       try {
         await AsyncStorage.setItem("requires_onboarding", userId);
       } catch (e) {
         console.warn("Could not set requires_onboarding flag", e);
       }
-      router.replace("/onboarding/wallet-setup");
+      router.replace("/onboarding/categories-setup");
     } catch (error: any) {
       const msg =
         error.message === "USERNAME_TAKEN"

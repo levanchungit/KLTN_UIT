@@ -23,28 +23,19 @@ export default function ReminderSetup() {
   const { t } = useI18n();
   const { user } = useUser();
 
+  useEffect(() => {
+    if (!user) {
+      console.warn("No user in reminder-setup, redirecting to login");
+      router.replace("/auth/login");
+    }
+  }, [user]);
+
   const now = new Date();
   const [selectedHour, setSelectedHour] = useState<number>(now.getHours());
   const [selectedMinute, setSelectedMinute] = useState<number>(
     now.getMinutes()
   );
   // picker always visible; no show flag required
-
-  useEffect(() => {
-    // Try to load previously chosen time if exists
-    (async () => {
-      try {
-        const s = await AsyncStorage.getItem("daily_reminder_time");
-        if (s) {
-          const [hh, mm] = s.split(":").map((x) => parseInt(x, 10));
-          if (!isNaN(hh)) setSelectedHour(hh);
-          if (!isNaN(mm)) setSelectedMinute(mm);
-        }
-      } catch (e) {
-        // ignore
-      }
-    })();
-  }, []);
 
   const handleConfirm = async () => {
     const hh = String(selectedHour).padStart(2, "0");
@@ -106,9 +97,8 @@ export default function ReminderSetup() {
 
       if (!ownerId) {
         console.warn(
-          "User not available for post-onboarding checks; skipping DB checks"
+          "User not available for post-onboarding checks; redirecting to login"
         );
-        router.replace("/");
         return;
       }
 
@@ -135,7 +125,7 @@ export default function ReminderSetup() {
     } catch (e) {
       console.warn("Post-onboarding navigation check failed:", e);
     }
-    router.replace("/");
+    router.replace("/(tabs)");
   };
 
   const handlePrePermissionConfirm = async () => {

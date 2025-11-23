@@ -56,18 +56,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // Clear AsyncStorage cache to allow fresh login with different Google account
     try {
       console.log("Clearing AsyncStorage cache...");
-      await AsyncStorage.multiRemove([
-        "requires_onboarding",
-        "upgrade_after_login",
-        // Clear any cached user preferences or settings
-        "user_preferences",
-        "notification_settings",
-        "theme_settings",
-        // Add any other cache keys that should be cleared on logout
-      ]);
-      console.log("AsyncStorage cache cleared");
+      // Clear all AsyncStorage data to ensure fresh login
+      await AsyncStorage.clear();
+      console.log("AsyncStorage fully cleared");
     } catch (e) {
-      console.warn("Failed to clear AsyncStorage cache:", e);
+      console.warn("Failed to clear AsyncStorage:", e);
     }
     // Try to sign out the native GoogleSignin module so the next Google login
     // can pick a different account. Guard against running in Expo Go or when

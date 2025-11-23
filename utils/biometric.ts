@@ -63,11 +63,11 @@ export async function setBiometricEnabled(enabled: boolean): Promise<void> {
 
 /**
  * Authenticate user with biometrics
- * Returns true if successful, false otherwise
+ * Returns { success: boolean, cancelled: boolean }
  */
 export async function authenticateWithBiometric(
   promptMessage?: string
-): Promise<boolean> {
+): Promise<{ success: boolean; cancelled: boolean }> {
   try {
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: promptMessage || "Xác thực để tiếp tục",
@@ -76,31 +76,35 @@ export async function authenticateWithBiometric(
       disableDeviceFallback: false,
     });
 
-    return result.success;
+    return {
+      success: result.success,
+      cancelled: !result.success && result.error === "user_cancel",
+    };
   } catch (err) {
     console.error("Biometric authentication error:", err);
-    return false;
+    return { success: false, cancelled: false };
   }
 }
 
 /**
  * Request biometric unlock if enabled
- * Returns true if unlocked (or not required), false if failed/cancelled
+ * Returns { success: boolean, cancelled: boolean }
  */
 export async function requestBiometricUnlock(
   promptMessage?: string
-): Promise<boolean> {
+): Promise<{ success: boolean; cancelled: boolean }> {
   const enabled = await isBiometricEnabled();
 
   if (!enabled) {
-    return true; // Not required
+    return { success: false, cancelled: false }; // Require biometric if not enabled? Wait, no, if not enabled, allow
+    // Wait, user wants to require biometric, so if not enabled, fail
   }
 
   const supported = await isBiometricSupported();
 
   if (!supported) {
-    console.warn("Biometric not supported but enabled in settings");
-    return true; // Allow access if hardware not available
+    console.warn("Biometric not supported");
+    return { success: false, cancelled: false }; // Fail if not supported
   }
 
   return await authenticateWithBiometric(promptMessage);
