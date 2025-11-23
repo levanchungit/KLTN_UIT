@@ -1044,6 +1044,13 @@ export default function ChartsScreen() {
                 }}
                 noOfSections={4}
                 maxValue={Math.max(...chartData.map((d) => d.value)) * 1.2}
+                yAxisLabelTexts={[
+                  "0",
+                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) / 4),
+                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) / 2),
+                  fmtMoneyVN((Math.max(...chartData.map((d) => d.value)) * 1.2) * 3 / 4),
+                  fmtMoneyVN(Math.max(...chartData.map((d) => d.value)) * 1.2),
+                ]}
                 isAnimated
                 animationDuration={800}
                 showGradient
@@ -1099,6 +1106,13 @@ export default function ChartsScreen() {
                 }}
                 noOfSections={4}
                 maxValue={Math.max(...comparisonData.map((d) => d.value)) * 1.2}
+                yAxisLabelTexts={[
+                  "0",
+                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 4),
+                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 2),
+                  fmtMoneyVN((Math.max(...comparisonData.map((d) => d.value)) * 1.2) * 3 / 4),
+                  fmtMoneyVN(Math.max(...comparisonData.map((d) => d.value)) * 1.2),
+                ]}
                 isAnimated
                 animationDuration={800}
                 scrollToEnd={false}
