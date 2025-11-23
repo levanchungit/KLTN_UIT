@@ -7,7 +7,6 @@ import {
   listBudgets,
   type Budget,
 } from "@/repos/budgetRepo";
-import { fixIconName } from "@/utils/iconMapper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";

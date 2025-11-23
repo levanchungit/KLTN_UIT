@@ -685,10 +685,27 @@ function EditableCategoryRow({
   const getValidIconName = (icon: string) => {
     // List of known valid MaterialCommunityIcons (common ones)
     const validIcons = [
-      "food", "home-outline", "cart-outline", "piggy-bank", "car", "bus", "airplane",
-      "credit-card-outline", "cash", "phone", "wifi", "lightbulb-outline", "gas-station",
-      "medical-bag", "school", "account-cash", "gift-outline", "movie-outline", "gamepad-variant",
-      "help-circle-outline", "dots-horizontal"
+      "food",
+      "home-outline",
+      "cart-outline",
+      "piggy-bank",
+      "car",
+      "bus",
+      "airplane",
+      "credit-card-outline",
+      "cash",
+      "phone",
+      "wifi",
+      "lightbulb-outline",
+      "gas-station",
+      "medical-bag",
+      "school",
+      "account-cash",
+      "gift-outline",
+      "movie-outline",
+      "gamepad-variant",
+      "help-circle-outline",
+      "dots-horizontal",
     ];
 
     if (validIcons.includes(icon)) {
@@ -698,20 +715,20 @@ function EditableCategoryRow({
     // Fallback mapping for common invalid icons
     const fallbackMap: Record<string, string> = {
       "food-variant": "food",
-      "home": "home-outline",
-      "shopping": "cart-outline",
-      "shop": "store-outline",
-      "transport": "bus",
+      home: "home-outline",
+      shopping: "cart-outline",
+      shop: "store-outline",
+      transport: "bus",
       "transport-car": "car",
-      "flight": "airplane",
-      "card": "credit-card-outline",
-      "money": "cash",
-      "savings": "piggy-bank",
-      "noodles": "food",
+      flight: "airplane",
+      card: "credit-card-outline",
+      money: "cash",
+      savings: "piggy-bank",
+      noodles: "food",
       "directions-car": "car",
       "flight-takeoff": "airplane-takeoff",
       "piggy-bank-outline": "piggy-bank",
-      "assignment": "file-document-outline",
+      assignment: "file-document-outline",
     };
 
     return fallbackMap[icon] || "help-circle-outline";

@@ -7,6 +7,7 @@ import { db, openDb } from "@/db";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
 import { initSmartNotifications } from "@/services/smartNotificationService";
+import { requestBiometricUnlock } from "@/utils/biometric";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -17,8 +18,14 @@ import {
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
-import { LogBox, Platform, UIManager } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  LogBox,
+  Platform,
+  UIManager,
+  View,
+} from "react-native";
 import { PaperProvider } from "react-native-paper";
 
 // Suppress warnings in New Architecture and Expo Go limitations
@@ -96,6 +103,18 @@ function RootLayoutNav() {
   const { user, isLoading } = useUser();
   const segments = useSegments();
   const router = useRouter();
+  const [biometricChecked, setBiometricChecked] = useState(false);
+  const [hasCheckedBiometric, setHasCheckedBiometric] = useState(false);
+
+  // Reset biometric check when user changes (login/logout)
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        setHasCheckedBiometric(false);
+        setBiometricChecked(false);
+      }
+    }
+  }, [user, isLoading]);
 
   useEffect(() => {
     // Don't do routing while still loading session
@@ -103,6 +122,8 @@ function RootLayoutNav() {
       console.log(
         "RootLayoutNav: Still loading session, skipping routing logic"
       );
+      setBiometricChecked(false);
+      setHasCheckedBiometric(false);
       return;
     }
 
@@ -119,11 +140,14 @@ function RootLayoutNav() {
       isAuthenticated,
       user: user?.username,
       segments,
+      hasCheckedBiometric,
     });
 
     // If not on onboarding/auth screens and not authenticated, start onboarding
     if (!inAuthGroup && !inOnboarding && !isAuthenticated) {
       console.log("RootLayoutNav: Redirecting to onboarding/welcome");
+      setBiometricChecked(false);
+      setHasCheckedBiometric(false);
       router.replace("/onboarding/welcome");
       return;
     }
@@ -134,39 +158,91 @@ function RootLayoutNav() {
     // shortcut for freshly-registered users so they continue to chatbox-intro
     // after creating required resources.
     if (isAuthenticated && !inOnboarding && !inAuthGroup) {
-      (async () => {
-        try {
-          await openDb();
-
-          const accRow = await db.getFirstAsync<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
-            [user.id]
-          );
-          const accCount = accRow?.cnt ?? 0;
-          if (accCount <= 0) {
-            router.replace("/onboarding/wallet-setup");
-            return;
+      // Only check biometric once per session
+      if (!hasCheckedBiometric) {
+        setHasCheckedBiometric(true);
+        (async () => {
+          // Check biometric authentication if enabled
+          try {
+            const biometricUnlocked = await requestBiometricUnlock(
+              "Xác thực để vào ứng dụng"
+            );
+            if (!biometricUnlocked) {
+              console.log(
+                "RootLayoutNav: Biometric authentication failed, redirecting to login"
+              );
+              setBiometricChecked(false);
+              setHasCheckedBiometric(false);
+              router.replace("/auth/login");
+              return;
+            }
+          } catch (error) {
+            console.warn("RootLayoutNav: Biometric check failed:", error);
+            // Allow access if biometric check fails (e.g., hardware not available)
           }
 
-          // If the freshly-registered flag is set, continue onboarding to chatbox.
-          const requires = await AsyncStorage.getItem("requires_onboarding");
-          if (requires === user.id) {
-            router.replace("/onboarding/chatbox-intro");
-            return;
-          }
+          // Check onboarding requirements
+          try {
+            await openDb();
 
-          // Otherwise user is fully set up — allow normal navigation (tabs).
-        } catch (e) {
-          console.warn("Onboarding gating check failed:", e);
-        }
-      })();
+            const accRow = await db.getFirstAsync<{ cnt: number }>(
+              `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
+              user.id as any
+            );
+            const accCount = accRow?.cnt ?? 0;
+            if (accCount <= 0) {
+              setBiometricChecked(false);
+              router.replace("/onboarding/wallet-setup");
+              return;
+            }
+
+            // If the freshly-registered flag is set, continue onboarding to chatbox.
+            const requires = await AsyncStorage.getItem("requires_onboarding");
+            if (requires === user.id) {
+              setBiometricChecked(false);
+              router.replace("/onboarding/chatbox-intro");
+              return;
+            }
+
+            // Otherwise user is fully set up — allow normal navigation (tabs).
+            setBiometricChecked(true);
+          } catch (e) {
+            console.warn("Onboarding gating check failed:", e);
+            setBiometricChecked(true); // Allow access on error
+          }
+        })();
+      }
     }
 
     // If we're on auth and already logged in with a real account, go to main tabs
     if (inAuthGroup && isAuthenticated) {
+      setBiometricChecked(false);
+      setHasCheckedBiometric(false);
       router.replace("/(tabs)");
     }
-  }, [user, segments, isLoading]);
+  }, [user, segments, isLoading, hasCheckedBiometric]);
+
+  // Show loading screen while biometric check is in progress
+  if (
+    isLoading ||
+    (user &&
+      !biometricChecked &&
+      segments[0] !== "auth" &&
+      segments[0] !== "onboarding")
+  ) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#fff",
+        }}
+      >
+        <ActivityIndicator size="large" color="#16A34A" />
+      </View>
+    );
+  }
 
   return (
     <ThemeProvider value={mode === "dark" ? DarkTheme : DefaultTheme}>
