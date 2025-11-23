@@ -46,9 +46,9 @@ const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const fmtMoney = (n: number) =>
   (n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 0 }) + "₫";
 
-// Format số tiền ngắn gọn cho biểu đồ
-const fmtMoneyShort = (n: number) => {
-  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1)}tỷ`;
+// Format số tiền theo kiểu Việt Nam (1tr, 12tr, 1.2tỷ)
+const fmtMoneyVN = (n: number) => {
+  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}tỷ`;
   if (n >= 1000000) return `${Math.round(n / 1000000)}tr`;
   if (n >= 1000) return `${Math.round(n / 1000)}k`;
   return n.toString();
@@ -150,6 +150,16 @@ export default function ChartsScreen() {
     useState<TransactionType>("expense");
   const [loading, setLoading] = useState(false);
 
+  // State for comparison chart
+  const [comparisonData, setComparisonData] = useState<
+    {
+      value: number;
+      label: string;
+      frontColor: string;
+      topLabelComponent?: () => React.ReactElement;
+    }[]
+  >([]);
+
   // Synchronized with dashboard logic for perfect match
   const { startSec, endSec, label } = React.useMemo(() => {
     if (timeRange !== "Khoảng thời gian") return getRange(timeRange, anchor);
@@ -203,9 +213,14 @@ export default function ChartsScreen() {
           frontColor: r.color ?? palette[i % palette.length],
           topLabelComponent: () => (
             <Text
-              style={{ fontSize: 11, color: colors.text, fontWeight: "700" }}
+              style={{
+                fontSize: 10,
+                color: colors.text,
+                fontWeight: "700",
+                textAlign: "center"
+              }}
             >
-              {fmtMoneyShort(r.total || 0)}
+              {fmtMoneyVN(r.total || 0)}
             </Text>
           ),
         }));
@@ -218,15 +233,69 @@ export default function ChartsScreen() {
     }
   }, [startSec, endSec, transactionType, colors.text]);
 
+  const loadComparisonData = useCallback(async () => {
+    try {
+      // Get both expense and income totals
+      const [expenseTotal, incomeTotal] = await Promise.all([
+        totalInRange(startSec, endSec, "expense"),
+        totalInRange(startSec, endSec, "income"),
+      ]);
+
+      // Create comparison data with expense and income as separate bars
+      const data = [
+        {
+          value: expenseTotal,
+          label: "Chi tiêu",
+          frontColor: "#EF4444",
+          topLabelComponent: () => (
+            <Text
+              style={{
+                fontSize: 10,
+                color: colors.text,
+                fontWeight: "700",
+                textAlign: "center"
+              }}
+            >
+              {fmtMoneyVN(expenseTotal)}
+            </Text>
+          ),
+        },
+        {
+          value: incomeTotal,
+          label: "Thu nhập",
+          frontColor: "#10B981",
+          topLabelComponent: () => (
+            <Text
+              style={{
+                fontSize: 10,
+                color: colors.text,
+                fontWeight: "700",
+                textAlign: "center"
+              }}
+            >
+              {fmtMoneyVN(incomeTotal)}
+            </Text>
+          ),
+        },
+      ];
+
+      setComparisonData(data);
+    } catch (error) {
+      console.error("Error loading comparison data:", error);
+    }
+  }, [startSec, endSec, colors.text]);
+
   useEffect(() => {
     loadChartData();
-  }, [loadChartData]);
+    loadComparisonData();
+  }, [loadChartData, loadComparisonData]);
 
   // Auto-refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadChartData();
-    }, [loadChartData])
+      loadComparisonData();
+    }, [loadChartData, loadComparisonData])
   );
 
   const shiftAnchor = (dir: -1 | 1) => {
@@ -677,7 +746,7 @@ export default function ChartsScreen() {
   });
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -690,7 +759,12 @@ export default function ChartsScreen() {
         <Text style={styles.headerTitle}>Biểu đồ so sánh</Text>
       </View>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
+      >
+        {/* Time Range Filter */}
         {/* Time Range Filter */}
         <View style={styles.timeFilterContainer}>
           <ScrollView
@@ -978,6 +1052,59 @@ export default function ChartsScreen() {
                 scrollToEnd={false}
                 initialSpacing={10}
                 endSpacing={10}
+                showValuesAsTopLabel={false}
+              />
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size={64}
+                color={colors.divider}
+              />
+              <Text style={styles.emptyText}>Chưa có dữ liệu</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Comparison Chart - Thu/Chi cùng khoảng thời gian */}
+        <View style={[styles.chartContainer, { marginBottom: 20 }]}>
+          <Text style={styles.chartTitle}>So sánh Thu nhập vs Chi tiêu</Text>
+          {loading ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Đang tải...</Text>
+            </View>
+          ) : comparisonData.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 20 }}
+            >
+              <BarChart
+                data={comparisonData}
+                width={Math.max(comparisonData.length * 80 + 20, 300)}
+                barWidth={50}
+                spacing={30}
+                roundedTop
+                roundedBottom
+                xAxisThickness={1}
+                yAxisThickness={1}
+                xAxisColor={colors.divider}
+                yAxisColor={colors.divider}
+                yAxisTextStyle={{ color: colors.subText, fontSize: 10 }}
+                xAxisLabelTextStyle={{
+                  color: colors.subText,
+                  fontSize: 11,
+                  fontWeight: "600",
+                }}
+                noOfSections={4}
+                maxValue={Math.max(...comparisonData.map((d) => d.value)) * 1.2}
+                isAnimated
+                animationDuration={800}
+                scrollToEnd={false}
+                initialSpacing={10}
+                endSpacing={10}
+                showValuesAsTopLabel={false}
               />
             </ScrollView>
           ) : (
