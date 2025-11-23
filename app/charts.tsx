@@ -140,19 +140,20 @@ export default function ChartsScreen() {
   const [totalExpense, setTotalExpense] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // Synchronized with dashboard logic for perfect match
   const { startSec, endSec, label } = React.useMemo(() => {
-    if (timeRange === "Khoảng thời gian") {
-      const start = startOfDay(rangeStart).getTime() / 1000;
-      const end = startOfDay(rangeEnd).getTime() / 1000 + 86400;
-      return {
-        startSec: start,
-        endSec: end,
-        label: `${rangeStart.getDate()}/${
-          rangeStart.getMonth() + 1
-        } - ${rangeEnd.getDate()}/${rangeEnd.getMonth() + 1}`,
-      };
-    }
-    return getRange(timeRange, anchor);
+    if (timeRange !== "Khoảng thời gian") return getRange(timeRange, anchor);
+    const s = startOfDay(rangeStart);
+    const e = startOfDay(rangeEnd);
+    const eExclusive = new Date(e);
+    eExclusive.setDate(eExclusive.getDate() + 1);
+    return {
+      startSec: s.getTime() / 1000,
+      endSec: eExclusive.getTime() / 1000,
+      label: `${s.getDate()} thg ${s.getMonth() + 1} - ${e.getDate()} thg ${
+        e.getMonth() + 1
+      }`,
+    };
   }, [timeRange, anchor, rangeStart, rangeEnd]);
 
   const loadChartData = useCallback(async () => {
@@ -584,12 +585,14 @@ export default function ChartsScreen() {
       marginRight: 40, // Balance the back button
     },
     timeFilterContainer: {
-      padding: 16,
+      marginHorizontal: 16,
+      marginVertical: 4,
+      marginBottom: 20, // tăng khoảng cách với phần dưới
     },
     timeFilterScroll: {
       flexDirection: "row",
       gap: 8,
-      marginBottom: 16,
+      paddingVertical: 4,
     },
     timeFilterBtn: {
       paddingHorizontal: 16,
@@ -619,19 +622,26 @@ export default function ChartsScreen() {
       marginBottom: 16,
     },
     navButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.card,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1,
       borderColor: colors.divider,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 1,
     },
     periodLabel: {
-      fontSize: 16,
-      fontWeight: "600",
+      fontSize: 18,
+      fontWeight: "700",
       color: colors.text,
+      textAlign: "center",
+      letterSpacing: 0.2,
     },
     chartContainer: {
       backgroundColor: colors.card,
@@ -723,7 +733,7 @@ export default function ChartsScreen() {
             })}
           </ScrollView>
 
-          {/* Time Navigation or Custom Range Display */}
+          {/* Time Navigation or Custom Range Display - match dashboard */}
           {timeRange === "Khoảng thời gian" ? (
             <View
               style={{
@@ -742,8 +752,9 @@ export default function ChartsScreen() {
                     fontWeight: "600",
                   }}
                 >
-                  {rangeStart.getDate()}/{rangeStart.getMonth() + 1} -{" "}
-                  {rangeEnd.getDate()}/{rangeEnd.getMonth() + 1}
+                  {`${rangeStart.getDate()} thg ${
+                    rangeStart.getMonth() + 1
+                  } - ${rangeEnd.getDate()} thg ${rangeEnd.getMonth() + 1}`}
                 </Text>
               </TouchableOpacity>
               <View style={{ position: "absolute", right: 0 }}>
@@ -785,36 +796,58 @@ export default function ChartsScreen() {
                   {label}
                 </Text>
               </TouchableOpacity>
-              {(() => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                let canNext = false;
-
-                if (timeRange === "Ngày") {
-                  const nextDay = new Date(anchor);
-                  nextDay.setDate(nextDay.getDate() + 1);
-                  canNext = nextDay <= today;
-                } else if (timeRange === "Tuần") {
-                  const nextWeek = new Date(anchor);
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  canNext = nextWeek <= today;
-                } else if (timeRange === "Tháng") {
-                  const nextMonth = new Date(anchor);
-                  nextMonth.setMonth(nextMonth.getMonth() + 1);
-                  const endOfNextMonth = new Date(
-                    nextMonth.getFullYear(),
-                    nextMonth.getMonth() + 1,
-                    0
-                  );
-                  canNext = endOfNextMonth <= today;
-                } else if (timeRange === "Năm") {
-                  const nextYear = new Date(anchor);
-                  nextYear.setFullYear(nextYear.getFullYear() + 1);
-                  canNext = nextYear.getFullYear() <= today.getFullYear();
-                }
-
-                return canNext ? (
-                  <View style={{ position: "absolute", right: 0 }}>
+              <View
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                {/* Fast forward to current period */}
+                {/* Logic giống dashboard, nhưng nếu muốn thêm thì mở comment dưới */}
+                {/*
+                {!atCurrentPeriod && (
+                  <TouchableOpacity
+                    onPress={goToCurrentPeriod}
+                    style={{ marginRight: 10 }}
+                  >
+                    <MaterialCommunityIcons
+                      name="fast-forward-outline"
+                      size={26}
+                      color={colors.icon}
+                    />
+                  </TouchableOpacity>
+                )}
+                */}
+                {/* Next button */}
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  let canNext = false;
+                  if (timeRange === "Ngày") {
+                    const nextDay = new Date(anchor);
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    canNext = nextDay <= today;
+                  } else if (timeRange === "Tuần") {
+                    const nextWeek = new Date(anchor);
+                    nextWeek.setDate(nextWeek.getDate() + 7);
+                    canNext = nextWeek <= today;
+                  } else if (timeRange === "Tháng") {
+                    const nextMonth = new Date(anchor);
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                    const endOfNextMonth = new Date(
+                      nextMonth.getFullYear(),
+                      nextMonth.getMonth() + 1,
+                      0
+                    );
+                    canNext = endOfNextMonth <= today;
+                  } else if (timeRange === "Năm") {
+                    const nextYear = new Date(anchor);
+                    nextYear.setFullYear(nextYear.getFullYear() + 1);
+                    canNext = nextYear.getFullYear() <= today.getFullYear();
+                  }
+                  return canNext ? (
                     <TouchableOpacity onPress={() => shiftAnchor(1)}>
                       <MaterialIcons
                         name="keyboard-arrow-right"
@@ -822,9 +855,9 @@ export default function ChartsScreen() {
                         color={colors.icon}
                       />
                     </TouchableOpacity>
-                  </View>
-                ) : null;
-              })()}
+                  ) : null;
+                })()}
+              </View>
             </View>
           )}
         </View>
