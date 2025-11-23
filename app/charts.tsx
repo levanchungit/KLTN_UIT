@@ -25,6 +25,7 @@ import {
 } from "react-native-safe-area-context";
 
 type TimeRange = "Ngày" | "Tuần" | "Tháng" | "Năm" | "Khoảng thời gian";
+type TransactionType = "expense" | "income";
 
 const VI_MONTHS = [
   "tháng 1",
@@ -138,6 +139,8 @@ export default function ChartsScreen() {
     }[]
   >([]);
   const [totalExpense, setTotalExpense] = useState(0);
+  const [transactionType, setTransactionType] =
+    useState<TransactionType>("expense");
   const [loading, setLoading] = useState(false);
 
   // Synchronized with dashboard logic for perfect match
@@ -159,11 +162,15 @@ export default function ChartsScreen() {
   const loadChartData = useCallback(async () => {
     setLoading(true);
     try {
-      // Get total expense
-      const total = await totalInRange(startSec, endSec, "expense");
+      // Get total based on transaction type
+      const total = await totalInRange(startSec, endSec, transactionType);
       setTotalExpense(total);
 
-      const rawRows = await categoryBreakdown(startSec, endSec, "expense");
+      const rawRows = await categoryBreakdown(
+        startSec,
+        endSec,
+        transactionType
+      );
       const rows = Array.isArray(rawRows) ? rawRows : [];
 
       const palette = [
@@ -199,7 +206,7 @@ export default function ChartsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [startSec, endSec, colors.text]);
+  }, [startSec, endSec, transactionType, colors.text]);
 
   useEffect(() => {
     loadChartData();
@@ -862,11 +869,69 @@ export default function ChartsScreen() {
           )}
         </View>
 
-        {/* Total Expense Card */}
+        {/* Transaction Type Filter */}
         <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
           <View
             style={{
-              backgroundColor: "#EF4444",
+              flexDirection: "row",
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              padding: 4,
+              borderWidth: 1,
+              borderColor: colors.divider,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setTransactionType("expense")}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                backgroundColor:
+                  transactionType === "expense" ? "#EF4444" : "transparent",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: transactionType === "expense" ? "#fff" : colors.text,
+                  fontWeight: "600",
+                  fontSize: 14,
+                }}
+              >
+                Chi tiêu
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setTransactionType("income")}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                backgroundColor:
+                  transactionType === "income" ? "#10B981" : "transparent",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: transactionType === "income" ? "#fff" : colors.text,
+                  fontWeight: "600",
+                  fontSize: 14,
+                }}
+              >
+                Thu nhập
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Total Card */}
+        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+          <View
+            style={{
+              backgroundColor:
+                transactionType === "expense" ? "#EF4444" : "#10B981",
               padding: 16,
               borderRadius: 12,
               flexDirection: "row",
@@ -876,7 +941,9 @@ export default function ChartsScreen() {
           >
             <View>
               <Text style={{ color: "#fff", fontSize: 13, opacity: 0.9 }}>
-                Tổng chi tiêu
+                {transactionType === "expense"
+                  ? "Tổng chi tiêu"
+                  : "Tổng thu nhập"}
               </Text>
               <Text
                 style={{
@@ -890,7 +957,9 @@ export default function ChartsScreen() {
               </Text>
             </View>
             <Ionicons
-              name="trending-down"
+              name={
+                transactionType === "expense" ? "trending-down" : "trending-up"
+              }
               size={32}
               color="#fff"
               style={{ opacity: 0.7 }}
@@ -900,7 +969,10 @@ export default function ChartsScreen() {
 
         {/* Chart */}
         <View style={styles.chartContainer}>
-          <Text style={styles.chartTitle}>Top danh mục chi tiêu</Text>
+          <Text style={styles.chartTitle}>
+            Top danh mục{" "}
+            {transactionType === "expense" ? "chi tiêu" : "thu nhập"}
+          </Text>
           {loading ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Đang tải...</Text>
@@ -913,6 +985,7 @@ export default function ChartsScreen() {
             >
               <BarChart
                 data={chartData}
+                width={Math.max(chartData.length * 55 + 20, 300)} // Đảm bảo width tối thiểu 300px
                 barWidth={35}
                 spacing={20}
                 roundedTop
