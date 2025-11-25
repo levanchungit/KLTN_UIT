@@ -36,9 +36,16 @@ const VIETNAMESE_STOPWORDS = [
   "ngoài",
 ];
 
+// Money pattern for extraction
+const MONEY_PATTERN =
+  /\d+[.,]?\d*\s*(k|nghìn|ngan|tr|triệu|trieu|tỷ|ty|đ|d|vnd|vnđ)/gi;
+
 // Patterns to remove from text before classification
 const NOISE_PATTERNS = [
-  // Plain numbers (but keep money amounts for GPT)
+  // Numbers with units (money, time, etc.)
+  MONEY_PATTERN,
+  // Plain numbers
+  /\b\d+[.,]?\d*\b/g,
   // Date/time patterns
   /tháng\s*\d+/gi,
   /ngày\s*\d+/gi,
@@ -52,22 +59,36 @@ const NOISE_PATTERNS = [
 
 /**
  * Extract amount and clean note from transaction text
+ * Example: "Tiền điện tháng 7 450k" → { amount: 450000, note: "Tiền điện" }
  */
 export function parseTransactionText(text: string): {
   amount: number | null;
   note: string;
 } {
-  // Extract amount using regex
-  const amount = parseAmountVN(text);
+  // Extract amount first
+  const amountMatch = text.match(MONEY_PATTERN);
+  let amount: number | null = null;
 
-  // Clean the note by removing dates and other noise (but keep money for regex)
+  if (amountMatch && amountMatch.length > 0) {
+    // Parse the first money amount found
+    const amountText = amountMatch[0];
+    amount = parseAmountVN(amountText);
+  }
+
+  // Clean the note by removing amount and other noise
   let note = text;
+
+  // Remove money amounts
+  note = note.replace(MONEY_PATTERN, " ");
 
   // Remove dates
   note = note.replace(/tháng\s*\d+/gi, " ");
   note = note.replace(/ngày\s*\d+/gi, " ");
   note = note.replace(/\/\d+\/\d+/g, " ");
   note = note.replace(/\d+\/\d+/g, " ");
+
+  // Remove standalone numbers
+  note = note.replace(/\b\d+[.,]?\d*\b/g, " ");
 
   // Remove time keywords if standalone
   note = note.replace(/\s+(tháng|ngày|năm)\s+/gi, " ");
@@ -79,26 +100,14 @@ export function parseTransactionText(text: string): {
 }
 
 /**
- * Parse Vietnamese money amount - handles concatenated formats
+ * Parse Vietnamese money amount
  */
-export function parseAmountVN(text: string): number | null {
-  const t = text.toLowerCase().replace(/\s+/g, "").replace(/[,\.](?=\d{3}\b)/g, "");
+function parseAmountVN(text: string): number | null {
+  const t = text.toLowerCase().replace(/[,\.](?=\d{3}\b)/g, "");
+  const m = t.match(
+    /(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|tr|triệu|trieu|tỷ|ty|đ|d|vnd)?/i
+  );
 
-  // Handle concatenated formats like "74tr480k"
-  const concatMatch = t.match(/^(\d+)(tr|triệu|trieu|tỷ|ty)(\d+)(k|nghìn|ngan)?/);
-  if (concatMatch) {
-    const [_, mainNum, mainUnit, subNum, subUnit] = concatMatch;
-    const mainFactor = (mainUnit.startsWith("tr") || mainUnit.startsWith("tri")) ? 1e6 :
-                      (mainUnit.startsWith("tỷ") || mainUnit.startsWith("ty")) ? 1e9 : 1;
-    const subFactor = subUnit && (subUnit.startsWith("k") || subUnit.startsWith("ng")) ? 1e3 : 1;
-
-    const mainAmount = parseFloat(mainNum) * mainFactor;
-    const subAmount = parseFloat(subNum) * subFactor;
-    return Math.round(mainAmount + subAmount);
-  }
-
-  // Handle single amounts
-  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|tr|triệu|trieu|tỷ|ty|đ|d|vnd)?/i);
   if (!m) return null;
 
   const n = parseFloat(m[1].replace(",", "."));

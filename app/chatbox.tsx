@@ -17,7 +17,7 @@ import {
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
-import { parseTransactionText, parseAmountVN as parseAmountVNFromUtils } from "@/utils/textPreprocessing";
+import { parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
@@ -734,20 +734,146 @@ async function processReceiptImage(imageUri: string): Promise<{
   }
 }
 
-/* ---------------- Helpers: VN money parsing ---------------- */
+/* ---------------- Helpers: VN money + GPT fallback ---------------- */
 const parseAmountVN = async (text: string): Promise<number | null> => {
   if (!text || typeof text !== "string") return null;
 
-  // Use the original regex parsing
-  console.log("Using regex parsing for amount extraction...");
-  const amount = parseAmountVNFromUtils(text);
-  if (amount !== null) {
-    console.log("Regex found amount:", amount);
-    return amount;
+  // Remove common non-numeric characters but keep numbers, dots, commas
+  const cleaned = text.replace(/[^\d.,ktrmđvnd]/gi, " ").trim();
+
+  // Try regex first
+  let regexAmount: number | null = null;
+
+  // Pattern 2: Numbers with units (25k, 100tr, 1tr238k, 1 triệu, etc.) - match all and sum
+  const pattern2 = text.match(
+    /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/gi
+  );
+  if (pattern2) {
+    console.log("Pattern2 matches:", pattern2);
+    let total = 0;
+    for (const match of pattern2) {
+      const subMatch = match.match(
+        /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/i
+      );
+      if (subMatch && subMatch[2]) {
+        // Only sum if has unit
+        const num = parseFloat(subMatch[1].replace(",", "."));
+        const unit = subMatch[2]?.toLowerCase();
+        let factor = 1;
+        if (unit === "k" || unit === "nghìn" || unit === "ng") factor = 1000;
+        else if (
+          unit === "tr" ||
+          unit === "triệu" ||
+          unit === "trieu" ||
+          unit === "m"
+        )
+          factor = 1000000;
+        else if (unit === "tỷ" || unit === "ty" || unit === "t")
+          factor = 1000000000;
+        else if (unit === "vnd" || unit === "đ") factor = 1;
+        total += num * factor;
+        console.log(
+          `Match: ${match} -> num: ${num}, unit: ${unit}, factor: ${factor}, add: ${
+            num * factor
+          }`
+        );
+      }
+    }
+    console.log("Regex Total:", total);
+    if (total > 0) regexAmount = Math.round(total);
   }
 
-  // No amount found
-  console.log("Regex failed to find amount");
+  // Other patterns...
+  if (!regexAmount) {
+    // Pattern 0: Vietnamese number format with dots (1.238.000)
+    const pattern0 = cleaned.match(/(\d+(?:\.\d{3})*)/g);
+    if (pattern0) {
+      for (const numStr of pattern0) {
+        const num = parseFloat(numStr.replace(/\./g, ""));
+        if (!isNaN(num) && num > 0) {
+          regexAmount = Math.round(num);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!regexAmount) {
+    // Pattern 1: 123,456 or 123.456 (Vietnamese thousand separator)
+    const pattern1 = cleaned.match(/(\d{1,3}([,\.]\d{3})+)/g);
+    if (pattern1) {
+      const num = parseFloat(pattern1[0].replace(/[,.]/g, ""));
+      if (!isNaN(num) && num > 0) regexAmount = Math.round(num);
+    }
+  }
+
+  if (!regexAmount) {
+    // Pattern 3: Any sequence of digits (fallback)
+    const pattern3 = cleaned.match(/\d+/g);
+    if (pattern3) {
+      // Take the longest number
+      const longest = pattern3.sort((a, b) => b.length - a.length)[0];
+      const num = parseInt(longest);
+      if (!isNaN(num) && num > 0) regexAmount = num;
+    }
+  }
+
+  // Always call GPT to verify and get best result
+  console.log("Calling GPT for verification...");
+  const gptAmount = await getAmountFromGPT(text);
+  if (gptAmount !== null) {
+    console.log("GPT found amount:", gptAmount);
+    // Prefer GPT result as it's more accurate
+    return gptAmount;
+  }
+
+  // Fallback to regex if GPT fails
+  console.log("GPT failed, using regex amount:", regexAmount);
+  return regexAmount;
+};
+
+// GPT fallback for amount extraction
+const getAmountFromGPT = async (text: string): Promise<number | null> => {
+  try {
+    const apiKey = OPENAI_API_KEY;
+    if (!apiKey || apiKey === "YOUR_OPENAI_API_KEY") {
+      console.log("No OpenAI API key, skipping GPT");
+      return null;
+    }
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a helpful assistant that extracts monetary amounts from Vietnamese text. Return only the number in VND (without currency symbol), or 'null' if no amount is found. Be precise and consider Vietnamese number formats like 1tr = 1,000,000, 25k = 25,000, etc. For concatenated numbers like '8tr4' means 8,000,004 VND (8 million + 4), '1tr238k' means 1,238,000 VND (1 million + 238 thousand), '74tr387k398đ' means 74,387,398 VND, '74tr480k' means 74,480,000 VND (74 million + 480 thousand).",
+          },
+          {
+            role: "user",
+            content: `Extract the monetary amount from this text: "${text}"`,
+          },
+        ],
+        max_tokens: 50,
+        temperature: 0,
+      }),
+    });
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (content && content !== "null") {
+      const num = parseFloat(content.replace(/[^\d.]/g, ""));
+      if (!isNaN(num) && num > 0) return Math.round(num);
+    }
+  } catch (error) {
+    console.error("GPT API error:", error);
+  }
   return null;
 };
 const detectInOut = (text: string): "IN" | "OUT" => {

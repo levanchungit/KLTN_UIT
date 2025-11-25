@@ -2,7 +2,11 @@
 import { useI18n } from "@/i18n/I18nProvider";
 import { listCategories } from "@/repos/categoryRepo";
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  Ionicons,
+  MaterialCommunityIcons,
+  MaterialIcons,
+} from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { writeAsStringAsync } from "expo-file-system/legacy";
 import { router } from "expo-router";
@@ -67,6 +71,42 @@ const startOfDay = (d: Date) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
+const addDays = (d: Date, n: number) => {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  x.setHours(0, 0, 0, 0);
+  return x;
+};
+const startOfWeekMon = (d: Date) => {
+  const x = startOfDay(d);
+  const wd = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - wd);
+  return x;
+};
+const getWeeksOfMonth = (year: number, month: number) => {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  first.setHours(0, 0, 0, 0);
+  last.setHours(0, 0, 0, 0);
+  const start = new Date(first);
+  const wd = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - wd);
+  const end = new Date(last);
+  const wd2 = (end.getDay() + 6) % 7;
+  end.setDate(end.getDate() + (6 - wd2));
+  const out: { start: Date; end: Date; label: string }[] = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 7)) {
+    const s = new Date(d);
+    const e = new Date(d);
+    e.setDate(e.getDate() + 6);
+    const sameMonth = s.getMonth() === month || e.getMonth() === month;
+    if (sameMonth) {
+      const fmt = (x: Date) => `${x.getDate()} thg ${x.getMonth() + 1}`;
+      out.push({ start: s, end: e, label: `${fmt(s)} – ${fmt(e)}` });
+    }
+  }
+  return out;
+};
 function dayLabel(
   d: Date,
   t: (key: string, vars?: Record<string, string | number>) => string,
@@ -115,6 +155,12 @@ export default function Transactions() {
   const [filterEndDate, setFilterEndDate] = useState<Date>(new Date());
   const [tempStartDate, setTempStartDate] = useState<Date | null>(null);
   const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
+  const [tempAnchor, setTempAnchor] = useState<Date | null>(null);
+  const [tempYear, setTempYear] = useState<number>(new Date().getFullYear());
+  const [tempMonth, setTempMonth] = useState<number>(new Date().getMonth());
+  const [tempOnlyYear, setTempOnlyYear] = useState<number>(
+    new Date().getFullYear()
+  );
 
   // Search and category filter state
   const [searchText, setSearchText] = useState("");
@@ -167,30 +213,33 @@ export default function Transactions() {
         from.setDate(to.getDate() - days + 1);
         from.setHours(0, 0, 0, 0);
       } else if (filterType === "day") {
-        // Today only - ignore offset
-        from = startOfDay(new Date());
+        // Use filterStartDate for the selected day
+        from = startOfDay(filterStartDate);
         to = new Date(from);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "week") {
-        // This week (Monday to Sunday) - ignore offset
-        const today = new Date();
-        const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0
-        from = startOfDay(new Date());
-        from.setDate(from.getDate() - dayOfWeek);
+        // Use filterStartDate as the start of the selected week
+        from = startOfDay(filterStartDate);
         to = new Date(from);
         to.setDate(to.getDate() + 6);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "month") {
-        // This month - ignore offset
-        const today = new Date();
-        from = new Date(today.getFullYear(), today.getMonth(), 1);
-        to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        // Use filterStartDate to get the month
+        from = new Date(
+          filterStartDate.getFullYear(),
+          filterStartDate.getMonth(),
+          1
+        );
+        to = new Date(
+          filterStartDate.getFullYear(),
+          filterStartDate.getMonth() + 1,
+          0
+        );
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "year") {
-        // This year - ignore offset
-        const today = new Date();
-        from = new Date(today.getFullYear(), 0, 1);
-        to = new Date(today.getFullYear(), 11, 31);
+        // Use filterStartDate to get the year
+        from = new Date(filterStartDate.getFullYear(), 0, 1);
+        to = new Date(filterStartDate.getFullYear(), 11, 31);
         to.setHours(23, 59, 59, 999);
       } else if (filterType === "custom") {
         // Custom range - ignore offset
@@ -247,6 +296,451 @@ export default function Transactions() {
     } catch (e) {
       console.warn("Load categories error", e);
     }
+  };
+
+  const ICON_SIZE = 28;
+
+  const getFilterDisplayText = () => {
+    if (filterType === "day") {
+      return filterStartDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    } else if (filterType === "week") {
+      const start = filterStartDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "short",
+      });
+      const end = filterEndDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      return `${start} - ${end}`;
+    } else if (filterType === "month") {
+      return filterStartDate.toLocaleDateString("vi-VN", {
+        month: "long",
+        year: "numeric",
+      });
+    } else if (filterType === "year") {
+      return filterStartDate.getFullYear().toString();
+    } else if (filterType === "custom") {
+      const start = filterStartDate.toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      const end = filterEndDate.toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      return `${start} - ${end}`;
+    }
+    return "";
+  };
+
+  const shiftAnchor = (direction: number) => {
+    const newStart = new Date(filterStartDate);
+    const newEnd = new Date(filterEndDate);
+    if (filterType === "day") {
+      newStart.setDate(newStart.getDate() + direction);
+      newEnd.setDate(newEnd.getDate() + direction);
+    } else if (filterType === "week") {
+      newStart.setDate(newStart.getDate() + direction * 7);
+      newEnd.setDate(newEnd.getDate() + direction * 7);
+    } else if (filterType === "month") {
+      newStart.setMonth(newStart.getMonth() + direction);
+      newEnd.setMonth(newEnd.getMonth() + direction);
+    } else if (filterType === "year") {
+      newStart.setFullYear(newStart.getFullYear() + direction);
+      newEnd.setFullYear(newEnd.getFullYear() + direction);
+    }
+    setFilterStartDate(newStart);
+    setFilterEndDate(newEnd);
+    loadInitial();
+  };
+
+  const handlePrevious = () => shiftAnchor(-1);
+
+  const handleNext = () => {
+    if (canGoNext) shiftAnchor(1);
+  };
+
+  const handleToday = () => {
+    const today = new Date();
+    let start: Date, end: Date;
+    if (filterType === "day") {
+      start = startOfDay(today);
+      end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+    } else if (filterType === "week") {
+      const dayOfWeek = (today.getDay() + 6) % 7;
+      start = startOfDay(today);
+      start.setDate(start.getDate() - dayOfWeek);
+      end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else if (filterType === "month") {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (filterType === "year") {
+      start = new Date(today.getFullYear(), 0, 1);
+      end = new Date(today.getFullYear(), 11, 31);
+      end.setHours(23, 59, 59, 999);
+    } else {
+      return;
+    }
+    setFilterStartDate(start);
+    setFilterEndDate(end);
+    loadInitial();
+  };
+
+  const atCurrentPeriod =
+    filterStartDate <= new Date() && filterEndDate >= new Date();
+  const canGoNext = !atCurrentPeriod;
+
+  const getLabel = () => {
+    const now = new Date();
+    if (filterType === "day") {
+      const isToday = filterStartDate.toDateString() === now.toDateString();
+      if (isToday) return "Hôm nay";
+      return filterStartDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric",
+      });
+    } else if (filterType === "week") {
+      const start = filterStartDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "numeric",
+      });
+      const end = filterEndDate.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "numeric",
+      });
+      const startYear = filterStartDate.getFullYear();
+      const endYear = filterEndDate.getFullYear();
+      const endStr = startYear === endYear ? end : `${end}/${endYear}`;
+      return `Tuần ${start} - ${endStr}`;
+    } else if (filterType === "month") {
+      const isCurrentMonth =
+        filterStartDate.getFullYear() === now.getFullYear() &&
+        filterStartDate.getMonth() === now.getMonth();
+      if (isCurrentMonth) return "Tháng này";
+      return filterStartDate.toLocaleDateString("vi-VN", {
+        month: "long",
+        year: "numeric",
+      });
+    } else if (filterType === "year") {
+      const isCurrentYear = filterStartDate.getFullYear() === now.getFullYear();
+      if (isCurrentYear) return "Năm nay";
+      return filterStartDate.getFullYear().toString();
+    }
+    return "";
+  };
+
+  function DayOrWeekPicker({ mode }: { mode: "Ngày" | "Khoảng thời gian" }) {
+    const customDatesStyles =
+      mode !== "Ngày" || !tempAnchor
+        ? []
+        : Array.from({ length: 7 }).map((_, i) => {
+            const d = addDays(startOfWeekMon(tempAnchor!), i);
+            return {
+              date: d,
+              style: { backgroundColor: "#C7F9E5" },
+              textStyle: { color: "#111" },
+            };
+          });
+
+    return (
+      <CalendarPicker
+        allowRangeSelection={mode === "Khoảng thời gian"}
+        selectedStartDate={
+          mode === "Khoảng thời gian"
+            ? tempStartDate ?? undefined
+            : tempAnchor ?? undefined
+        }
+        selectedEndDate={
+          mode === "Khoảng thời gian"
+            ? tempEndDate ?? undefined
+            : mode === "Ngày" && tempAnchor
+            ? addDays(startOfWeekMon(tempAnchor), 6)
+            : undefined
+        }
+        initialDate={
+          mode === "Khoảng thời gian"
+            ? tempStartDate ?? new Date()
+            : tempAnchor ?? new Date()
+        }
+        minDate={new Date(1970, 0, 1)}
+        maxDate={new Date()}
+        weekdays={VI_WEEKDAYS}
+        months={VI_MONTHS}
+        previousTitle="‹"
+        nextTitle="›"
+        todayBackgroundColor="#E6F7FF"
+        selectedDayColor="#10B981"
+        selectedDayTextColor="#fff"
+        selectedRangeStartStyle={{ backgroundColor: "#10B981" }}
+        selectedRangeEndStyle={{ backgroundColor: "#10B981" }}
+        selectedRangeStyle={{ backgroundColor: "#A7F3D0" }}
+        customDatesStyles={customDatesStyles}
+        onDateChange={(date: Date, type?: "START_DATE" | "END_DATE") => {
+          if (mode === "Khoảng thời gian") {
+            if (type === "START_DATE") {
+              setTempStartDate(date);
+              if (tempEndDate && date > tempEndDate) setTempEndDate(null);
+            } else {
+              setTempEndDate(date);
+            }
+          } else {
+            setTempAnchor(date);
+          }
+        }}
+      />
+    );
+  }
+
+  function WeekGridPicker() {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const weeks = React.useMemo(
+      () => getWeeksOfMonth(tempYear, tempMonth),
+      [tempYear, tempMonth]
+    );
+    const sel = React.useMemo(() => {
+      if (!tempAnchor) return null;
+      const s = startOfWeekMon(tempAnchor);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 6);
+      return { s, e };
+    }, [tempAnchor]);
+    const canNextMonth =
+      tempYear < now.getFullYear() ||
+      (tempYear === now.getFullYear() && tempMonth < now.getMonth());
+
+    return (
+      <View style={{ padding: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              const m = tempMonth - 1;
+              if (m < 0) {
+                setTempYear((y) => y - 1);
+                setTempMonth(11);
+              } else setTempMonth(m);
+            }}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-left"
+              size={28}
+              color={colors.icon}
+            />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+            {VI_MONTHS[tempMonth]} {tempYear}
+          </Text>
+          <TouchableOpacity
+            disabled={!canNextMonth}
+            onPress={() => {
+              if (!canNextMonth) return;
+              const m = tempMonth + 1;
+              if (m > 11) {
+                setTempYear((y) => y + 1);
+                setTempMonth(0);
+              } else setTempMonth(m);
+            }}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-right"
+              size={28}
+              color={canNextMonth ? colors.icon : colors.divider}
+            />
+          </TouchableOpacity>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            rowGap: 10,
+          }}
+        >
+          {weeks.map((w, idx) => {
+            const isSelected =
+              sel && sel.s.getTime() === startOfWeekMon(w.start).getTime();
+            const disabled = w.start.getTime() > now.getTime();
+            return (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  if (!disabled) setTempAnchor(new Date(w.start));
+                }}
+                activeOpacity={0.8}
+                style={{
+                  width: "48%",
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: isSelected ? "#10B981" : colors.card,
+                  opacity: disabled ? 0.5 : 1,
+                  borderWidth: isSelected ? 0 : 1,
+                  borderColor: colors.divider,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isSelected ? "#fff" : colors.text,
+                    fontWeight: "700",
+                    marginBottom: 4,
+                  }}
+                >
+                  Tuần {idx + 1}
+                </Text>
+                <Text
+                  style={{
+                    color: isSelected ? "#fff" : colors.subText,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  {w.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function MonthGridPicker() {
+    const months = VI_MONTHS.map((m, idx) => ({
+      label: m.replace("tháng ", "Thg "),
+      idx,
+    }));
+    return (
+      <View style={{ padding: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <TouchableOpacity onPress={() => setTempYear((y) => y - 1)}>
+            <Text style={{ fontSize: 18, color: colors.icon }}>‹</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+            {tempYear}
+          </Text>
+          <TouchableOpacity
+            onPress={() =>
+              setTempYear((y) => Math.min(y + 1, new Date().getFullYear()))
+            }
+          >
+            <Text style={{ fontSize: 18, color: colors.icon }}>›</Text>
+          </TouchableOpacity>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            justifyContent: "space-between",
+          }}
+        >
+          {months.map(({ label, idx }) => {
+            const isCur = tempMonth === idx;
+            return (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => setTempMonth(idx)}
+                style={{
+                  width: "31%",
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: isCur ? "#10B981" : colors.card,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isCur ? "#fff" : colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function YearPicker() {
+    const canNext = tempOnlyYear < new Date().getFullYear();
+    return (
+      <View style={{ alignItems: "center", paddingVertical: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 24 }}>
+          <TouchableOpacity onPress={() => setTempOnlyYear((y) => y - 1)}>
+            <MaterialIcons
+              name="keyboard-arrow-left"
+              size={28}
+              color={colors.icon}
+            />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>
+            {tempOnlyYear}
+          </Text>
+          <TouchableOpacity
+            disabled={!canNext}
+            onPress={() => setTempOnlyYear((y) => y + 1)}
+          >
+            <MaterialIcons
+              name="keyboard-arrow-right"
+              size={28}
+              color={canNext ? colors.icon : colors.divider}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const goToCurrentPeriod = handleToday;
+
+  const openCalendarModal = () => {
+    // Initialize temp values based on current filter
+    if (filterType === "day") {
+      setTempAnchor(filterStartDate);
+    } else if (filterType === "week") {
+      setTempAnchor(filterStartDate);
+      setTempYear(filterStartDate.getFullYear());
+      setTempMonth(filterStartDate.getMonth());
+    } else if (filterType === "month") {
+      setTempYear(filterStartDate.getFullYear());
+      setTempMonth(filterStartDate.getMonth());
+    } else if (filterType === "year") {
+      setTempOnlyYear(filterStartDate.getFullYear());
+    } else if (filterType === "custom") {
+      setTempStartDate(filterStartDate);
+      setTempEndDate(filterEndDate);
+    }
+    setShowCalendarModal(true);
   };
 
   // Load more theo page (chỉ khi filter = "all")
@@ -355,13 +849,6 @@ export default function Transactions() {
             <Ionicons name="download" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowFilterModal(true)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="filter" size={18} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
             style={styles.addButton}
             onPress={() => router.push("/add-transaction")}
             activeOpacity={0.7}
@@ -406,6 +893,23 @@ export default function Transactions() {
             name="shape-outline"
             size={22}
             color={selectedCategoryFilter ? "#fff" : colors.icon}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.categoryFilterButton,
+            {
+              backgroundColor: filterType !== "all" ? "#10B981" : colors.card,
+              borderColor: filterType !== "all" ? "#10B981" : colors.divider,
+            },
+          ]}
+          onPress={() => setShowFilterModal(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="filter"
+            size={22}
+            color={filterType !== "all" ? "#fff" : colors.icon}
           />
         </TouchableOpacity>
       </View>
@@ -457,7 +961,8 @@ export default function Transactions() {
                     setShowFilterModal(false);
                     // Use setTimeout to ensure modal is closed before opening new one
                     setTimeout(() => {
-                      setShowCalendarModal(true);
+                      setFilterType("custom");
+                      openCalendarModal();
                     }, 100);
                   } else {
                     setFilterType(filter);
@@ -517,46 +1022,104 @@ export default function Transactions() {
             maxWidth: "95%",
           }}
         >
-          <CalendarPicker
-            allowRangeSelection={true}
-            selectedStartDate={tempStartDate ?? undefined}
-            selectedEndDate={tempEndDate ?? undefined}
-            initialDate={tempStartDate ?? new Date()}
-            minDate={new Date(1970, 0, 1)}
-            maxDate={new Date()}
-            weekdays={["T2", "T3", "T4", "T5", "T6", "T7", "CN"]}
-            months={[
-              "Tháng 1",
-              "Tháng 2",
-              "Tháng 3",
-              "Tháng 4",
-              "Tháng 5",
-              "Tháng 6",
-              "Tháng 7",
-              "Tháng 8",
-              "Tháng 9",
-              "Tháng 10",
-              "Tháng 11",
-              "Tháng 12",
-            ]}
-            previousTitle="‹"
-            nextTitle="›"
-            todayBackgroundColor="#E6F7FF"
-            selectedDayColor="#10B981"
-            selectedDayTextColor="#fff"
-            selectedRangeStartStyle={{ backgroundColor: "#10B981" }}
-            selectedRangeEndStyle={{ backgroundColor: "#10B981" }}
-            selectedRangeStyle={{ backgroundColor: "#A7F3D0" }}
-            textStyle={{ color: colors.text }}
-            onDateChange={(date, type) => {
-              if (type === "START_DATE") {
-                setTempStartDate(date);
-                if (tempEndDate && date > tempEndDate) setTempEndDate(null);
-              } else {
-                setTempEndDate(date);
-              }
-            }}
-          />
+          {/* Quick select buttons */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {filterType === "day" && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = new Date();
+                      setTempAnchor(today);
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: "600" }}>
+                      Hôm nay
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {filterType === "week" && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = new Date();
+                      setTempAnchor(today);
+                      setTempYear(today.getFullYear());
+                      setTempMonth(today.getMonth());
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: "600" }}>
+                      Tuần này
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {filterType === "month" && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = new Date();
+                      setTempYear(today.getFullYear());
+                      setTempMonth(today.getMonth());
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: "600" }}>
+                      Tháng này
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {filterType === "year" && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = new Date();
+                      setTempOnlyYear(today.getFullYear());
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: "600" }}>
+                      Năm nay
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+
+          {filterType === "day" && <DayOrWeekPicker mode="Ngày" />}
+          {filterType === "week" && <WeekGridPicker />}
+          {filterType === "month" && <MonthGridPicker />}
+          {filterType === "year" && <YearPicker />}
+          {filterType === "custom" && (
+            <DayOrWeekPicker mode="Khoảng thời gian" />
+          )}
 
           <View
             style={{
@@ -573,12 +1136,56 @@ export default function Transactions() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
-                if (tempStartDate && tempEndDate) {
-                  setFilterStartDate(tempStartDate);
-                  setFilterEndDate(tempEndDate);
-                  setFilterType("custom");
+                if (filterType === "custom") {
+                  if (tempStartDate && tempEndDate) {
+                    setFilterStartDate(tempStartDate);
+                    setFilterEndDate(tempEndDate);
+                    setShowCalendarModal(false);
+                    loadInitial();
+                  } else {
+                    setShowCalendarModal(false);
+                  }
+                } else if (filterType === "day") {
+                  if (tempAnchor) {
+                    const start = startOfDay(tempAnchor);
+                    const end = new Date(start);
+                    end.setHours(23, 59, 59, 999);
+                    setFilterStartDate(start);
+                    setFilterEndDate(end);
+                    setShowCalendarModal(false);
+                    loadInitial();
+                  } else {
+                    setShowCalendarModal(false);
+                  }
+                } else if (filterType === "week") {
+                  if (tempAnchor) {
+                    const start = startOfWeekMon(tempAnchor);
+                    const end = new Date(start);
+                    end.setDate(end.getDate() + 6);
+                    end.setHours(23, 59, 59, 999);
+                    setFilterStartDate(start);
+                    setFilterEndDate(end);
+                    setShowCalendarModal(false);
+                    loadInitial();
+                  } else {
+                    setShowCalendarModal(false);
+                  }
+                } else if (filterType === "month") {
+                  const start = new Date(tempYear, tempMonth, 1);
+                  const end = new Date(tempYear, tempMonth + 1, 0);
+                  end.setHours(23, 59, 59, 999);
+                  setFilterStartDate(start);
+                  setFilterEndDate(end);
                   setShowCalendarModal(false);
-                  loadInitial(); // Reload with custom range
+                  loadInitial();
+                } else if (filterType === "year") {
+                  const start = new Date(tempOnlyYear, 0, 1);
+                  const end = new Date(tempOnlyYear, 11, 31);
+                  end.setHours(23, 59, 59, 999);
+                  setFilterStartDate(start);
+                  setFilterEndDate(end);
+                  setShowCalendarModal(false);
+                  loadInitial();
                 } else {
                   setShowCalendarModal(false);
                 }
@@ -724,8 +1331,8 @@ export default function Transactions() {
         </Modal>
       </Portal>
 
-      {/* Show date range when custom filter is selected */}
-      {filterType === "custom" && (
+      {/* Show date range when filter is not all */}
+      {filterType !== "all" && (
         <View
           style={{
             paddingHorizontal: 16,
@@ -735,40 +1342,108 @@ export default function Transactions() {
             borderBottomColor: colors.divider,
           }}
         >
-          <TouchableOpacity
-            onPress={() => setShowCalendarModal(true)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text
+          {filterType === "custom" ? (
+            <View
               style={{
-                fontSize: 15,
-                color: colors.text,
-                fontWeight: "600",
+                width: "100%",
+                height: ICON_SIZE,
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
               }}
             >
-              {filterStartDate.toLocaleDateString("vi-VN", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}{" "}
-              -{" "}
-              {filterEndDate.toLocaleDateString("vi-VN", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}
-            </Text>
-            <Ionicons
-              name="calendar-outline"
-              size={18}
-              color={colors.icon}
-              style={{ marginLeft: 8 }}
-            />
-          </TouchableOpacity>
+              <TouchableOpacity onPress={() => openCalendarModal()}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {filterStartDate.toLocaleDateString("vi-VN", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}{" "}
+                  -{" "}
+                  {filterEndDate.toLocaleDateString("vi-VN", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                </Text>
+              </TouchableOpacity>
+              <View style={{ position: "absolute", right: 0 }}>
+                <TouchableOpacity onPress={() => openCalendarModal()}>
+                  <MaterialIcons
+                    name="calendar-today"
+                    size={ICON_SIZE - 4}
+                    color={colors.icon}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={{
+                height: ICON_SIZE,
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              <View style={{ position: "absolute", left: 0 }}>
+                <TouchableOpacity onPress={handlePrevious}>
+                  <MaterialIcons
+                    name="keyboard-arrow-left"
+                    size={ICON_SIZE}
+                    color={colors.icon}
+                  />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={() => openCalendarModal()}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {getLabel()}
+                </Text>
+              </TouchableOpacity>
+              <View
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                {!atCurrentPeriod && (
+                  <TouchableOpacity
+                    onPress={goToCurrentPeriod}
+                    style={{ marginRight: 10 }}
+                  >
+                    <MaterialCommunityIcons
+                      name="fast-forward-outline"
+                      size={ICON_SIZE - 2}
+                      color={colors.icon}
+                    />
+                  </TouchableOpacity>
+                )}
+                {canGoNext && (
+                  <TouchableOpacity onPress={handleNext}>
+                    <MaterialIcons
+                      name="keyboard-arrow-right"
+                      size={ICON_SIZE}
+                      color={colors.icon}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       )}
 
