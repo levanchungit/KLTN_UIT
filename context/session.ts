@@ -50,14 +50,12 @@ export async function saveSession(user: UserSession) {
 }
 
 export async function loadSession(): Promise<UserSession | null> {
-  console.log("Loading session...");
   try {
     const secureAvailable = await isSecureStoreAvailable();
     let raw: string | null = null;
 
     if (secureAvailable) {
       raw = await SecureStore.getItemAsync(KEY);
-      console.log("Loaded from SecureStore:", raw);
     } else {
       raw = await AsyncStorage.getItem(KEY);
       console.log("Loaded from AsyncStorage (fallback):", raw);

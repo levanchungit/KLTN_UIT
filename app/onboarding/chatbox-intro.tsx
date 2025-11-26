@@ -19,7 +19,7 @@ import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Voice from "@react-native-voice/voice";
+// import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
@@ -33,7 +33,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -1027,62 +1026,62 @@ export default function ChatboxIntro() {
 
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
-  useEffect(() => {
-    if (Platform.OS === "android" || Platform.OS === "ios") {
-      Voice.onSpeechResults = (e: any) => {
-        const text = e.value?.[0] || "";
-        console.log("Speech results:", text);
-        // xử lý luôn:
-        processTextInput(text);
-      };
+  // useEffect(() => {
+  //   if (Platform.OS === "android" || Platform.OS === "ios") {
+  //     Voice.onSpeechResults = (e: any) => {
+  //       const text = e.value?.[0] || "";
+  //       console.log("Speech results:", text);
+  //       // xử lý luôn:
+  //       processTextInput(text);
+  //     };
 
-      Voice.onSpeechError = (e: any) => {
-        console.log("onSpeechError", e);
-        Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-        setIsRecording(false);
-        setIsProcessingVoice(false);
-      };
+  //     Voice.onSpeechError = (e: any) => {
+  //       console.log("onSpeechError", e);
+  //       Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
+  //       setIsRecording(false);
+  //       setIsProcessingVoice(false);
+  //     };
 
-      Voice.onSpeechEnd = () => {
-        console.log("onSpeechEnd");
-        setIsRecording(false);
-        setIsProcessingVoice(false);
-      };
-    }
+  //     Voice.onSpeechEnd = () => {
+  //       console.log("onSpeechEnd");
+  //       setIsRecording(false);
+  //       setIsProcessingVoice(false);
+  //     };
+  //   }
 
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
+  //   return () => {
+  //     Voice.destroy()
+  //       .then(Voice.removeAllListeners)
+  //       .catch(() => {});
+  //   };
+  // }, []);
 
-  useEffect(() => {
-    const initVoice = async () => {
-      // Không chạy trên web
-      if (Platform.OS !== "android" && Platform.OS !== "ios") {
-        setIsVoiceAvailable(false);
-        return;
-      }
+  // useEffect(() => {
+  //   const initVoice = async () => {
+  //     // Không chạy trên web
+  //     if (Platform.OS !== "android" && Platform.OS !== "ios") {
+  //       setIsVoiceAvailable(false);
+  //       return;
+  //     }
 
-      try {
-        console.log("Voice module keys:", Object.keys(Voice));
-        // Coi như có Voice nếu không crash khi require
-        setIsVoiceAvailable(true);
-      } catch (error) {
-        console.log("Init Voice error:", error);
-        setIsVoiceAvailable(false);
-      }
-    };
+  //     try {
+  //       console.log("Voice module keys:", Object.keys(Voice));
+  //       // Coi như có Voice nếu không crash khi require
+  //       setIsVoiceAvailable(true);
+  //     } catch (error) {
+  //       console.log("Init Voice error:", error);
+  //       setIsVoiceAvailable(false);
+  //     }
+  //   };
 
-    initVoice();
+  //   initVoice();
 
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
+  //   return () => {
+  //     Voice.destroy()
+  //       .then(Voice.removeAllListeners)
+  //       .catch(() => {});
+  //   };
+  // }, []);
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
@@ -1481,67 +1480,67 @@ export default function ChatboxIntro() {
     scrollToEnd();
   };
 
-  const handleVoicePress = async () => {
-    try {
-      if (isRecording) {
-        setIsRecording(false);
-        setIsProcessingVoice(true);
-        await Voice.stop();
-        return;
-      }
+  // const handleVoicePress = async () => {
+  //   try {
+  //     if (isRecording) {
+  //       setIsRecording(false);
+  //       setIsProcessingVoice(true);
+  //       await Voice.stop();
+  //       return;
+  //     }
 
-      setMessages((m) => [
-        ...m,
-        {
-          role: "bot",
-          text: "🎤 Đang lắng nghe... hãy nói nội dung giao dịch",
-        },
-      ]);
-      scrollToEnd();
+  //     setMessages((m) => [
+  //       ...m,
+  //       {
+  //         role: "bot",
+  //         text: "🎤 Đang lắng nghe... hãy nói nội dung giao dịch",
+  //       },
+  //     ]);
+  //     scrollToEnd();
 
-      setIsRecording(true);
-      setIsProcessingVoice(false);
+  //     setIsRecording(true);
+  //     setIsProcessingVoice(false);
 
-      await Voice.start("vi-VN");
-    } catch (error) {
-      console.error("Voice error:", error);
-      const msg =
-        error instanceof Error
-          ? error.message
-          : "Không thể nhận diện giọng nói";
-      Alert.alert("Lỗi Voice", msg);
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    }
-  };
+  //     await Voice.start("vi-VN");
+  //   } catch (error) {
+  //     console.error("Voice error:", error);
+  //     const msg =
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Không thể nhận diện giọng nói";
+  //     Alert.alert("Lỗi Voice", msg);
+  //     setIsRecording(false);
+  //     setIsProcessingVoice(false);
+  //   }
+  // };
 
-  useEffect(() => {
-    Voice.onSpeechResults = (e: any) => {
-      const text = e.value?.[0] || "";
-      console.log("Speech results:", text);
-      setMessages((m) => [...m, { role: "user", text }]);
-      // hoặc: processTextInput(text);
-    };
+  // useEffect(() => {
+  //   Voice.onSpeechResults = (e: any) => {
+  //     const text = e.value?.[0] || "";
+  //     console.log("Speech results:", text);
+  //     setMessages((m) => [...m, { role: "user", text }]);
+  //     // hoặc: processTextInput(text);
+  //   };
 
-    Voice.onSpeechError = (e: any) => {
-      console.log("onSpeechError", e);
-      Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    };
+  //   Voice.onSpeechError = (e: any) => {
+  //     console.log("onSpeechError", e);
+  //     Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
+  //     setIsRecording(false);
+  //     setIsProcessingVoice(false);
+  //   };
 
-    Voice.onSpeechEnd = () => {
-      console.log("onSpeechEnd");
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    };
+  //   Voice.onSpeechEnd = () => {
+  //     console.log("onSpeechEnd");
+  //     setIsRecording(false);
+  //     setIsProcessingVoice(false);
+  //   };
 
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
+  //   return () => {
+  //     Voice.destroy()
+  //       .then(Voice.removeAllListeners)
+  //       .catch(() => {});
+  //   };
+  // }, []);
 
   // ----- Image Receipt Handler -----
   const handleImagePress = async () => {

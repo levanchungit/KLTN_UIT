@@ -128,15 +128,6 @@ function RootLayoutNav() {
     // Require a signed-in user for gating purposes.
     const isAuthenticated = !!user;
 
-    console.log("RootLayoutNav: Routing check", {
-      inAuthGroup,
-      inOnboarding,
-      isAuthenticated,
-      user: user?.username,
-      segments,
-      hasCheckedBiometric,
-    });
-
     // If not on onboarding/auth screens and not authenticated, start onboarding
     if (!inAuthGroup && !inOnboarding && !isAuthenticated) {
       console.log("RootLayoutNav: Redirecting to onboarding/welcome");

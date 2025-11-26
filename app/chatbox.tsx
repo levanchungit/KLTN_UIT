@@ -19,13 +19,15 @@ import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
-// import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from "expo-speech-recognition";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -35,7 +37,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -200,69 +201,6 @@ function BackBar() {
     </View>
   );
 }
-
-/* ---------------- OCR: OCR.space API (Free 25,000 requests/month) ---------------- */
-/*
-async function optimizeImageForOCR(imageUri: string): Promise<string> {
-  try {
-    // Get image info to check size
-    const imageInfo = await FileSystem.getInfoAsync(imageUri);
-
-    // OCR.space limit is 1024KB (1MB)
-    const maxSizeBytes = 1024 * 1024; // 1MB
-    if (imageInfo.exists && imageInfo.size && imageInfo.size > maxSizeBytes) {
-      console.log(
-        `📏 Image too large (${(imageInfo.size / 1024 / 1024).toFixed(
-          2
-        )}MB), resizing for OCR.space limit (1MB)`
-      );
-
-      // Calculate target dimensions to fit within 1MB
-      // Assuming JPEG compression ratio of ~10:1, target uncompressed size ~10MB
-      // But we'll be conservative and resize to smaller dimensions
-      const manipulatedImage = await manipulateAsync(
-        imageUri,
-        [{ resize: { width: 800, height: 800 } }], // Smaller than 1024x1024
-        { compress: 0.5, format: SaveFormat.JPEG } // Lower quality for smaller size
-      );
-
-      // Check final size
-      const finalInfo = await FileSystem.getInfoAsync(manipulatedImage.uri);
-      if (finalInfo.exists && finalInfo.size && finalInfo.size > maxSizeBytes) {
-        console.log(
-          `⚠️ Still too large after resize (${(finalInfo.size / 1024).toFixed(
-            0
-          )}KB), using even lower quality`
-        );
-
-        // If still too large, reduce quality further
-        const finalImage = await manipulateAsync(
-          manipulatedImage.uri,
-          [], // Keep same size
-          { compress: 0.3, format: SaveFormat.JPEG } // Very low quality
-        );
-        return finalImage.uri;
-      }
-
-      return manipulatedImage.uri;
-    }
-
-    return imageUri;
-  } catch (error) {
-    console.warn("Failed to optimize image:", error);
-    // If optimization fails, try to warn user about potential size issues
-    const imageInfo = await FileSystem.getInfoAsync(imageUri).catch(() => null);
-    if (imageInfo?.exists && imageInfo.size && imageInfo.size > 1024 * 1024) {
-      console.warn(
-        `⚠️ Image is ${(imageInfo.size / 1024 / 1024).toFixed(
-          2
-        )}MB, may exceed OCR.space 1MB limit`
-      );
-    }
-    return imageUri; // Return original on error
-  }
-}
-*/
 
 async function processReceiptImage(imageUri: string): Promise<{
   amount: number | null;
@@ -1258,8 +1196,6 @@ function TypingIndicator({ colors }: { colors: any }) {
 }
 
 /* ---------------- Component ---------------- */
-
-/* ---------------- Component ---------------- */
 export default function Chatbox() {
   const { t } = useI18n();
   const { colors, mode } = useTheme();
@@ -1279,7 +1215,9 @@ export default function Chatbox() {
   // Voice states
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
-  const [isVoiceAvailable, setIsVoiceAvailable] = useState(false);
+  const [spokenText, setSpokenText] = useState("");
+  const [recognizing, setRecognizing] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
 
   // Image viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -1287,62 +1225,95 @@ export default function Chatbox() {
 
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
-  useEffect(() => {
-    if (Platform.OS === "android" || Platform.OS === "ios") {
-      Voice.onSpeechResults = (e: any) => {
-        const text = e.value?.[0] || "";
-        console.log("Speech results:", text);
-        // xử lý luôn:
-        processTextInput(text);
-      };
+  //VOICE
+  useSpeechRecognitionEvent("start", () => {
+    setRecognizing(true);
+    setIsRecording(true);
+    setError(undefined);
+    setSpokenText("");
+  });
 
-      Voice.onSpeechError = (e: any) => {
-        console.log("onSpeechError", e);
-        Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-        setIsRecording(false);
-        setIsProcessingVoice(false);
-      };
+  useSpeechRecognitionEvent("end", () => {
+    setRecognizing(false);
+    setIsRecording(false);
+  });
 
-      Voice.onSpeechEnd = () => {
-        console.log("onSpeechEnd");
-        setIsRecording(false);
-        setIsProcessingVoice(false);
-      };
+  useSpeechRecognitionEvent("result", (event: any) => {
+    const text = event?.results?.[0]?.transcript || "";
+
+    if (!text) return;
+
+    // interim (partial) => hiển thị lên thanh đang ghi
+    if (!event.isFinal) {
+      setSpokenText(text.trim());
+      return;
     }
 
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
+    // final => dừng ghi, xử lý như input text
+    const finalText = text.trim();
+    if (!finalText) return;
 
-  useEffect(() => {
-    const initVoice = async () => {
-      // Không chạy trên web
-      if (Platform.OS !== "android" && Platform.OS !== "ios") {
-        setIsVoiceAvailable(false);
+    setIsRecording(false);
+    setRecognizing(false);
+    setIsProcessingVoice(true);
+    setSpokenText("");
+
+    // push message user
+    setMessages((m) => [...m, { role: "user", text: finalText }]);
+
+    (async () => {
+      try {
+        await processTextInput(finalText);
+      } finally {
+        setIsProcessingVoice(false);
+      }
+    })();
+  });
+
+  useSpeechRecognitionEvent("error", (event: any) => {
+    console.log("Speech error:", event);
+    setError(event?.message || "Lỗi nhận diện giọng nói");
+    setIsRecording(false);
+    setRecognizing(false);
+    setIsProcessingVoice(false);
+  });
+
+  const startVoice = async () => {
+    try {
+      setError(undefined);
+
+      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          "Quyền truy cập",
+          "Cần quyền micro & nhận diện giọng nói để dùng tính năng này."
+        );
         return;
       }
 
-      try {
-        console.log("Voice module keys:", Object.keys(Voice));
-        // Coi như có Voice nếu không crash khi require
-        setIsVoiceAvailable(true);
-      } catch (error) {
-        console.log("Init Voice error:", error);
-        setIsVoiceAvailable(false);
-      }
-    };
+      setSpokenText("");
+      setIsRecording(true);
+      setIsProcessingVoice(false);
 
-    initVoice();
+      await ExpoSpeechRecognitionModule.start({
+        lang: "vi-VN", // nhận diện tiếng Việt
+        interimResults: true, // cần partial để hiển thị spokenText
+        continuous: false,
+      });
+    } catch (e) {
+      console.log("startVoice error", e);
+      setIsRecording(false);
+    }
+  };
 
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
+  const stopVoice = async () => {
+    try {
+      await ExpoSpeechRecognitionModule.stop();
+    } catch (e) {
+      console.log("stopVoice error", e);
+    }
+    setIsRecording(false);
+  };
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
@@ -1361,8 +1332,8 @@ export default function Chatbox() {
   useEffect(() => {
     (async () => {
       try {
-        // Load simple LR model (JSON). If missing, fallback heuristics still work.
-        const mod = require("../../assets/models/lr-vn-shopping.json");
+        const mod = require("assets/models/lr-vn-shopping.json");
+        console.log("Loaded LR model:", mod);
         setModel(mod as unknown as LRModel);
       } catch (e) {
         console.warn(
@@ -1765,68 +1736,6 @@ export default function Chatbox() {
     scrollToEnd();
   };
 
-  const handleVoicePress = async () => {
-    try {
-      if (isRecording) {
-        setIsRecording(false);
-        setIsProcessingVoice(true);
-        await Voice.stop();
-        return;
-      }
-
-      setMessages((m) => [
-        ...m,
-        {
-          role: "bot",
-          text: "🎤 Đang lắng nghe... hãy nói nội dung giao dịch",
-        },
-      ]);
-      scrollToEnd();
-
-      setIsRecording(true);
-      setIsProcessingVoice(false);
-
-      await Voice.start("vi-VN");
-    } catch (error) {
-      console.error("Voice error:", error);
-      const msg =
-        error instanceof Error
-          ? error.message
-          : "Không thể nhận diện giọng nói";
-      Alert.alert("Lỗi Voice", msg);
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    }
-  };
-
-  useEffect(() => {
-    Voice.onSpeechResults = (e: any) => {
-      const text = e.value?.[0] || "";
-      console.log("Speech results:", text);
-      setMessages((m) => [...m, { role: "user", text }]);
-      // hoặc: processTextInput(text);
-    };
-
-    Voice.onSpeechError = (e: any) => {
-      console.log("onSpeechError", e);
-      Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    };
-
-    Voice.onSpeechEnd = () => {
-      console.log("onSpeechEnd");
-      setIsRecording(false);
-      setIsProcessingVoice(false);
-    };
-
-    return () => {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(() => {});
-    };
-  }, []);
-
   // ----- Image Receipt Handler -----
   const handleImagePress = async () => {
     try {
@@ -2176,6 +2085,43 @@ export default function Chatbox() {
         behavior={"padding"}
       >
         <BackBar />
+
+        {/* Voice Recording Indicator */}
+        {isRecording && spokenText ? (
+          <View
+            style={{
+              padding: 12,
+              marginHorizontal: 16,
+              marginBottom: 8,
+              backgroundColor: mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Ionicons name="mic" size={20} color="#3B82F6" />
+            <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+              {spokenText}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 2 }}>
+              {[0, 1, 2].map((i) => (
+                <Animated.View
+                  key={i}
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: "#3B82F6",
+                    opacity: 0.6,
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* Chat */}
         <FlatList
@@ -2725,9 +2671,10 @@ export default function Chatbox() {
                   ? colors.background
                   : "#F3F4F6",
                 borderColor: colors.divider,
+                opacity: isProcessingVoice ? 0.4 : 1,
               },
             ]}
-            onPress={handleVoicePress}
+            onPress={isRecording ? stopVoice : startVoice}
             disabled={isProcessingVoice}
           >
             <Ionicons

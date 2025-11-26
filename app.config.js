@@ -62,7 +62,25 @@ export default {
           sounds: [],
         },
       ],
-      ["@react-native-voice/voice"],
+      [
+        "react-native-vosk",
+        {
+          models: ["assets/models/vn"],
+          iOSMicrophonePermission: "Ứng dụng cần micro để nhận diện giọng nói.",
+        },
+      ],
+      "expo-speech-recognition",
+      [
+        "expo-speech-recognition",
+        {
+          microphonePermission: "Cho phép $(PRODUCT_NAME) sử dụng micro.",
+          speechRecognitionPermission:
+            "Cho phép $(PRODUCT_NAME) sử dụng nhận diện giọng nói.",
+          androidSpeechServicePackages: [
+            "com.google.android.googlequicksearchbox",
+          ],
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,
