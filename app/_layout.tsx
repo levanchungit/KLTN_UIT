@@ -130,7 +130,6 @@ function RootLayoutNav() {
 
     // If not on onboarding/auth screens and not authenticated, start onboarding
     if (!inAuthGroup && !inOnboarding && !isAuthenticated) {
-      console.log("RootLayoutNav: Redirecting to onboarding/welcome");
       router.replace("/onboarding/welcome");
       return;
     }

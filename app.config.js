@@ -62,13 +62,6 @@ export default {
           sounds: [],
         },
       ],
-      [
-        "react-native-vosk",
-        {
-          models: ["assets/models/vn"],
-          iOSMicrophonePermission: "Ứng dụng cần micro để nhận diện giọng nói.",
-        },
-      ],
       "expo-speech-recognition",
       [
         "expo-speech-recognition",
@@ -79,6 +72,13 @@ export default {
           androidSpeechServicePackages: [
             "com.google.android.googlequicksearchbox",
           ],
+        },
+      ],
+      [
+        "expo-av",
+        {
+          microphonePermission:
+            "Allow $(PRODUCT_NAME) to access your microphone.",
         },
       ],
     ],

@@ -1,5 +1,6 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { db } from "@/db";
+import useAudioMeter from "@/hooks/useAudioMeter";
 import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
 import {
@@ -32,6 +33,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  AppState,
   Dimensions,
   FlatList,
   Image,
@@ -47,55 +49,28 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type Msg =
-  | { role: "bot"; text: string }
-  | { role: "user"; text: string; imageUri?: string }
-  | { role: "typing" }
-  | {
-      role: "card";
-      transactionId: string;
-      accountId: string;
-      amount: number | null;
-      io: "IN" | "OUT";
-      categoryId: string;
-      categoryName: string;
-      categoryIcon?: string;
-      categoryColor?: string;
-      note: string;
-      when: string;
-    };
-
+// Minimal placeholders (keeps file compiling if config values/helpers missing)
 const OPENAI_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || "";
 const OCR_SPACE_API_KEY =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_OCR_SPACE_API_KEY || ""; // Free OCR.space API key
-// ↓ Helper: lấy JSON từ chuỗi có thể lẫn text
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_OCR_SPACE_API_KEY || "";
+
 function tryPickJson(text: string) {
   if (!text) return null;
-  const m = text.match(/\{[\s\S]*\}/); // lấy đoạn {...} đầu tiên
   try {
+    const m = text.match(/\{[\s\S]*\}/);
     return m ? JSON.parse(m[0]) : JSON.parse(text);
   } catch {
     return null;
   }
 }
 
-// ↓ Tạo câu fallback ngắn gọn khi GPT không parse được
-function makeShortMsg(
-  io: "IN" | "OUT",
-  categoryName: string,
-  amount: number | null,
-  note: string
-) {
-  const money = amount ? amount.toLocaleString("vi-VN") + "đ" : "";
-  if (io === "OUT")
-    return `Đã ghi nhận chi ${money}${
-      categoryName ? ` cho ${categoryName.toLowerCase()}` : ""
-    }.`;
-  return `Đã ghi nhận thu ${money}${
-    categoryName ? ` vào ${categoryName.toLowerCase()}` : ""
-  }.`;
+function makeShortMsg(io: any, categoryName: any, amount: any, note: any) {
+  const money = amount ? amount.toLocaleString?.("vi-VN") + "đ" : "";
+  return io === "OUT" ? `Đã ghi nhận chi ${money}` : `Đã ghi nhận thu ${money}`;
 }
+
+type Msg = any;
 
 async function getEmotionalReplyDirect(args: {
   io: "IN" | "OUT";
@@ -201,7 +176,6 @@ function BackBar() {
     </View>
   );
 }
-
 async function processReceiptImage(imageUri: string): Promise<{
   amount: number | null;
   text: string;
@@ -1218,12 +1192,21 @@ export default function Chatbox() {
   const [spokenText, setSpokenText] = useState("");
   const [recognizing, setRecognizing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const audioMeter = useAudioMeter();
 
   // Image viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+  const [recordDuration, setRecordDuration] = useState(0); // đơn vị: giây
+  const recordStartRef = useRef<number | null>(null);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef(false);
+  const sessionIdRef = useRef(0);
+  // when a final result is being processed, store its originating session
+  const processingSessionRef = useRef<number | null>(null);
+  const pendingFinalRef = useRef(false);
 
   //VOICE
   useSpeechRecognitionEvent("start", () => {
@@ -1239,6 +1222,14 @@ export default function Chatbox() {
   });
 
   useSpeechRecognitionEvent("result", (event: any) => {
+    // Capture session at event time — ignore events from prior sessions
+    const eventSession = sessionIdRef.current;
+    if (cancelledRef.current) {
+      // reset flag for next session and ignore
+      cancelledRef.current = false;
+      return;
+    }
+
     const text = event?.results?.[0]?.transcript || "";
 
     if (!text) return;
@@ -1252,19 +1243,38 @@ export default function Chatbox() {
     // final => dừng ghi, xử lý như input text
     const finalText = text.trim();
     if (!finalText) return;
+    // If this event comes from an older session (cancelled/new start), ignore.
+    if (eventSession !== sessionIdRef.current) return;
 
     setIsRecording(false);
     setRecognizing(false);
     setIsProcessingVoice(true);
     setSpokenText("");
 
-    // push message user
+    // mark pending final so cancel can remove it
+    pendingFinalRef.current = true;
+
+    // push message user (capture processing session)
+    const procSession = eventSession;
+    processingSessionRef.current = procSession;
     setMessages((m) => [...m, { role: "user", text: finalText }]);
 
     (async () => {
       try {
+        // if session changed (cancel/new start) before processing, remove message and skip
+        if (procSession !== sessionIdRef.current || cancelledRef.current) {
+          pendingFinalRef.current = false;
+          processingSessionRef.current = null;
+          setIsProcessingVoice(false);
+          setSpokenText("");
+          setMessages((m) => m.slice(0, -1));
+          return;
+        }
+
         await processTextInput(finalText);
       } finally {
+        pendingFinalRef.current = false;
+        processingSessionRef.current = null;
         setIsProcessingVoice(false);
       }
     })();
@@ -1273,36 +1283,83 @@ export default function Chatbox() {
   useSpeechRecognitionEvent("error", (event: any) => {
     console.log("Speech error:", event);
     setError(event?.message || "Lỗi nhận diện giọng nói");
-    setIsRecording(false);
-    setRecognizing(false);
-    setIsProcessingVoice(false);
+    // ensure all recording resources are stopped
+    cancelRecording();
   });
-
+  const lastRecordDurationRef = useRef(0);
   const startVoice = async () => {
     try {
-      setError(undefined);
-
+      // clear any previous cancel flag
+      cancelledRef.current = false;
+      // xin quyền
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert(
-          "Quyền truy cập",
-          "Cần quyền micro & nhận diện giọng nói để dùng tính năng này."
-        );
+        Alert.alert("Cần quyền microphone");
         return;
       }
 
+      // reset UI
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
       setSpokenText("");
       setIsRecording(true);
-      setIsProcessingVoice(false);
+      setRecordDuration(0);
+      recordStartRef.current = Date.now();
+      lastRecordDurationRef.current = 0;
 
-      await ExpoSpeechRecognitionModule.start({
-        lang: "vi-VN", // nhận diện tiếng Việt
-        interimResults: true, // cần partial để hiển thị spokenText
-        continuous: false,
-      });
+      recordTimerRef.current = setInterval(() => {
+        if (recordStartRef.current != null) {
+          const sec = Math.floor((Date.now() - recordStartRef.current) / 1000);
+          setRecordDuration(sec);
+          lastRecordDurationRef.current = sec;
+        }
+      }, 200);
+
+      // start meter recording (for waveform) and speech recognition
+      try {
+        await audioMeter.start();
+      } catch (e) {
+        console.warn("audioMeter.start failed", e);
+        // don't proceed if we can't start metering
+        setIsRecording(false);
+        if (recordTimerRef.current) {
+          clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        recordStartRef.current = null;
+        return;
+      }
+
+      try {
+        await ExpoSpeechRecognitionModule.start({
+          lang: "vi-VN",
+          interimResults: true,
+          continuous: true,
+        });
+      } catch (e) {
+        console.warn("SpeechRecognition start failed", e);
+        // stop meter and reset
+        try {
+          await audioMeter.stop();
+        } catch {}
+        setIsRecording(false);
+        if (recordTimerRef.current) {
+          clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        recordStartRef.current = null;
+        return;
+      }
     } catch (e) {
-      console.log("startVoice error", e);
+      console.log("start error", e);
       setIsRecording(false);
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      recordStartRef.current = null;
     }
   };
 
@@ -1310,9 +1367,63 @@ export default function Chatbox() {
     try {
       await ExpoSpeechRecognitionModule.stop();
     } catch (e) {
-      console.log("stopVoice error", e);
+      console.log("stop error", e);
     }
+
+    try {
+      await audioMeter.stop();
+    } catch (e) {
+      // ignore
+    }
+
     setIsRecording(false);
+
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+
+    if (recordStartRef.current != null) {
+      const sec = Math.floor((Date.now() - recordStartRef.current) / 1000);
+      setRecordDuration(sec);
+      lastRecordDurationRef.current = sec;
+    }
+    recordStartRef.current = null;
+
+    console.log("⌛ Thời lượng bản ghi (giây):", lastRecordDurationRef.current);
+  };
+
+  // Cancel recording without processing/submit — used for X/cancel or when app backgrounds
+  const cancelRecording = async () => {
+    // mark as cancelled so any pending 'result' events are ignored
+    cancelledRef.current = true;
+    // if a final result is pending (message already inserted but not processed), remove it
+    if (pendingFinalRef.current) {
+      try {
+        setMessages((m) => m.slice(0, -1));
+      } catch {}
+      pendingFinalRef.current = false;
+    }
+    try {
+      try {
+        await ExpoSpeechRecognitionModule.stop();
+      } catch {}
+    } catch {}
+
+    try {
+      await audioMeter.stop();
+    } catch {}
+
+    setIsRecording(false);
+    setRecognizing(false);
+    setIsProcessingVoice(false);
+    setSpokenText("");
+
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    recordStartRef.current = null;
   };
 
   const load = useCallback(async () => {
@@ -1698,42 +1809,61 @@ export default function Chatbox() {
 
   const chooseCategory = async (c: { categoryId: string; name: string }) => {
     if (!pendingPick) return;
-    const txn = await createTransaction({
-      amount: pendingPick.amount,
-      io: pendingPick.io,
-      categoryId: c.categoryId,
-      note: pendingPick.text,
-    });
-    const when = new Date().toLocaleDateString();
-    const selectedCategory = items.find((cat) => cat.id === c.categoryId);
-    setMessages((m) => [
-      ...m,
-      {
-        role: "card",
-        transactionId: txn.id,
-        accountId: txn.accountId,
-        amount: txn.amount ?? null,
+    try {
+      const txn = await createTransaction({
+        amount: pendingPick.amount,
         io: pendingPick.io,
         categoryId: c.categoryId,
-        categoryName: c.name,
-        categoryIcon: selectedCategory?.icon || "wallet",
-        categoryColor: selectedCategory?.color || "#6366F1",
         note: pendingPick.text,
-        when,
-      },
-    ]);
-    // Log correction (user choice overriding prediction)
-    try {
-      if (pendingLogId.current) {
-        await logCorrection({
-          id: pendingLogId.current,
-          chosenCategoryId: c.categoryId,
-        });
-        pendingLogId.current = null;
-      }
-    } catch {}
-    setPendingPick(null);
-    scrollToEnd();
+      });
+
+      const when = new Date().toLocaleDateString();
+      const selectedCategory = items.find((cat) => cat.id === c.categoryId);
+      setMessages((m) => [
+        ...m,
+        {
+          role: "card",
+          transactionId: txn.id,
+          accountId: txn.accountId,
+          amount: txn.amount ?? null,
+          io: pendingPick.io,
+          categoryId: c.categoryId,
+          categoryName: c.name,
+          categoryIcon: selectedCategory?.icon || "wallet",
+          categoryColor: selectedCategory?.color || "#6366F1",
+          note: pendingPick.text,
+          when,
+        },
+      ]);
+
+      // Log correction (user choice overriding prediction)
+      try {
+        if (pendingLogId.current) {
+          await logCorrection({
+            id: pendingLogId.current,
+            chosenCategoryId: c.categoryId,
+          });
+          pendingLogId.current = null;
+        }
+      } catch {}
+
+      setPendingPick(null);
+      scrollToEnd();
+    } catch (e: any) {
+      console.log("Create transaction failed in chooseCategory:", e);
+      // Show informative message to user instead of uncaught rejection
+      setMessages((m) => [
+        ...m,
+        {
+          role: "bot",
+          text:
+            "Không thể tạo giao dịch: " +
+            (e?.message || "Vui lòng kiểm tra dữ liệu."),
+        },
+      ]);
+      setPendingPick(null);
+      scrollToEnd();
+    }
   };
 
   // ----- Image Receipt Handler -----
@@ -2075,6 +2205,154 @@ export default function Chatbox() {
     }
   };
 
+  function VoiceWaveform({
+    isRecording,
+    color = "#3B82F6",
+    meterAnimated,
+  }: {
+    isRecording: boolean;
+    color?: string;
+    meterAnimated?: Animated.Value;
+  }) {
+    const NUM_BARS = 30;
+    const meter = meterAnimated ?? useRef(new Animated.Value(0)).current;
+    const animationRef = useRef<any>(null);
+
+    // Mỗi bar có “đỉnh” riêng để nhìn cho tự nhiên
+    const peaks = useRef(
+      Array.from({ length: NUM_BARS }, () => 0.6 + Math.random() * 1.4)
+    ).current;
+
+    useEffect(() => {
+      // If an external Animated.Value is provided, use it (it will be driven by the hook).
+      // Otherwise run a fallback loop animation while recording.
+      if (meterAnimated) {
+        animationRef.current?.stop();
+        animationRef.current = null;
+      } else {
+        if (isRecording) {
+          const anim = Animated.loop(
+            Animated.sequence([
+              Animated.timing(meter, {
+                toValue: 1,
+                duration: 700,
+                useNativeDriver: false,
+              }),
+              Animated.timing(meter, {
+                toValue: 0,
+                duration: 700,
+                useNativeDriver: false,
+              }),
+            ])
+          );
+          animationRef.current = anim;
+          anim.start();
+        } else {
+          animationRef.current?.stop();
+          animationRef.current = null;
+          meter.setValue(0);
+        }
+      }
+
+      return () => {
+        animationRef.current?.stop();
+        animationRef.current = null;
+      };
+    }, [isRecording, meterAnimated, meter]);
+
+    if (!isRecording && !spokenText) return null;
+
+    const MIN_H = 3;
+    const MAX_H = 18;
+
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 28,
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            width: "70%",
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            height: 28,
+          }}
+        >
+          {Array.from({ length: NUM_BARS }).map((_, i) => {
+            const h = meter.interpolate({
+              inputRange: [0, 1],
+              outputRange: [MIN_H, Math.max(MIN_H + 1, MAX_H * peaks[i])],
+            });
+
+            return (
+              <Animated.View
+                key={i}
+                style={{
+                  width: 2,
+                  marginHorizontal: 1,
+                  borderRadius: 2,
+                  backgroundColor: color,
+                  height: h,
+                  alignSelf: "center",
+                }}
+              />
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  const formatDuration = (sec: number) => {
+    const m = Math.floor(sec / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  const inputAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(inputAnim, {
+      toValue: isRecording ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [isRecording, inputAnim]);
+
+  // Cancel recording if app goes to background or becomes inactive
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") {
+        if (isRecording) cancelRecording();
+      }
+    });
+    return () => subscription.remove();
+  }, [isRecording]);
+
+  const handleSubmitVoice = async () => {
+    // Nếu bạn giữ transcript ở spokenText:
+    const text = spokenText.trim();
+    if (!text) {
+      await stopVoice();
+      return;
+    }
+
+    // Push vào chat như gửi text thường
+    setMessages((m) => [...m, { role: "user", text }]);
+    setSpokenText("");
+
+    await stopVoice();
+    await processTextInput(text);
+  };
+
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -2085,43 +2363,6 @@ export default function Chatbox() {
         behavior={"padding"}
       >
         <BackBar />
-
-        {/* Voice Recording Indicator */}
-        {isRecording && spokenText ? (
-          <View
-            style={{
-              padding: 12,
-              marginHorizontal: 16,
-              marginBottom: 8,
-              backgroundColor: mode === "dark" ? "#1E3A8A" : "#E5F5F9",
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <Ionicons name="mic" size={20} color="#3B82F6" />
-            <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
-              {spokenText}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 2 }}>
-              {[0, 1, 2].map((i) => (
-                <Animated.View
-                  key={i}
-                  style={{
-                    width: 4,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: "#3B82F6",
-                    opacity: 0.6,
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
 
         {/* Chat */}
         <FlatList
@@ -2653,6 +2894,7 @@ export default function Chatbox() {
           </View>
         </Modal>
 
+        {/* Input Bar (ẩn khi đang thu âm) */}
         {/* Input */}
         <View
           style={[
@@ -2660,7 +2902,7 @@ export default function Chatbox() {
             { borderColor: colors.divider, backgroundColor: colors.card },
           ]}
         >
-          {/* Voice button */}
+          {/* Nút Voice */}
           <Pressable
             style={[
               styles.iconBtn,
@@ -2684,47 +2926,150 @@ export default function Chatbox() {
             />
           </Pressable>
 
-          {/* Image button */}
-          <Pressable
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor:
-                  mode === "dark" ? colors.background : "#F3F4F6",
-                borderColor: colors.divider,
-              },
-            ]}
-            onPress={handleImagePress}
-            disabled={isProcessingVoice}
-          >
-            <Ionicons name="image" size={22} color={colors.icon} />
-          </Pressable>
+          {/* Nút Image - ẩn khi đang ghi âm */}
+          {!isRecording && (
+            <Pressable
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor:
+                    mode === "dark" ? colors.background : "#F3F4F6",
+                  borderColor: colors.divider,
+                },
+              ]}
+              onPress={handleImagePress}
+              disabled={isProcessingVoice}
+            >
+              <Ionicons name="image" size={22} color={colors.icon} />
+            </Pressable>
+          )}
 
-          <TextInput
-            placeholder={t("inputPlaceholder")}
-            placeholderTextColor={colors.subText}
-            value={input}
-            onChangeText={setInput}
-            style={[
-              styles.textInput,
-              {
-                borderColor: colors.divider,
-                backgroundColor: colors.background,
-                color: colors.text,
-              },
-            ]}
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-          />
-          <Pressable
-            style={[
-              styles.sendBtn,
-              { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
-            ]}
-            onPress={handleSend}
+          {/* Vùng giữa: TextInput <-> RecordingBar */}
+          <View
+            style={{
+              flex: 1,
+              marginHorizontal: 4,
+              position: "relative",
+              minHeight: 44,
+              justifyContent: "center",
+            }}
           >
-            <Text style={styles.sendText}>{t("send")}</Text>
-          </Pressable>
+            {/* TextInput (hiện khi không ghi) */}
+            <Animated.View
+              pointerEvents={isRecording ? "none" : "auto"}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                opacity: inputAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 0],
+                }),
+                transform: [
+                  {
+                    translateY: inputAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 10],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <TextInput
+                placeholder={t("inputPlaceholder")}
+                placeholderTextColor={colors.subText}
+                value={input}
+                onChangeText={setInput}
+                style={[
+                  styles.textInput,
+                  {
+                    borderColor: colors.divider,
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                  },
+                ]}
+                returnKeyType="send"
+                onSubmitEditing={handleSend}
+              />
+            </Animated.View>
+
+            {/* Recording bar (hiện khi đang ghi) */}
+            <Animated.View
+              pointerEvents={isRecording ? "auto" : "none"}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                opacity: inputAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+                transform: [
+                  {
+                    translateY: inputAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.divider,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  backgroundColor:
+                    mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
+                }}
+              >
+                {/* mic icon hidden during recording to keep waveform centered */}
+
+                <View style={{ flex: 1, marginHorizontal: 8 }}>
+                  <VoiceWaveform
+                    isRecording={isRecording}
+                    color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
+                    meterAnimated={audioMeter.meter}
+                  />
+                </View>
+
+                {/* X – hủy */}
+                <Pressable
+                  onPress={cancelRecording}
+                  style={{ padding: 10, marginRight: 10 }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={20} color={colors.subText} />
+                </Pressable>
+
+                {/* ✓ – gửi voice (text/voice tuỳ logic) */}
+                <Pressable
+                  onPress={handleSubmitVoice}
+                  style={{ padding: 10, marginLeft: 10 }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="checkmark" size={20} color="#10B981" />
+                </Pressable>
+              </View>
+            </Animated.View>
+          </View>
+
+          {/* Nút Send text - ẩn khi đang ghi âm */}
+          {!isRecording && (
+            <Pressable
+              style={[
+                styles.sendBtn,
+                { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+              ]}
+              onPress={handleSend}
+            >
+              <Text style={styles.sendText}>{t("send")}</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Image Viewer Modal */}
