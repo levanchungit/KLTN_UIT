@@ -1204,6 +1204,7 @@ export default function Chatbox() {
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
   const sessionIdRef = useRef(0);
+  const activeSessionRef = useRef<number | null>(null);
   // when a final result is being processed, store its originating session
   const processingSessionRef = useRef<number | null>(null);
   const pendingFinalRef = useRef(false);
@@ -1222,13 +1223,17 @@ export default function Chatbox() {
   });
 
   useSpeechRecognitionEvent("result", (event: any) => {
-    // Capture session at event time — ignore events from prior sessions
-    const eventSession = sessionIdRef.current;
+    // If user cancelled, ignore this event
     if (cancelledRef.current) {
       // reset flag for next session and ignore
       cancelledRef.current = false;
       return;
     }
+
+    // Use the activeSession captured when recording started. If it doesn't match
+    // the current global sessionIdRef, this event is stale and should be ignored.
+    const eventSession = activeSessionRef.current;
+    if (eventSession == null || eventSession !== sessionIdRef.current) return;
 
     const text = event?.results?.[0]?.transcript || "";
 
@@ -1243,8 +1248,6 @@ export default function Chatbox() {
     // final => dừng ghi, xử lý như input text
     const finalText = text.trim();
     if (!finalText) return;
-    // If this event comes from an older session (cancelled/new start), ignore.
-    if (eventSession !== sessionIdRef.current) return;
 
     setIsRecording(false);
     setRecognizing(false);
@@ -1289,6 +1292,13 @@ export default function Chatbox() {
   const lastRecordDurationRef = useRef(0);
   const startVoice = async () => {
     try {
+      // Start a fresh session id for this recording. This helps ignore
+      // any late speech events from previous sessions.
+      sessionIdRef.current = (sessionIdRef.current || 0) + 1;
+
+      // mark this session as active so result events know which session to apply to
+      activeSessionRef.current = sessionIdRef.current;
+
       // clear any previous cancel flag
       cancelledRef.current = false;
       // xin quyền
@@ -1397,6 +1407,13 @@ export default function Chatbox() {
   const cancelRecording = async () => {
     // mark as cancelled so any pending 'result' events are ignored
     cancelledRef.current = true;
+    // bump session id to invalidate any in-flight events tied to this session
+    sessionIdRef.current = (sessionIdRef.current || 0) + 1;
+    // clear active session so result handler ignores future events
+    activeSessionRef.current = null;
+    // clear processing flags so background handlers won't process
+    pendingFinalRef.current = false;
+    processingSessionRef.current = null;
     // if a final result is pending (message already inserted but not processed), remove it
     if (pendingFinalRef.current) {
       try {
@@ -1508,6 +1525,20 @@ export default function Chatbox() {
     useCallback(() => {
       load();
     }, [load])
+  );
+
+  // Ensure recording is stopped when leaving the screen
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        try {
+          if (isRecording) {
+            // Fire-and-forget cancel to stop audio + recognition
+            cancelRecording();
+          }
+        } catch (e) {}
+      };
+    }, [isRecording])
   );
 
   const scrollToEnd = () =>
@@ -2030,47 +2061,60 @@ export default function Chatbox() {
   };
 
   // ----- Process text input (shared by voice, image, and text) -----
+  const processingTextRef = useRef(false);
   const processTextInput = async (text: string) => {
     const userText = text.trim();
     if (!userText) return;
 
-    // Add typing indicator
-    setMessages((m) => [...m, { role: "typing" }]);
-    scrollToEnd();
+    // Prevent concurrent processing (avoid duplicate responses)
+    if (processingTextRef.current) return;
+    processingTextRef.current = true;
 
-    // Parse amount and clean note from text
-    const parsed = parseTransactionText(userText);
-    const cleanNote = parsed.note || userText;
-    const parsedAmount = parsed.amount;
-
-    // Parse and classify with AI
-    const amt = parsedAmount || (await parseAmountVN(userText));
-    const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
-
-    if (!ranked || ranked.length === 0) {
-      setMessages((m) => [
-        ...m.slice(0, -1),
-        {
-          role: "bot",
-          text: t("askAmount"),
-        },
-      ]);
-      return;
-    }
-
-    const topPred = ranked[0];
-    if (topPred.score >= 0.6) {
-      // Auto-create with high confidence
-      await autoCreateTransaction(cleanNote, amt, io, topPred.categoryId);
-    } else {
-      // Show suggestions
-      setMessages((m) => m.slice(0, -1));
-      setPendingPick({
-        text: cleanNote,
-        amount: amt,
-        io,
-        choices: ranked.slice(0, 3),
+    try {
+      // Add typing indicator only if not already present
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (last && last.role === "typing") return m;
+        return [...m, { role: "typing" }];
       });
+      scrollToEnd();
+
+      // Parse amount and clean note from text
+      const parsed = parseTransactionText(userText);
+      const cleanNote = parsed.note || userText;
+      const parsedAmount = parsed.amount;
+
+      // Parse and classify with AI
+      const amt = parsedAmount || (await parseAmountVN(userText));
+      const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+
+      if (!ranked || ranked.length === 0) {
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          {
+            role: "bot",
+            text: t("askAmount"),
+          },
+        ]);
+        return;
+      }
+
+      const topPred = ranked[0];
+      if (topPred.score >= 0.6) {
+        // Auto-create with high confidence
+        await autoCreateTransaction(cleanNote, amt, io, topPred.categoryId);
+      } else {
+        // Show suggestions (replace typing with suggestion prompt)
+        setMessages((m) => m.slice(0, -1));
+        setPendingPick({
+          text: cleanNote,
+          amount: amt,
+          io,
+          choices: ranked.slice(0, 3),
+        });
+      }
+    } finally {
+      processingTextRef.current = false;
     }
   };
 
@@ -2327,6 +2371,10 @@ export default function Chatbox() {
     }).start();
   }, [isRecording, inputAnim]);
 
+  // Prevent duplicate submits when user taps ✓ multiple times quickly
+  const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Cancel recording if app goes to background or becomes inactive
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -2338,19 +2386,45 @@ export default function Chatbox() {
   }, [isRecording]);
 
   const handleSubmitVoice = async () => {
-    // Nếu bạn giữ transcript ở spokenText:
-    const text = spokenText.trim();
-    if (!text) {
+    // If we're already processing a submit, ignore
+    if (submittingRef.current) return;
+
+    // Immediately mark as submitting so UI (both X and ✓) disables right away
+    submittingRef.current = true;
+    setIsSubmitting(true);
+
+    try {
+      // If a final result is already pending or being processed by the speech handler,
+      // don't duplicate — stop recording and let the existing handler finish. Keep buttons disabled.
+      if (pendingFinalRef.current || processingSessionRef.current != null) {
+        try {
+          await stopVoice();
+        } catch {}
+        return;
+      }
+
+      const text = spokenText.trim();
+      if (!text) {
+        await stopVoice();
+        return;
+      }
+
+      // Prevent the speech recognition event handler from also inserting/processing
+      // a final result that would duplicate what we're about to do.
+      cancelledRef.current = true;
+
+      // Push into chat like sending text normally
+      setMessages((m) => [...m, { role: "user", text }]);
+      setSpokenText("");
+
       await stopVoice();
-      return;
+      await processTextInput(text);
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+      // Clear the temporary cancel guard so future sessions work normally
+      cancelledRef.current = false;
     }
-
-    // Push vào chat như gửi text thường
-    setMessages((m) => [...m, { role: "user", text }]);
-    setSpokenText("");
-
-    await stopVoice();
-    await processTextInput(text);
   };
 
   return (
@@ -2902,29 +2976,24 @@ export default function Chatbox() {
             { borderColor: colors.divider, backgroundColor: colors.card },
           ]}
         >
-          {/* Nút Voice */}
-          <Pressable
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: isRecording
-                  ? "#EF4444"
-                  : mode === "dark"
-                  ? colors.background
-                  : "#F3F4F6",
-                borderColor: colors.divider,
-                opacity: isProcessingVoice ? 0.4 : 1,
-              },
-            ]}
-            onPress={isRecording ? stopVoice : startVoice}
-            disabled={isProcessingVoice}
-          >
-            <Ionicons
-              name={isRecording ? "stop-circle" : "mic"}
-              size={22}
-              color={isRecording ? "#fff" : colors.icon}
-            />
-          </Pressable>
+          {/* Nút Voice (ẩn khi đang ghi âm) */}
+          {!isRecording && (
+            <Pressable
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor:
+                    mode === "dark" ? colors.background : "#F3F4F6",
+                  borderColor: colors.divider,
+                  opacity: isProcessingVoice ? 0.4 : 1,
+                },
+              ]}
+              onPress={startVoice}
+              disabled={isProcessingVoice}
+            >
+              <Ionicons name={"mic"} size={22} color={colors.icon} />
+            </Pressable>
+          )}
 
           {/* Nút Image - ẩn khi đang ghi âm */}
           {!isRecording && (
@@ -3027,7 +3096,21 @@ export default function Chatbox() {
                     mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
                 }}
               >
-                {/* mic icon hidden during recording to keep waveform centered */}
+                {/* small mic icon at the start while recording */}
+                <View
+                  style={{
+                    width: 32,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="mic"
+                    size={18}
+                    color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
+                  />
+                </View>
 
                 <View style={{ flex: 1, marginHorizontal: 8 }}>
                   <VoiceWaveform
@@ -3037,22 +3120,52 @@ export default function Chatbox() {
                   />
                 </View>
 
-                {/* X – hủy */}
+                {/* X – hủy (framed button) */}
                 <Pressable
                   onPress={cancelRecording}
-                  style={{ padding: 10, marginRight: 10 }}
+                  disabled={isSubmitting}
+                  style={[
+                    styles.iconBtn,
+                    {
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      marginRight: 8,
+                      backgroundColor:
+                        mode === "dark" ? colors.background : colors.card,
+                      borderColor: colors.divider,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: isSubmitting ? 0.45 : 1,
+                    },
+                  ]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="close" size={20} color={colors.subText} />
+                  <Ionicons name="close" size={18} color={colors.subText} />
                 </Pressable>
 
-                {/* ✓ – gửi voice (text/voice tuỳ logic) */}
+                {/* ✓ – gửi voice (framed button) */}
                 <Pressable
                   onPress={handleSubmitVoice}
-                  style={{ padding: 10, marginLeft: 10 }}
+                  disabled={isSubmitting}
+                  style={[
+                    styles.iconBtn,
+                    {
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      marginLeft: 8,
+                      backgroundColor:
+                        mode === "dark" ? colors.background : colors.card,
+                      borderColor: colors.divider,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: isSubmitting ? 0.45 : 1,
+                    },
+                  ]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="checkmark" size={20} color="#10B981" />
+                  <Ionicons name="checkmark" size={18} color="#10B981" />
                 </Pressable>
               </View>
             </Animated.View>
