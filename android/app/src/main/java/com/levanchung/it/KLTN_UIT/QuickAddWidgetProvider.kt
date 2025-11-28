@@ -45,7 +45,7 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
             }
             val pVoice = PendingIntent.getBroadcast(context, 401, voiceIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             Log.i(TAG, "setOnClickPendingIntent for voice (mode=voice)")
-            views.setOnClickPendingIntent(R.id.btn_voice, pVoice)
+            views.setOnClickPendingIntent(R.id.action_voice, pVoice)
 
             // Image button: open chatbox in image mode
             val uriImage = android.net.Uri.parse("kltnuit://chatbox?source=widget&mode=image")
@@ -56,7 +56,7 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
             }
             val pImage = PendingIntent.getBroadcast(context, 402, imageIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             Log.i(TAG, "setOnClickPendingIntent for image (mode=image)")
-            views.setOnClickPendingIntent(R.id.btn_image, pImage)
+            views.setOnClickPendingIntent(R.id.action_image, pImage)
         } else {
             // Not logged in: clicking any of these will post a login reminder notification
             val loginNotifyIntent = Intent(context, QuickAddWidgetProvider::class.java).apply {
@@ -64,8 +64,8 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
             }
             val pLoginNotify = PendingIntent.getBroadcast(context, 410, loginNotifyIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             views.setOnClickPendingIntent(R.id.widget_input_area, pLoginNotify)
-            views.setOnClickPendingIntent(R.id.btn_voice, pLoginNotify)
-            views.setOnClickPendingIntent(R.id.btn_image, pLoginNotify)
+            views.setOnClickPendingIntent(R.id.action_voice, pLoginNotify)
+            views.setOnClickPendingIntent(R.id.action_image, pLoginNotify)
         }
 
         val componentName = ComponentName(context, QuickAddWidgetProvider::class.java)

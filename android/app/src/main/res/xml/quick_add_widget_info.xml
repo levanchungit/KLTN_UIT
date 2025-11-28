@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Use a bitmap preview for maximum launcher compatibility. Place your PNG
+     at `res/drawable-nodpi/preview_widget.png`. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
-    android:minHeight="72dp"
+    android:minWidth="360dp"
+    android:minHeight="144dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_quick_add"
-    android:resizeMode="horizontal|vertical"
-    android:previewImage="@layout/widget_quick_add"
+    android:resizeMode="none"
+    android:previewImage="@drawable/preview_widget"
     android:widgetCategory="home_screen|keyguard" />
