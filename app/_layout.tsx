@@ -18,6 +18,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   LogBox,
   Platform,
   UIManager,
@@ -110,6 +111,50 @@ function RootLayoutNav() {
       }
     }
   }, [user, isLoading]);
+
+  // Deep link handling from Android widget: kltnuit://add?text=...
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      try {
+        const parsed = new URL(url);
+        const pathname = parsed.pathname.replace(/^\//, "");
+        const params = Object.fromEntries(parsed.searchParams.entries());
+        console.log("Deep link received:", url, pathname, params);
+        if (pathname === "add" || pathname === "add-transaction") {
+          const text = params["text"];
+          if (text) {
+            router.push(`/add-transaction?text=${encodeURIComponent(text)}`);
+          } else {
+            router.push("/add-transaction");
+          }
+        } else if (pathname === "chatbox") {
+          // support mode=voice|image|text and optional text param
+          const mode = params["mode"];
+          const text = params["text"];
+          let path = "/chatbox";
+          const q: string[] = [];
+          if (mode) q.push(`mode=${encodeURIComponent(mode)}`);
+          if (text) q.push(`text=${encodeURIComponent(text)}`);
+          if (q.length) path = `${path}?${q.join("&")}`;
+          router.push(path as any);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    (async () => {
+      const initial = await Linking.getInitialURL();
+      handleUrl(initial);
+    })();
+
+    const sub = Linking.addEventListener("url", (ev) =>
+      handleUrl((ev as any).url)
+    );
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Don't do routing while still loading session

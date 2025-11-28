@@ -24,7 +24,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
@@ -1540,6 +1540,39 @@ export default function Chatbox() {
       };
     }, [isRecording])
   );
+
+  // Handle deep-link params from widget (mode=voice|image|text, text=...)
+  const params = useLocalSearchParams();
+  useEffect(() => {
+    const mode = (params?.mode as string | undefined) || null;
+    const initial =
+      (params?.text as string | undefined) ||
+      (params?.initial as string | undefined) ||
+      null;
+    if (mode === "voice") {
+      // start voice recording
+      startVoice().catch((e) =>
+        console.warn("startVoice failed from widget", e)
+      );
+    } else if (mode === "image") {
+      // open image picker
+      (async () => {
+        try {
+          await handleImagePress();
+        } catch (e) {
+          console.warn("handleImagePress failed from widget", e);
+        }
+      })();
+    } else if (mode === "text" && initial) {
+      // prefill input
+      try {
+        setInput(decodeURIComponent(String(initial)));
+      } catch {
+        setInput(String(initial));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const scrollToEnd = () =>
     requestAnimationFrame(() =>

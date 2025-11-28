@@ -1,5 +1,6 @@
 // src/session.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
 
 export type UserSession = {
@@ -37,12 +38,36 @@ export async function saveSession(user: UserSession) {
       await AsyncStorage.setItem(KEY, JSON.stringify(user));
       console.log("Session saved to AsyncStorage (fallback)");
     }
+    // Also write a small file for native widget to read user id
+    try {
+      const path =
+        (FileSystem.documentDirectory || "") + "kltn_widget_user.json";
+      await FileSystem.writeAsStringAsync(
+        path,
+        JSON.stringify({ id: user.id, username: user.username })
+      );
+      console.log("Wrote widget user file:", path);
+    } catch (e) {
+      console.log("Failed to write widget user file", e);
+    }
   } catch (error) {
     console.log("Error saving session:", error);
     // Try AsyncStorage as last resort
     try {
       await AsyncStorage.setItem(KEY, JSON.stringify(user));
       console.log("Session saved to AsyncStorage (fallback after error)");
+      // write file (best effort)
+      try {
+        const path =
+          (FileSystem.documentDirectory || "") + "kltn_widget_user.json";
+        await FileSystem.writeAsStringAsync(
+          path,
+          JSON.stringify({ id: user.id, username: user.username })
+        );
+        console.log("Wrote widget user file (fallback):", path);
+      } catch (e) {
+        console.log("Failed to write widget user file (fallback)", e);
+      }
     } catch (fallbackError) {
       console.log("Failed to save session to any storage:", fallbackError);
     }

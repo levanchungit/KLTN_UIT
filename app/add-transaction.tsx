@@ -69,6 +69,30 @@ export default function AddTransactionScreen() {
     }
   }, [txId]);
 
+  // If launched with text param (from widget), try to parse amount and note
+  useEffect(() => {
+    const textParam = params.text as string | undefined;
+    if (textParam && !isEditMode) {
+      const trimmed = textParam.trim();
+      // Try to match a leading number like "50 cafe" or "1,000.50 taxi"
+      const m = trimmed.match(/^([0-9.,]+)\s*(.*)$/);
+      if (m) {
+        const rawNum = m[1];
+        const rest = m[2] || "";
+        // Normalize number: remove thousand separators (commas)
+        const normalized = rawNum.replace(/,/g, "");
+        const n = parseFloat(normalized);
+        if (!isNaN(n)) {
+          setAmount(String(n));
+        }
+        if (rest) setNote(rest.trim());
+      } else {
+        setNote(trimmed);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.text]);
+
   useEffect(() => {
     loadCategories();
   }, [type]);
