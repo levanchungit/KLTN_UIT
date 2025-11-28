@@ -14,15 +14,58 @@ object QuickAddHelper {
 
     fun readUserId(context: Context): String? {
         try {
-            val f = File(context.filesDir, USER_FILE)
-            if (!f.exists()) return null
-            val text = f.readText()
-            val j = JSONObject(text)
-            return j.optString("id", null)
+            // Check common locations where JS might write the widget file
+            val candidates = mutableListOf<File>()
+            candidates.add(File(context.filesDir, USER_FILE))
+            val external = context.getExternalFilesDir(null)
+            if (external != null) candidates.add(File(external, USER_FILE))
+            // Also search under app data directory for any matching file (best-effort)
+            val dataDir = context.dataDir
+            if (dataDir != null) {
+                // shallow search for the file name to handle different JS FS paths
+                val found = findFileRecursive(dataDir, USER_FILE, 4)
+                if (found != null) candidates.add(found)
+            }
+
+            for (f in candidates) {
+                try {
+                    Log.i(TAG, "Checking user file: ${f.absolutePath}")
+                    if (!f.exists()) continue
+                    val text = f.readText()
+                    val j = JSONObject(text)
+                    val id = j.optString("id", null)
+                    if (id != null && id.isNotEmpty()) {
+                        Log.i(TAG, "Found widget user id in: ${f.absolutePath}")
+                        return id
+                    }
+                } catch (inner: Exception) {
+                    Log.w(TAG, "Failed to read candidate file ${f.absolutePath}", inner)
+                }
+            }
+            return null
         } catch (e: Exception) {
             Log.w(TAG, "Cannot read user file", e)
             return null
         }
+    }
+
+    private fun findFileRecursive(dir: File, name: String, depth: Int): File? {
+        if (depth < 0) return null
+        try {
+            val files = dir.listFiles() ?: return null
+            for (f in files) {
+                if (f.isFile && f.name == name) return f
+            }
+            for (f in files) {
+                if (f.isDirectory) {
+                    val r = findFileRecursive(f, name, depth - 1)
+                    if (r != null) return r
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error searching for file in ${dir.absolutePath}", e)
+        }
+        return null
     }
 
     fun insertQuickTransaction(context: Context, amount: Double, note: String) {

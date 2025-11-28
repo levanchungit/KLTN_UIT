@@ -19,10 +19,9 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val views = RemoteViews(context.packageName, R.layout.widget_quick_add)
-        // If user not logged in (no widget user file), prompt login via notification
-        val userFile = java.io.File(context.filesDir, "kltn_widget_user.json")
-        val isLoggedIn = try { userFile.exists() } catch (e: Exception) { false }
-        Log.i(TAG, "onUpdate called, isLoggedIn=$isLoggedIn")
+        // Force widget to always deep-link into chatbox (bypass login file check)
+        val isLoggedIn = true
+        Log.i(TAG, "onUpdate called, force isLoggedIn=$isLoggedIn (widget will always open chatbox)")
 
         if (isLoggedIn) {
             // Fake input area: open chatbox (text mode) — use explicit MainActivity component
