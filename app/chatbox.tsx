@@ -37,8 +37,11 @@ import {
   Dimensions,
   FlatList,
   Image,
+  InteractionManager,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -47,7 +50,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 // Minimal placeholders (keeps file compiling if config values/helpers missing)
 const OPENAI_API_KEY =
@@ -1173,6 +1179,8 @@ function TypingIndicator({ colors }: { colors: any }) {
 export default function Chatbox() {
   const { t } = useI18n();
   const { colors, mode } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const [items, setItems] = useState<Category[]>([]);
   const [model, setModel] = useState<LRModel | null>(null);
@@ -1443,6 +1451,12 @@ export default function Chatbox() {
     recordStartRef.current = null;
   };
 
+  // ref to the text input so we can focus when opened via deep-link
+  const inputRef = useRef<TextInput | null>(null);
+
+  // read route params early so focus logic can decide whether to focus
+  const params = useLocalSearchParams();
+
   const load = useCallback(async () => {
     await seedCategoryDefaults();
     const rows = await listCategories();
@@ -1538,41 +1552,113 @@ export default function Chatbox() {
           }
         } catch (e) {}
       };
+    }, [isRecording, params?.mode])
+  );
+
+  // Always focus the input when the chatbox screen is focused (unless recording)
+  useFocusEffect(
+    useCallback(() => {
+      // If deep-link requests image or voice, skip auto-focus here
+      const modeParam = (params?.mode as string | undefined) || null;
+      if (modeParam === "image" || modeParam === "voice") return;
+      if (isRecording) return;
+      const tryFocus = () => {
+        try {
+          inputRef.current?.focus();
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      // Use InteractionManager to wait until animations and navigation settle
+      const interaction = InteractionManager.runAfterInteractions(() => {
+        // immediate attempt in next frame
+        requestAnimationFrame(() => tryFocus());
+        // two retries to cover timing differences across devices
+        const t1 = setTimeout(() => tryFocus(), 120);
+        const t2 = setTimeout(() => tryFocus(), 420);
+
+        // optional: small measurable log when keyboard appears
+        const showListener = Keyboard.addListener("keyboardDidShow", () => {
+          // eslint-disable-next-line no-console
+          console.log("Chatbox: keyboardDidShow after focus");
+          showListener.remove();
+        });
+
+        return () => {
+          clearTimeout(t1);
+          clearTimeout(t2);
+          try {
+            showListener.remove();
+          } catch (e) {}
+        };
+      });
+
+      return () => {
+        try {
+          interaction.cancel();
+        } catch (e) {}
+      };
     }, [isRecording])
   );
 
   // Handle deep-link params from widget (mode=voice|image|text, text=...)
-  const params = useLocalSearchParams();
   useEffect(() => {
     const mode = (params?.mode as string | undefined) || null;
     const initial =
       (params?.text as string | undefined) ||
       (params?.initial as string | undefined) ||
       null;
+
     if (mode === "voice") {
-      // start voice recording
-      startVoice().catch((e) =>
-        console.warn("startVoice failed from widget", e)
-      );
+      // start voice recording slightly delayed to allow navigation settle
+      setTimeout(() => {
+        startVoice().catch((e) =>
+          console.warn("startVoice failed from widget", e)
+        );
+      }, 220);
     } else if (mode === "image") {
-      // open image picker
-      (async () => {
-        try {
-          await handleImagePress();
-        } catch (e) {
-          console.warn("handleImagePress failed from widget", e);
-        }
-      })();
+      // open image picker after a short delay
+      setTimeout(() => {
+        (async () => {
+          try {
+            await handleImagePress();
+          } catch (e) {
+            console.warn("handleImagePress failed from widget", e);
+          }
+        })();
+      }, 220);
     } else if (mode === "text" && initial) {
-      // prefill input
+      // prefill input and focus the TextInput so keyboard appears
       try {
         setInput(decodeURIComponent(String(initial)));
       } catch {
         setInput(String(initial));
       }
+
+      // Try a few focus attempts to handle timing across devices/router
+      const tryFocus = () => {
+        try {
+          inputRef.current?.focus();
+        } catch (e) {
+          /* ignore */
+        }
+      };
+
+      // immediate attempt in next frame
+      requestAnimationFrame(() => tryFocus());
+      // small delayed attempt (allow Animated views to mount)
+      const t1 = setTimeout(() => tryFocus(), 220);
+      // fallback later attempt
+      const t2 = setTimeout(() => tryFocus(), 700);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // react to changes in params so focus runs when route receives new params
+  }, [params?.mode, params?.text, params?.initial]);
 
   const scrollToEnd = () =>
     requestAnimationFrame(() =>
@@ -2396,6 +2482,10 @@ export default function Chatbox() {
 
   const inputAnim = useRef(new Animated.Value(0)).current;
 
+  const estimatedKeyboardHeight = Math.round(
+    Dimensions.get("window").height * 0.38
+  );
+
   useEffect(() => {
     Animated.timing(inputAnim, {
       toValue: isRecording ? 1 : 0,
@@ -2403,6 +2493,41 @@ export default function Chatbox() {
       useNativeDriver: true,
     }).start();
   }, [isRecording, inputAnim]);
+
+  // Keyboard listeners to lift input bar on Android and adjust padding
+  useEffect(() => {
+    const onShow = (e: any) => {
+      // Try multiple event shapes (some keyboards report different fields)
+      let h =
+        e?.endCoordinates?.height ||
+        e?.end?.height ||
+        e?.startCoordinates?.height ||
+        0;
+
+      // Fallback: some OEM keyboards report 0 — estimate as ~38% of screen height
+      if (!h || h <= 0) {
+        h = Math.round(Dimensions.get("window").height * 0.38);
+      }
+
+      // Use full keyboard height so when keyboard is hidden (height = 0)
+      // the input bottom will be 0 as requested.
+      setKeyboardHeight(h);
+    };
+
+    const onHide = () => setKeyboardHeight(0);
+
+    const subShow = Keyboard.addListener("keyboardDidShow", onShow);
+    const subHide = Keyboard.addListener("keyboardDidHide", onHide);
+
+    return () => {
+      try {
+        subShow.remove();
+      } catch (e) {}
+      try {
+        subHide.remove();
+      } catch (e) {}
+    };
+  }, [insets.bottom]);
 
   // Prevent duplicate submits when user taps ✓ multiple times quickly
   const submittingRef = useRef(false);
@@ -2463,11 +2588,11 @@ export default function Chatbox() {
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
-      edges={["top", "bottom"]}
+      edges={["top"]}
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
-        behavior={"padding"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <BackBar />
 
@@ -2476,7 +2601,11 @@ export default function Chatbox() {
           ref={flatRef}
           data={messages}
           keyExtractor={(_, i) => String(i)}
-          contentContainerStyle={{ padding: 16, gap: 12 }}
+          contentContainerStyle={{
+            padding: 16,
+            gap: 12,
+            paddingBottom: keyboardHeight ? keyboardHeight + 120 : 120,
+          }}
           renderItem={({ item }) => {
             if (item.role === "user") {
               return (
@@ -3003,10 +3132,21 @@ export default function Chatbox() {
 
         {/* Input Bar (ẩn khi đang thu âm) */}
         {/* Input */}
-        <View
+        <Animated.View
           style={[
             styles.inputBar,
-            { borderColor: colors.divider, backgroundColor: colors.card },
+            {
+              borderColor: colors.divider,
+              backgroundColor: colors.card,
+              // Absolute position so we can control bottom precisely
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: (insets.bottom || 0) + keyboardHeight,
+              zIndex: 20,
+              elevation: 8,
+              paddingBottom: 12,
+            },
           ]}
         >
           {/* Nút Voice (ẩn khi đang ghi âm) */}
@@ -3082,6 +3222,28 @@ export default function Chatbox() {
                 placeholderTextColor={colors.subText}
                 value={input}
                 onChangeText={setInput}
+                ref={(r) => {
+                  inputRef.current = r;
+                }}
+                onFocus={() => {
+                  // Some keyboards/ROMs don't emit keyboardDidShow with sizes.
+                  // Ensure the input bar lifts when focused by using an estimated height.
+                  if (!keyboardHeight) {
+                    const est = Math.max(
+                      150,
+                      estimatedKeyboardHeight - (insets.bottom || 0)
+                    );
+                    setKeyboardHeight(est);
+                  }
+                  // scroll to end so last messages remain visible
+                  setTimeout(
+                    () => flatRef.current?.scrollToEnd({ animated: true }),
+                    120
+                  );
+                }}
+                onBlur={() => {
+                  setKeyboardHeight(0);
+                }}
                 style={[
                   styles.textInput,
                   {
@@ -3216,7 +3378,7 @@ export default function Chatbox() {
               <Text style={styles.sendText}>{t("send")}</Text>
             </Pressable>
           )}
-        </View>
+        </Animated.View>
 
         {/* Image Viewer Modal */}
         <Modal
