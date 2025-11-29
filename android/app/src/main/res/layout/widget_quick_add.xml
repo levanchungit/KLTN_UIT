@@ -60,7 +60,7 @@
                 android:contentDescription="voice"
                 android:elevation="4dp"
                 android:padding="8dp"
-                android:src="@drawable/outline_image_24"
+                android:src="@drawable/outline_keyboard_voice_24"
                 android:tint="#FFFFFF"
                 android:translationZ="4dp" />
 
@@ -73,7 +73,7 @@
                 android:contentDescription="image"
                 android:elevation="4dp"
                 android:padding="8dp"
-                android:src="@drawable/outline_keyboard_voice_24"
+                android:src="@drawable/outline_image_24"
                 android:tint="#FFFFFF"
                 android:translationZ="4dp" />
 

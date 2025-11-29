@@ -1032,7 +1032,10 @@ export default function DashboardScreen() {
           </View>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
             <TouchableOpacity
-              style={styles.iconButton}
+              style={[
+                styles.iconButton,
+                { backgroundColor: "#F59E0B", borderColor: "transparent" },
+              ]}
               activeOpacity={0.85}
               onPress={async () => {
                 try {
@@ -1050,26 +1053,32 @@ export default function DashboardScreen() {
               }}
             >
               {syncStatus === "syncing" ? (
-                <ActivityIndicator size="small" color="#F59E0B" />
+                <ActivityIndicator size="small" color="#ffffff" />
               ) : (
-                <MaterialIcons name="sync" size={20} color="#F59E0B" />
+                <MaterialIcons name="sync" size={20} color="#ffffff" />
               )}
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.85}
-              style={styles.iconButton}
+              style={[
+                styles.iconButton,
+                { backgroundColor: "#3B82F6", borderColor: "transparent" },
+              ]}
               onPress={() => router.push("/charts")}
             >
-              <Ionicons name="bar-chart" size={22} color="#3B82F6" />
+              <Ionicons name="bar-chart" size={22} color="#ffffff" />
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.iconButton}
+              style={[
+                styles.iconButton,
+                { backgroundColor: "#EF4444", borderColor: "transparent" },
+              ]}
               onPress={() => router.push("/notifications")}
             >
               <Ionicons
                 name="notifications-outline"
                 size={22}
-                color="#EF4444"
+                color="#ffffff"
               />
               {unreadCount > 0 && (
                 <View style={styles.badge}>
