@@ -1,9 +1,9 @@
 import syncState from "@/services/syncState";
 
 // Coalesce concurrent syncAll calls so we don't run multiple parallel syncs
-let _syncInFlight: Promise<void> | null = null;
+let _syncInFlight: Promise<boolean> | null = null;
 
-export async function syncAll(userId?: string): Promise<void> {
+export async function syncAll(userId?: string): Promise<boolean> {
   // If a sync is already in-flight, return the same promise (coalesce)
   if (_syncInFlight) {
     console.log(
@@ -19,6 +19,7 @@ export async function syncAll(userId?: string): Promise<void> {
     syncState.setStatus("syncing");
 
     const startedAt = Math.floor(Date.now() / 1000);
+    let didAnySync = false;
 
     // Try Firestore sync (if available/initialized). If anything fails, fall back
     // to a no-op but keep logging the error for debugging.
@@ -26,6 +27,14 @@ export async function syncAll(userId?: string): Promise<void> {
       // dynamic import so the app won't crash if module missing
       const syncModule = await import("@/services/firestoreSync");
       if (syncModule) {
+        // Wait for Firestore + Auth init logs to complete (or timeout)
+        if (typeof syncModule.waitForAuthAndFirestoreInit === "function") {
+          try {
+            await syncModule.waitForAuthAndFirestoreInit(5000);
+          } catch (e) {
+            // ignore
+          }
+        }
         // If Firebase Auth isn't signed in, skip attempting Firestore sync
         // and schedule a retry shortly after (best-effort).
         if (typeof syncModule.isFirebaseSignedIn === "function") {
@@ -58,12 +67,28 @@ export async function syncAll(userId?: string): Promise<void> {
         }
 
         if (syncModule.syncAllToFirestore) {
-          await syncModule.syncAllToFirestore(userId);
+          try {
+            const didSync = await syncModule.syncAllToFirestore(userId);
+            if (didSync) {
+              didAnySync = true;
+              syncState.setLastSynced(Math.floor(Date.now() / 1000));
+              console.log(
+                "Firestore sync complete for user:",
+                userId ?? "(current)"
+              );
+            } else {
+              console.log(
+                "Firestore sync skipped (no work performed) for user:",
+                userId ?? "(current)"
+              );
+            }
+          } catch (e) {
+            console.warn("syncAllToFirestore threw:", e);
+            // treat as no successful sync
+          }
         }
-        syncState.setLastSynced(Math.floor(Date.now() / 1000));
         syncState.setStatus("idle");
-        console.log("Firestore sync complete for user:", userId ?? "(current)");
-        return;
+        return didAnySync;
       }
     } catch (err: any) {
       console.warn(
@@ -75,9 +100,10 @@ export async function syncAll(userId?: string): Promise<void> {
 
     // Fallback behavior: keep placeholder timing so callers don't hang.
     await new Promise((resolve) => setTimeout(resolve, 500));
-    syncState.setLastSynced(Math.floor(Date.now() / 1000));
+    // Do NOT mark lastSynced on fallback — treat as no real sync
     syncState.setStatus("idle");
     console.log("Sync finished (fallback) for user:", userId ?? "(current)");
+    return false;
   })();
 
   try {

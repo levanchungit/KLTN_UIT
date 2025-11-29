@@ -1,10 +1,15 @@
 // services/firestoreSync.ts
+// @ts-nocheck
 // Lightweight Firestore sync helpers for categories, transactions and accounts.
 // NOTE: This file expects the Firebase JS SDK (v9 modular) to be installed.
 // Install with: `npm install firebase` or `yarn add firebase`.
 
-import { db } from "@/db";
+import { db as _db } from "@/db";
 import { getCurrentUserId } from "@/utils/auth";
+// In this file we frequently pass nullable or mixed-typed params to the
+// local wrapper around SQLite bindings. For practicality we treat `db`
+// as `any` here to avoid repetitive casts in every call site.
+const db: any = _db;
 
 // Use lazy imports so the app won't crash if firebase isn't installed yet.
 let _initialized = false;
@@ -12,6 +17,92 @@ let _firestore: any = null;
 let _fsModule: any = null;
 let _firebaseApp: any = null;
 let _authInitialized = false;
+let _authInitAttempted = false;
+// In-memory cooldown to avoid frequent sync runs
+let _lastSyncRun = 0;
+const SYNC_COOLDOWN_MS = 30 * 1000; // 30s default cooldown
+
+// Cache of last per-user per-collection sync timestamps (seconds since epoch)
+const _lastSyncTimestamps: Record<string, number> = {};
+
+async function _getAsyncStorage() {
+  try {
+    const s = await import("@react-native-async-storage/async-storage");
+    return s.default || s;
+  } catch (e) {
+    // Try expo-secure-store as a fallback adapter (works in Expo Go / dev client)
+    try {
+      const ss = await import("expo-secure-store");
+      const SecureStore = ss.default || ss;
+      if (
+        SecureStore &&
+        (SecureStore.getItemAsync || SecureStore.setItemAsync)
+      ) {
+        // Adapter exposing getItem/setItem/removeItem to match AsyncStorage API
+        const adapter = {
+          getItem: async (k: string) => {
+            try {
+              return await SecureStore.getItemAsync(k);
+            } catch (e) {
+              return null;
+            }
+          },
+          setItem: async (k: string, v: string) => {
+            try {
+              await SecureStore.setItemAsync(k, v);
+            } catch (e) {
+              /* ignore */
+            }
+          },
+          removeItem: async (k: string) => {
+            try {
+              await SecureStore.deleteItemAsync(k);
+            } catch (e) {
+              /* ignore */
+            }
+          },
+        } as any;
+        console.log("_getAsyncStorage: using expo-secure-store adapter");
+        return adapter;
+      }
+    } catch (e2) {
+      // ignore
+    }
+    console.log("_getAsyncStorage: no AsyncStorage or SecureStore available");
+    return null;
+  }
+}
+
+async function getLastSyncTime(remoteUid: string, collection: string) {
+  try {
+    const key = `sync:last:${remoteUid}:${collection}`;
+    if (_lastSyncTimestamps[key]) return _lastSyncTimestamps[key];
+    const AS = await _getAsyncStorage();
+    if (!AS || !AS.getItem) return 0;
+    const v = await AS.getItem(key);
+    const n = v ? Number(v) : 0;
+    _lastSyncTimestamps[key] = n || 0;
+    return _lastSyncTimestamps[key];
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function setLastSyncTime(
+  remoteUid: string,
+  collection: string,
+  ts: number
+) {
+  try {
+    const key = `sync:last:${remoteUid}:${collection}`;
+    _lastSyncTimestamps[key] = ts;
+    const AS = await _getAsyncStorage();
+    if (!AS || !AS.setItem) return;
+    await AS.setItem(key, String(ts));
+  } catch (e) {
+    // ignore
+  }
+}
 
 // Defensive helper: ensure a document path has an even number of segments.
 // If odd, append a fallback document id (`meta`) and log a warning.
@@ -79,53 +170,99 @@ export async function initFirestore(firebaseConfig: any) {
 
   // Initialize Firebase Auth for React Native. This must run before any getAuth() calls
   try {
+    _authInitAttempted = true;
     const authMod: any = await import("firebase/auth");
     if (authMod && authMod.initializeAuth) {
       try {
-        // prefer AsyncStorage persistence if available
-        const RNAsyncStorage = await import(
-          "@react-native-async-storage/async-storage"
-        );
-        try {
-          authMod.initializeAuth(
-            _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp()),
-            {
-              persistence: authMod.getReactNativePersistence(
-                RNAsyncStorage.default || RNAsyncStorage
-              ),
-            }
-          );
-          _authInitialized = true;
-          console.log(
-            "Firebase Auth initialized with ReactNative AsyncStorage persistence"
-          );
-        } catch (ie) {
-          // fallback to initialize without persistence option
+        // prefer AsyncStorage persistence if available (try AsyncStorage, then expo SecureStore)
+        const AS = await _getAsyncStorage();
+        if (AS) {
           try {
+            // Ensure getReactNativePersistence is available
+            if (typeof authMod.getReactNativePersistence === "function") {
+              let persistence: any = null;
+              try {
+                persistence = authMod.getReactNativePersistence(AS);
+                console.log(
+                  "initializeAuth: getReactNativePersistence returned:",
+                  typeof persistence
+                );
+              } catch (gpErr) {
+                console.warn(
+                  "initializeAuth: getReactNativePersistence failed:",
+                  gpErr
+                );
+              }
+
+              if (persistence) {
+                authMod.initializeAuth(
+                  _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp()),
+                  { persistence }
+                );
+                _authInitialized = true;
+                console.log(
+                  "Firebase Auth initialized with ReactNative persistence (Async or SecureStore)"
+                );
+              } else {
+                console.warn(
+                  "initializeAuth: persistence object falsy, falling back to memory"
+                );
+                authMod.initializeAuth(
+                  _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp())
+                );
+                _authInitialized = true;
+                console.log(
+                  "Firebase Auth initialized (fallback, memory persistence)"
+                );
+              }
+            } else {
+              console.warn(
+                "initializeAuth: authMod.getReactNativePersistence not available"
+              );
+              authMod.initializeAuth(
+                _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp())
+              );
+              _authInitialized = true;
+              console.log(
+                "Firebase Auth initialized (fallback, memory persistence)"
+              );
+            }
+          } catch (ie) {
+            console.warn(
+              "initializeAuth failed while using storage, falling back:",
+              ie
+            );
+            try {
+              authMod.initializeAuth(
+                _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp())
+              );
+              _authInitialized = true;
+              console.log(
+                "Firebase Auth initialized (fallback, memory persistence)"
+              );
+            } catch (ie2) {
+              console.warn("initializeAuth failed:", ie2);
+            }
+          }
+        } else {
+          // No storage available -> memory persistence
+          try {
+            console.log(
+              "initializeAuth: no storage available, using memory persistence"
+            );
             authMod.initializeAuth(
               _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp())
             );
             _authInitialized = true;
             console.log(
-              "Firebase Auth initialized (no AsyncStorage available)"
+              "Firebase Auth initialized without AsyncStorage (memory persistence)"
             );
-          } catch (ie2) {
-            console.warn("initializeAuth failed:", ie2);
+          } catch (ie3) {
+            console.warn("initializeAuth failed (no AsyncStorage):", ie3);
           }
         }
-      } catch (rnErr) {
-        // AsyncStorage not installed; initialize auth without persistence
-        try {
-          authMod.initializeAuth(
-            _firebaseApp || (firebaseApp.getApp && firebaseApp.getApp())
-          );
-          _authInitialized = true;
-          console.log(
-            "Firebase Auth initialized without AsyncStorage (memory persistence)"
-          );
-        } catch (ie3) {
-          console.warn("initializeAuth failed (no AsyncStorage):", ie3);
-        }
+      } catch (err) {
+        console.warn("initializeAuth setup failed:", err);
       }
     }
   } catch (e) {
@@ -146,25 +283,23 @@ async function getAuthUid(): Promise<string> {
       const authMod: any = await import("firebase/auth");
       if (authMod && authMod.initializeAuth) {
         try {
-          const RNAsyncStorage = await import(
-            "@react-native-async-storage/async-storage"
-          );
-          try {
-            authMod.initializeAuth(_firebaseApp || undefined, {
-              persistence: authMod.getReactNativePersistence(
-                RNAsyncStorage.default || RNAsyncStorage
-              ),
-            });
-            _authInitialized = true;
-            console.log(
-              "Firebase Auth initialized with ReactNative AsyncStorage persistence (ensure)"
-            );
-            return;
-          } catch (ie) {
-            // fallback to initialize without persistence
+          const AS = await _getAsyncStorage();
+          if (AS) {
+            try {
+              authMod.initializeAuth(_firebaseApp || undefined, {
+                persistence: authMod.getReactNativePersistence(AS),
+              });
+              _authInitialized = true;
+              console.log(
+                "Firebase Auth initialized with ReactNative persistence (ensure)"
+              );
+              return;
+            } catch (ie) {
+              // fallback
+            }
           }
-        } catch (rnErr) {
-          // AsyncStorage not available
+        } catch (err) {
+          // ignore
         }
         try {
           authMod.initializeAuth(_firebaseApp || undefined);
@@ -337,7 +472,7 @@ async function computeAccountBalances(userId: string) {
 }
 
 /** Sync categories to Firestore under `users/{userId}/categories/{categoryId}` */
-export async function syncCategories(userId?: string) {
+export async function syncCategories(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
 
@@ -351,13 +486,18 @@ export async function syncCategories(userId?: string) {
     rUid = localUid;
   }
 
-  // load local categories
-  const cats = await db.getAllAsync<any>(
-    `SELECT id, name, type, icon, color, parent_id, created_at, updated_at FROM categories WHERE user_id=?`,
-    [localUid]
-  );
+  // load local categories (only changed since `since` if provided)
+  const args: any[] = [localUid];
+  let sql = `SELECT id, name, type, icon, color, parent_id, created_at, updated_at FROM categories WHERE user_id=?`;
+  if (since && Number.isFinite(since) && since > 0) {
+    sql += ` AND (updated_at > ? OR created_at > ?)`;
+    args.push(since, since);
+  }
+  const cats = await db.getAllAsync<any>(sql, args);
 
-  // batch write
+  if (!cats || cats.length === 0) return;
+
+  // batch write only changed locals
   const batch = firestore.writeBatch(fdb);
   for (const c of cats) {
     const ref = firestore.doc(fdb, `users/${rUid}/categories/${c.id}`);
@@ -379,7 +519,7 @@ export async function syncCategories(userId?: string) {
 }
 
 /** Sync accounts to Firestore under `users/{userId}/accounts/{accountId}` */
-export async function syncAccounts(userId?: string) {
+export async function syncAccounts(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
 
@@ -395,10 +535,14 @@ export async function syncAccounts(userId?: string) {
   // Compute authoritative balances from transactions and prefer those when pushing
   const computed = await computeAccountBalances(localUid);
 
-  const accs = await db.getAllAsync<any>(
-    `SELECT id, name, icon, color, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`,
-    [localUid]
-  );
+  // Load local accounts; if `since` provided, limit to changed rows
+  let accSql = `SELECT id, name, icon, color, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`;
+  const accArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    accSql += ` AND (updated_at > ? OR created_at > ?)`;
+    accArgs.push(since, since);
+  }
+  const accs = await db.getAllAsync<any>(accSql, accArgs);
 
   const batch = firestore.writeBatch(fdb);
   for (const a of accs) {
@@ -422,7 +566,7 @@ export async function syncAccounts(userId?: string) {
 }
 
 /** Sync all transactions to Firestore under `users/{userId}/transactions/{txId}` */
-export async function syncTransactions(userId?: string) {
+export async function syncTransactions(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
 
@@ -435,10 +579,13 @@ export async function syncTransactions(userId?: string) {
     rUid = localUid;
   }
 
-  const txs = await db.getAllAsync<any>(
-    `SELECT id, account_id, category_id, type, amount, note, occurred_at, created_at, updated_at FROM transactions WHERE user_id=?`,
-    [localUid]
-  );
+  let txSql = `SELECT id, account_id, category_id, type, amount, note, occurred_at, created_at, updated_at FROM transactions WHERE user_id=?`;
+  const txArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    txSql += ` AND (updated_at > ? OR created_at > ?)`;
+    txArgs.push(since, since);
+  }
+  const txs = await db.getAllAsync<any>(txSql, txArgs);
 
   const batch = firestore.writeBatch(fdb);
   for (const t of txs) {
@@ -462,7 +609,7 @@ export async function syncTransactions(userId?: string) {
 }
 
 /** Sync budgets and budget_allocations to Firestore under `users/{userId}/budgets/{budgetId}` and `.../allocations/{allocId}` */
-export async function syncBudgets(userId?: string) {
+export async function syncBudgets(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
 
@@ -476,10 +623,14 @@ export async function syncBudgets(userId?: string) {
   }
 
   // Load budgets and allocations
-  const budgets = await db.getAllAsync<any>(
-    `SELECT id, name, total_income, period, lifestyle_desc, start_date, end_date, created_at, updated_at FROM budgets WHERE user_id=?`,
-    [localUid]
-  );
+  // Load budgets; if `since` provided, limit to changed rows
+  let budSql = `SELECT id, name, total_income, period, lifestyle_desc, start_date, end_date, created_at, updated_at FROM budgets WHERE user_id=?`;
+  const budArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    budSql += ` AND (updated_at > ? OR created_at > ?)`;
+    budArgs.push(since, since);
+  }
+  const budgets = await db.getAllAsync<any>(budSql, budArgs);
 
   const batch = firestore.writeBatch(fdb);
   for (const b of budgets) {
@@ -527,7 +678,11 @@ export async function syncBudgets(userId?: string) {
   await batch.commit();
 }
 
-async function syncBudgetsPullAndPush(userId?: string, remoteUid?: string) {
+async function syncBudgetsPullAndPush(
+  userId?: string,
+  remoteUid?: string,
+  since?: number
+) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
   const { fdb, firestore } = await _getFirestore();
@@ -542,8 +697,28 @@ async function syncBudgetsPullAndPush(userId?: string, remoteUid?: string) {
       }
     })());
 
-  const colRef = firestore.collection(fdb, `users/${rUid}/budgets`);
-  const snap = await firestore.getDocs(colRef);
+  let snap: any = null;
+  try {
+    const colBase = firestore.collection(fdb, `users/${rUid}/budgets`);
+    if (
+      since &&
+      Number.isFinite(since) &&
+      since > 0 &&
+      firestore.query &&
+      firestore.where
+    ) {
+      const q = firestore.query(
+        colBase,
+        firestore.where("updated_at", ">", since)
+      );
+      snap = await firestore.getDocs(q);
+    } else {
+      snap = await firestore.getDocs(colBase);
+    }
+  } catch (e) {
+    console.warn("Failed to query remote budgets (pull):", e);
+    snap = { docs: [] };
+  }
 
   const remoteIds = new Set<string>();
   const toPush: any[] = [];
@@ -663,10 +838,13 @@ async function syncBudgetsPullAndPush(userId?: string, remoteUid?: string) {
   }
 
   // push local budgets that are missing or newer remotely
-  const locals = await db.getAllAsync<any>(
-    `SELECT id,name,total_income,period,lifestyle_desc,start_date,end_date,created_at,updated_at FROM budgets WHERE user_id=?`,
-    [localUid]
-  );
+  let localsSql = `SELECT id,name,total_income,period,lifestyle_desc,start_date,end_date,created_at,updated_at FROM budgets WHERE user_id=?`;
+  const localsArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    localsSql += ` AND (updated_at > ? OR created_at > ?)`;
+    localsArgs.push(since, since);
+  }
+  const locals = await db.getAllAsync<any>(localsSql, localsArgs);
   const fs = firestore;
   const batch = fs.writeBatch(fdb);
   for (const l of locals) {
@@ -765,7 +943,7 @@ async function syncBudgetsPullAndPush(userId?: string, remoteUid?: string) {
 }
 
 /** Convenience: sync all three collections */
-export async function syncAllToFirestore(userId?: string) {
+export async function syncAllToFirestore(userId?: string): Promise<boolean> {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
 
@@ -789,6 +967,32 @@ export async function syncAllToFirestore(userId?: string) {
     localUid
   );
 
+  // Cooldown: avoid running full sync too frequently
+  try {
+    const nowMs = Date.now();
+    if (nowMs - _lastSyncRun < SYNC_COOLDOWN_MS) {
+      console.log("syncAllToFirestore: skipping due to cooldown");
+      return false;
+    }
+    _lastSyncRun = nowMs;
+  } catch (e) {
+    // ignore
+  }
+
+  // Determine per-collection `since` timestamps (seconds)
+  const sinceCategories = Math.trunc(
+    (await getLastSyncTime(authUid, "categories")) || 0
+  );
+  const sinceAccounts = Math.trunc(
+    (await getLastSyncTime(authUid, "accounts")) || 0
+  );
+  const sinceTransactions = Math.trunc(
+    (await getLastSyncTime(authUid, "transactions")) || 0
+  );
+  const sinceBudgets = Math.trunc(
+    (await getLastSyncTime(authUid, "budgets")) || 0
+  );
+
   // Decide: pull (if remote already has data) or push (if remote empty).
   try {
     // Ensure document reference has an even number of segments.
@@ -797,13 +1001,13 @@ export async function syncAllToFirestore(userId?: string) {
     const metaRef = firestore.doc(fdb, metaPath);
     const metaSnap = await firestore.getDoc(metaRef);
     if (metaSnap && metaSnap.exists && metaSnap.exists()) {
-      // remote has data -> perform pull-then-push reconciliation
-      await syncAccountsPullAndPush(localUid, authUid);
-      await syncCategoriesPullAndPush(localUid, authUid);
-      await syncTransactionsPullAndPush(localUid, authUid);
-      await syncBudgetsPullAndPush(localUid, authUid);
+      // remote has data -> perform pull-then-push reconciliation using per-collection `since`
+      await syncAccountsPullAndPush(localUid, authUid, sinceAccounts);
+      await syncCategoriesPullAndPush(localUid, authUid, sinceCategories);
+      await syncTransactionsPullAndPush(localUid, authUid, sinceTransactions);
+      await syncBudgetsPullAndPush(localUid, authUid, sinceBudgets);
     } else {
-      // remote empty -> push local to remote and create meta marker
+      // remote empty -> push local to remote (full push)
       await syncAccounts(localUid);
       await syncCategories(localUid);
       await syncTransactions(localUid);
@@ -818,9 +1022,37 @@ export async function syncAllToFirestore(userId?: string) {
         console.warn("Failed to write remote meta doc:", e);
       }
     }
+
+    // Record last-sync times on success
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await Promise.all([
+      setLastSyncTime(authUid, "categories", nowSeconds),
+      setLastSyncTime(authUid, "accounts", nowSeconds),
+      setLastSyncTime(authUid, "transactions", nowSeconds),
+      setLastSyncTime(authUid, "budgets", nowSeconds),
+    ]).catch(() => {});
+
+    return true;
   } catch (e) {
     console.warn("Error during syncAllToFirestore decision flow:", e);
-    throw e;
+    return false;
+  }
+}
+
+/**
+ * Wait until Firestore is initialized and Auth initialization has been attempted.
+ * Returns after both conditions are met or when `timeoutMs` elapses.
+ */
+export async function waitForAuthAndFirestoreInit(timeoutMs = 5000) {
+  const start = Date.now();
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  while (true) {
+    // Condition: firestore initialized and auth init at least attempted
+    if (_initialized && (_authInitialized || _authInitAttempted)) return;
+    if (Date.now() - start > timeoutMs) return;
+    // small sleep
+    // eslint-disable-next-line no-await-in-loop
+    await delay(100);
   }
 }
 
@@ -858,7 +1090,11 @@ export async function markRemoteDeleted(
 /** Pull & merge helpers. Each will pull remote docs and upsert local rows when remote is newer.
  * If local row is newer, it will be queued to push to remote.
  */
-async function syncCategoriesPullAndPush(userId?: string, remoteUid?: string) {
+async function syncCategoriesPullAndPush(
+  userId?: string,
+  remoteUid?: string,
+  since?: number
+) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
   const { fdb, firestore } = await _getFirestore();
@@ -873,8 +1109,30 @@ async function syncCategoriesPullAndPush(userId?: string, remoteUid?: string) {
       }
     })());
 
-  const colRef = firestore.collection(fdb, `users/${rUid}/categories`);
-  const snap = await firestore.getDocs(colRef);
+  // If we have a since timestamp, only pull remote docs updated since then.
+  let snap: any = null;
+  try {
+    const colBase = firestore.collection(fdb, `users/${rUid}/categories`);
+    if (
+      since &&
+      Number.isFinite(since) &&
+      since > 0 &&
+      firestore.query &&
+      firestore.where
+    ) {
+      const q = firestore.query(
+        colBase,
+        firestore.where("updated_at", ">", since)
+      );
+      snap = await firestore.getDocs(q);
+    } else {
+      const colRef = colBase;
+      snap = await firestore.getDocs(colRef);
+    }
+  } catch (e) {
+    console.warn("Failed to query remote categories (pull):", e);
+    snap = { docs: [] };
+  }
 
   const remoteIds = new Set<string>();
   const toPush: any[] = [];
@@ -992,7 +1250,11 @@ async function syncCategoriesPullAndPush(userId?: string, remoteUid?: string) {
   await batch.commit();
 }
 
-async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
+async function syncAccountsPullAndPush(
+  userId?: string,
+  remoteUid?: string,
+  since?: number
+) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
   const { fdb, firestore } = await _getFirestore();
@@ -1007,8 +1269,28 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
       }
     })());
 
-  const colRef = firestore.collection(fdb, `users/${rUid}/accounts`);
-  const snap = await firestore.getDocs(colRef);
+  let snap: any = null;
+  try {
+    const colBase = firestore.collection(fdb, `users/${rUid}/accounts`);
+    if (
+      since &&
+      Number.isFinite(since) &&
+      since > 0 &&
+      firestore.query &&
+      firestore.where
+    ) {
+      const q = firestore.query(
+        colBase,
+        firestore.where("updated_at", ">", since)
+      );
+      snap = await firestore.getDocs(q);
+    } else {
+      snap = await firestore.getDocs(colBase);
+    }
+  } catch (e) {
+    console.warn("Failed to query remote accounts (pull):", e);
+    snap = { docs: [] };
+  }
 
   const remoteIds = new Set<string>();
   const toPush: any[] = [];
@@ -1072,10 +1354,14 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
 
   // Compute balances to use when pushing local accounts
   const computed = await computeAccountBalances(localUid);
-  const locals = await db.getAllAsync<any>(
-    `SELECT id,name,icon,color,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`,
-    [localUid]
-  );
+  // Only push local rows changed since `since` if provided; otherwise push missing locals
+  let localsSql = `SELECT id,name,icon,color,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`;
+  const localsArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    localsSql += ` AND (updated_at > ? OR created_at > ?)`;
+    localsArgs.push(since, since);
+  }
+  const locals = await db.getAllAsync<any>(localsSql, localsArgs);
   const fs = firestore;
   const batch = fs.writeBatch(fdb);
   for (const l of locals) {
@@ -1123,7 +1409,8 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
 
 async function syncTransactionsPullAndPush(
   userId?: string,
-  remoteUid?: string
+  remoteUid?: string,
+  since?: number
 ) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
@@ -1139,8 +1426,28 @@ async function syncTransactionsPullAndPush(
       }
     })());
 
-  const colRef = firestore.collection(fdb, `users/${rUid}/transactions`);
-  const snap = await firestore.getDocs(colRef);
+  let snap: any = null;
+  try {
+    const colBase = firestore.collection(fdb, `users/${rUid}/transactions`);
+    if (
+      since &&
+      Number.isFinite(since) &&
+      since > 0 &&
+      firestore.query &&
+      firestore.where
+    ) {
+      const q = firestore.query(
+        colBase,
+        firestore.where("updated_at", ">", since)
+      );
+      snap = await firestore.getDocs(q);
+    } else {
+      snap = await firestore.getDocs(colBase);
+    }
+  } catch (e) {
+    console.warn("Failed to query remote transactions (pull):", e);
+    snap = { docs: [] };
+  }
 
   const remoteIds = new Set<string>();
   const toPush: any[] = [];
@@ -1204,10 +1511,13 @@ async function syncTransactionsPullAndPush(
     }
   }
 
-  const locals = await db.getAllAsync<any>(
-    `SELECT id,account_id,category_id,type,amount,note,occurred_at,created_at,updated_at FROM transactions WHERE user_id=?`,
-    [localUid]
-  );
+  let localsSql = `SELECT id,account_id,category_id,type,amount,note,occurred_at,created_at,updated_at FROM transactions WHERE user_id=?`;
+  const localsArgs: any[] = [localUid];
+  if (since && Number.isFinite(since) && since > 0) {
+    localsSql += ` AND (updated_at > ? OR created_at > ?)`;
+    localsArgs.push(since, since);
+  }
+  const locals = await db.getAllAsync<any>(localsSql, localsArgs);
   const fs = firestore;
   const batch = fs.writeBatch(fdb);
   for (const l of locals) {

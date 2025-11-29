@@ -179,7 +179,6 @@ export default function AddTransactionScreen() {
           note: note.trim(),
           when: selectedDate,
         });
-        Alert.alert(t("success"), t("transactionUpdated"));
       } else {
         // Create new transaction
         const txData = {
@@ -212,7 +211,7 @@ export default function AddTransactionScreen() {
     Alert.alert(t("confirmDelete"), t("confirmDeleteTransaction"), [
       { text: t("cancel"), style: "cancel" },
       {
-        text: t("deleteCategory"),
+        text: t("deleteTransaction"),
         style: "destructive",
         onPress: async () => {
           try {

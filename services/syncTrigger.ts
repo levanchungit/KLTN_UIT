@@ -63,9 +63,44 @@ export function scheduleSyncDebounced(
         return;
       }
 
+      // Check Firebase sign-in before attempting sync to avoid repeated skips.
+      try {
+        const fsync = await import("@/services/firestoreSync");
+        if (fsync && typeof fsync.isFirebaseSignedIn === "function") {
+          try {
+            const signedIn = await fsync.isFirebaseSignedIn();
+            if (!signedIn) {
+              console.warn(
+                "Skipping Firestore sync: no authenticated Firebase user"
+              );
+              // schedule retry later with backoff
+              const rc = (retryCounts.get(key) ?? 0) + 1;
+              retryCounts.set(key, rc);
+              const backoff = Math.min(60_000, 1000 * Math.pow(2, rc));
+              scheduleSyncDebounced(userId, backoff);
+              return;
+            }
+          } catch (e) {
+            // If check failed, fall through to attempt sync
+            console.warn(
+              "isFirebaseSignedIn check failed, proceeding to attempt sync:",
+              e
+            );
+          }
+        }
+      } catch (e) {
+        // ignore import errors and proceed
+      }
+
       const svc = await import("@/services/syncService");
-      await svc.syncAll(userId);
-      lastSyncTs.set(key, Date.now());
+      try {
+        const did = await svc.syncAll(userId);
+        if (did) {
+          lastSyncTs.set(key, Date.now());
+        }
+      } catch (e) {
+        throw e;
+      }
       retryCounts.delete(key);
     } catch (e) {
       console.warn("Debounced sync failed:", e);
@@ -88,9 +123,29 @@ export async function triggerImmediate(userId?: string) {
   timers.delete(key);
   stats.immediateCalls++;
   try {
+    // Check Firebase sign-in before attempting sync
+    try {
+      const fsync = await import("@/services/firestoreSync");
+      if (fsync && typeof fsync.isFirebaseSignedIn === "function") {
+        const signedIn = await fsync.isFirebaseSignedIn();
+        if (!signedIn) {
+          console.warn(
+            "Skipping Firestore sync (immediate): no authenticated Firebase user"
+          );
+          const rc = (retryCounts.get(key) ?? 0) + 1;
+          retryCounts.set(key, rc);
+          const backoff = Math.min(60_000, 1000 * Math.pow(2, rc));
+          scheduleSyncDebounced(userId, backoff);
+          return;
+        }
+      }
+    } catch (e) {
+      // ignore and proceed
+    }
+
     const svc = await import("@/services/syncService");
-    await svc.syncAll(userId);
-    lastSyncTs.set(key, Date.now());
+    const did = await svc.syncAll(userId);
+    if (did) lastSyncTs.set(key, Date.now());
     retryCounts.delete(key);
   } catch (e) {
     console.warn("Immediate sync failed:", e);

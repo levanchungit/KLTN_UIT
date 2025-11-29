@@ -1,4 +1,4 @@
-import { Audio } from "expo-av";
+import { Audio } from "@/lib/audioAdapter";
 import { useEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
 
@@ -15,7 +15,7 @@ export default function useAudioMeter(): UseAudioMeter {
   const [isRecording, setIsRecording] = useState(false);
   const [level, setLevel] = useState(0);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingRef = useRef<any>(null);
   const meter = useRef(new Animated.Value(0)).current;
   const animRef = useRef<any>(null);
 
