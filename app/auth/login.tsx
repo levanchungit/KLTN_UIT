@@ -37,26 +37,19 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // client ids from app config or env
-  const androidClientId =
-    (Constants as any)?.expoConfig?.extra
-      ?.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID ||
-    process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID;
-  const iosClientId =
-    (Constants as any)?.expoConfig?.extra?.IOS_GOOGLE_CLIENT_ID ||
-    process.env.IOS_GOOGLE_CLIENT_ID;
   const webClientId =
-    "413389631553-2vlf4boj5gtm0tgq9a62njcohasp581b.apps.googleusercontent.com";
+    (Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_WEB_GOOGLE_CLIENT_ID ||
+    process.env.EXPO_PUBLIC_WEB_GOOGLE_CLIENT_ID ||
+    undefined;
 
   // Cấu hình GoogleSignin, không check Expo / NativeModules nữa
   useEffect(() => {
     GoogleSignin.configure({
       webClientId: webClientId || undefined,
-      iosClientId: iosClientId || undefined,
       offlineAccess: false,
       scopes: ["profile", "email"],
     });
-  }, [webClientId, iosClientId]);
+  }, [webClientId]);
 
   async function handleGoogleSignIn() {
     setGoogleLoading(true);

@@ -439,7 +439,9 @@ export async function syncAllToFirestore(userId?: string) {
 
   // Decide: pull (if remote already has data) or push (if remote empty).
   try {
-    const metaRef = firestore.doc(fdb, `users/${authUid}/__meta`);
+    // Ensure document reference has an even number of segments.
+    // Use an explicit document id (`meta`) inside the `__meta` subcollection.
+    const metaRef = firestore.doc(fdb, `users/${authUid}/__meta/meta`);
     const metaSnap = await firestore.getDoc(metaRef);
     if (metaSnap && metaSnap.exists && metaSnap.exists()) {
       // remote has data -> perform pull-then-push reconciliation
@@ -809,7 +811,7 @@ async function syncTransactionsPullAndPush(
          VALUES(?,?,?,?,?,?,?,?,?,?)`,
         [
           id,
-          uid,
+          localUid,
           safeStr(data.account_id),
           safeStr(data.category_id),
           safeStr(data.type),
@@ -836,7 +838,7 @@ async function syncTransactionsPullAndPush(
           toNum(data.occurred_at) ?? null,
           remoteUpdated || null,
           id,
-          uid,
+          localUid,
         ]
       );
     } else if (localUpdated > remoteUpdated) {
@@ -846,7 +848,7 @@ async function syncTransactionsPullAndPush(
 
   const locals = await db.getAllAsync<any>(
     `SELECT id,account_id,category_id,type,amount,note,occurred_at,created_at,updated_at FROM transactions WHERE user_id=?`,
-    [uid]
+    [localUid]
   );
   const fs = firestore;
   const batch = fs.writeBatch(fdb);
