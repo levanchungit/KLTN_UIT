@@ -1,6 +1,8 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
+import { syncAll } from "@/services/syncService";
+import syncState from "@/services/syncState";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -22,6 +24,12 @@ export default function Setting() {
   const { t } = useI18n();
   const styles = React.useMemo(() => makeStyles(colors, mode), [colors, mode]);
   const [themeModalVisible, setThemeModalVisible] = React.useState(false);
+  const [sync, setSync] = React.useState(syncState.getSyncState());
+
+  React.useEffect(() => {
+    const unsub = syncState.subscribe((s) => setSync(s));
+    return unsub;
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -94,6 +102,36 @@ export default function Setting() {
 
       {/* Setting List */}
       <View style={styles.list}>
+        {/* Sync row */}
+        <View style={styles.item}>
+          <Ionicons name="cloud-upload-outline" size={28} color={colors.icon} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.itemTitle}>Đồng bộ dữ liệu</Text>
+            <Text style={styles.itemDesc}>
+              {sync.status === "syncing"
+                ? "Đang đồng bộ..."
+                : sync.lastSyncedAt
+                ? `Đã đồng bộ: ${new Date(
+                    sync.lastSyncedAt * 1000
+                  ).toLocaleString()}`
+                : "Chưa đồng bộ"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.syncBtn, { backgroundColor: colors.card }]}
+            onPress={async () => {
+              try {
+                await syncAll(user?.id);
+              } catch (e) {
+                // syncState will update with error
+              }
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: "600" }}>
+              Đồng bộ
+            </Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           style={styles.item}
           activeOpacity={0.9}
@@ -291,6 +329,13 @@ const makeStyles = (
       shadowOpacity: 0.04,
       shadowOffset: { width: 0, height: 1 },
       shadowRadius: 2,
+    },
+    syncBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: "rgba(0,0,0,0.06)",
     },
     itemTitle: {
       fontSize: 16,

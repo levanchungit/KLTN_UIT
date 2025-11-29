@@ -1,5 +1,6 @@
 // categoryRepo.ts
 import { openDb } from "@/db";
+import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";
 
 /** ===== Types ===== */
@@ -95,6 +96,11 @@ export async function createCategory(input: {
       VALUES(?,?,?,?,?,?,?, strftime('%s','now'), strftime('%s','now'))`,
     [id, userId, input.name.trim(), input.type, icon, color, parent_id]
   );
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
   return id;
 }
 
@@ -141,6 +147,8 @@ export async function updateCategory(
     `UPDATE categories SET ${set.join(",")} WHERE id=? AND user_id=?`,
     [...vals, id, userId]
   );
+  // schedule sync
+  scheduleSyncDebounced(userId);
 }
 
 export async function deleteCategory(id: string) {
@@ -150,6 +158,14 @@ export async function deleteCategory(id: string) {
     id,
     userId,
   ]);
+  scheduleSyncDebounced(userId);
+  // write tombstone to Firestore so other clients can delete
+  try {
+    const s = await import("@/services/firestoreSync");
+    s.markRemoteDeleted("categories", id, userId).catch((e) => console.warn(e));
+  } catch (e) {
+    // ignore if firestore not available
+  }
 }
 
 /** ===== Seed (tùy chọn) ===== */

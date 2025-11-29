@@ -1,5 +1,6 @@
 // accountRepo.ts
 import { openDb } from "@/db";
+import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";
 
 export type Account = {
@@ -58,6 +59,11 @@ export async function createAccount(input: {
       Math.max(0, Math.trunc(input.balance) || 0),
     ]
   );
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
   return id;
 }
 
@@ -72,6 +78,7 @@ export async function updateAccount(
   }
 ) {
   const db = await openDb();
+  const userId = await getCurrentUserId();
 
   const set: string[] = [];
   const vals: any[] = [];
@@ -103,6 +110,11 @@ export async function updateAccount(
     `UPDATE accounts SET ${set.join(",")} WHERE id=? AND user_id=?`,
     [...vals, id, userId]
   );
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
 }
 
 // ===== Helpers cho xoá với luật "mặc định không xoá" =====
@@ -155,6 +167,17 @@ export async function deleteAccount(id: string) {
     id,
     userId,
   ]);
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+  try {
+    const s = await import("@/services/firestoreSync");
+    s.markRemoteDeleted("accounts", id, userId).catch((e) => console.warn(e));
+  } catch (e) {
+    // ignore if firestore not available
+  }
   // Lưu ý FK: nếu có bảng giao dịch tham chiếu accounts mà không ON DELETE CASCADE,
   // thao tác có thể fail → khi đó cân nhắc dùng soft-delete hoặc báo lỗi người dùng.
 }

@@ -1,4 +1,5 @@
 import { db, openDb } from "@/db";
+import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 
@@ -179,6 +180,13 @@ export async function addExpense({
     .then(({ checkBudgetAlert }) => checkBudgetAlert(categoryId, amount))
     .catch((err) => console.error("Budget alert check failed:", err));
 
+  // schedule debounced sync
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+
   return id;
 }
 
@@ -229,6 +237,12 @@ export async function addIncome({
       .catch((err) => {
         console.error("Failed to update AI model:", err);
       });
+  }
+
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
   }
 
   return id;
@@ -339,6 +353,20 @@ export async function deleteTx(id: string, userId?: string) {
     id,
     userId,
   ]);
+  try {
+    scheduleSyncDebounced(userId as string);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+  // mark remote tombstone
+  try {
+    const s = await import("@/services/firestoreSync");
+    s.markRemoteDeleted("transactions", id, userId as string).catch((e) =>
+      console.warn(e)
+    );
+  } catch (e) {
+    // ignore
+  }
 }
 
 export async function updateTransaction({
@@ -396,6 +424,12 @@ export async function updateTransaction({
     } catch (err: any) {
       console.error("❌ Failed to update AI after transaction edit:", err);
     }
+  }
+
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
   }
 
   return id;

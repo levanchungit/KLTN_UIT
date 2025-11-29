@@ -92,7 +92,6 @@ export async function loadSession(): Promise<UserSession | null> {
     }
     try {
       const parsed = JSON.parse(raw);
-      console.log("Parsed session:", parsed);
       return parsed;
     } catch (error) {
       console.log("Error parsing session:", error);
@@ -106,7 +105,6 @@ export async function loadSession(): Promise<UserSession | null> {
       console.log("Loaded from AsyncStorage (fallback after error):", raw);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      console.log("Parsed session from fallback:", parsed);
       return parsed;
     } catch (fallbackError) {
       console.log("Failed to load session from any storage:", fallbackError);

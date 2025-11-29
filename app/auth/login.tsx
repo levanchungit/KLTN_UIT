@@ -1,10 +1,6 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
-import {
-  createUserWithPassword,
-  loginOrCreateUserWithGoogle,
-  loginWithPassword,
-} from "@/repos/authRepo";
+import { createUserWithPassword, loginWithPassword } from "@/repos/authRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
@@ -64,6 +60,7 @@ export default function LoginScreen() {
 
   async function handleGoogleSignIn() {
     setGoogleLoading(true);
+    let acctId: string | null = null;
     try {
       if (
         Platform.OS === "android" &&
@@ -87,20 +84,78 @@ export default function LoginScreen() {
       const photo =
         userInfo.data.photo || (profile && (profile.photo || profile.picture));
 
-      const acct = await loginOrCreateUserWithGoogle({
-        googleId: String(profile.id),
-        email: profile.email,
-        name: profile.name,
-        image: photo,
-        idToken,
-      } as any);
+      // Initialize Firebase (auth + firestore) if available, then sign in
+      try {
+        const fs = await import("@/services/firestoreSync");
+        // Try to initialize with provided config from app config
+        const cfg = (Constants as any)?.expoConfig?.extra?.FIREBASE_CONFIG;
+        if (cfg && typeof fs.initFirestore === "function") {
+          await fs.initFirestore(cfg).catch(() => {});
+        }
+        // Now perform Firebase sign-in using the Google ID token obtained
+        try {
+          // Use dynamic import for firebase/auth (preferred). If firebase isn't
+          // installed this will throw and we'll fall back to local repo flow.
+          const authMod: any = await import("firebase/auth");
+          const { getAuth, signInWithCredential, GoogleAuthProvider } = authMod;
+          const credential = GoogleAuthProvider.credential(idToken);
+          const auth = getAuth();
+          const res = await signInWithCredential(auth, credential);
+          const fbUser = res.user;
+          // Ensure local DB contains a user row with the Firebase UID so
+          // the same id persists across reinstalls / cleared app data.
+          try {
+            const authRepo = await import("@/repos/authRepo");
+            if (typeof authRepo.upsertUserFromOAuth === "function") {
+              await authRepo.upsertUserFromOAuth({
+                id: fbUser.uid,
+                googleId: profile?.id ?? null,
+                email: fbUser.email ?? null,
+                name: fbUser.displayName ?? null,
+                image: fbUser.photoURL ?? null,
+              });
+            }
+          } catch (e) {
+            console.warn("Failed to persist local OAuth user row:", e);
+          }
 
-      await loginSet({
-        id: acct.id,
-        username: acct.username,
-        name: acct.name ?? null,
-        image: acct.image ?? null,
-      });
+          // Save session using Firebase UID as canonical id
+          await loginSet({
+            id: fbUser.uid,
+            username: fbUser.email ?? fbUser.uid,
+            name: fbUser.displayName ?? null,
+            image: fbUser.photoURL ?? null,
+          });
+          acctId = fbUser.uid;
+          // Trigger an immediate sync now that user is signed in
+          try {
+            const trig = await import("@/services/syncTrigger");
+            if (trig && typeof trig.triggerImmediate === "function") {
+              await trig.triggerImmediate(fbUser.uid);
+            }
+          } catch (e) {
+            // non-critical
+            console.warn("Failed to trigger immediate sync after sign-in:", e);
+          }
+        } catch (e) {
+          console.error("Firebase signInWithCredential failed:", e);
+          Alert.alert(
+            "Lỗi đăng nhập",
+            "Đăng nhập bằng Firebase thất bại. Vui lòng kiểm tra cấu hình OAuth/Google Sign-In và thử lại."
+          );
+          // Do not fall back to creating a new local user — require Firebase auth.
+          setGoogleLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error("Firebase init/sign-in path failed:", e);
+        Alert.alert(
+          "Lỗi đăng nhập",
+          "Không thể khởi tạo Firebase Auth. Vui lòng kiểm tra cấu hình và thử lại."
+        );
+        setGoogleLoading(false);
+        return;
+      }
 
       // Check if user has completed onboarding by checking categories count
       try {
@@ -108,7 +163,7 @@ export default function LoginScreen() {
         await openDb();
         const catRow = await db.getFirstAsync<{ cnt: number }>(
           `SELECT COUNT(*) as cnt FROM categories WHERE user_id=?`,
-          acct.id as any
+          acctId as any
         );
         const catCount = catRow?.cnt ?? 0;
         if (catCount >= 3) {
@@ -125,17 +180,17 @@ export default function LoginScreen() {
         await openDb();
         const accRow = await db.getFirstAsync<{ cnt: number }>(
           `SELECT COUNT(*) as cnt FROM accounts WHERE user_id=?`,
-          acct.id as any
+          acctId as any
         );
         const accCount = accRow?.cnt ?? 0;
         if (accCount === 0) {
-          const id = `acc_default_${acct.id}`;
+          const id = `acc_default_${acctId}`;
           await db.runAsync(
             `INSERT INTO accounts(id,user_id,name,icon,color,include_in_total,balance_cached,created_at,updated_at)
              VALUES(?,?,?,?,?,?,?,?,?)`,
             [
               id,
-              acct.id,
+              acctId,
               "Ví mặc định",
               "wallet",
               "#007AFF",
@@ -151,7 +206,7 @@ export default function LoginScreen() {
       }
 
       try {
-        await AsyncStorage.setItem("requires_onboarding", acct.id);
+        if (acctId) await AsyncStorage.setItem("requires_onboarding", acctId);
       } catch (e) {
         console.warn("Could not set requires_onboarding flag", e);
       }

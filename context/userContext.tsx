@@ -1,5 +1,4 @@
 // src/userContext.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { NativeModules } from "react-native";
 import { clearSession, loadSession, saveSession, UserSession } from "./session";
@@ -20,14 +19,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    console.log("UserProvider: Loading session on mount");
     (async () => {
       try {
         const u = await loadSession();
-        console.log("UserProvider: Loaded user:", u);
         setUser(u);
       } catch (error) {
-        console.log("UserProvider: Error loading session:", error);
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -53,14 +49,62 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // Do NOT migrate or change DB ownership on logout. Clear saved session only.
     await clearSession();
 
-    // Clear AsyncStorage cache to allow fresh login with different Google account
+    // Try to sign out from Firebase Auth if the SDK is available. We avoid
+    // clearing the whole AsyncStorage because that also removes Firebase
+    // auth persistence and other packages' data. Instead we clear only the
+    // app session (via `clearSession`) and any auth sessions from native
+    // modules (GoogleSignin). This preserves proper Firebase initialization
+    // behavior on next app start.
     try {
-      console.log("Clearing AsyncStorage cache...");
-      // Clear all AsyncStorage data to ensure fresh login
-      await AsyncStorage.clear();
-      console.log("AsyncStorage fully cleared");
+      // Attempt to require firebase/auth dynamically at runtime without
+      // letting Metro statically analyze the require call. Using `eval("require")`
+      // prevents the bundler from trying to resolve the module at bundle-time
+      // when `firebase` is not installed.
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const r: any = eval("require");
+      let firebaseAuth: any = null;
+      try {
+        firebaseAuth = r("firebase/auth");
+      } catch (err) {
+        // modular auth not available; we'll try compat below
+        firebaseAuth = null;
+      }
+
+      if (firebaseAuth && typeof firebaseAuth.getAuth === "function") {
+        const { getAuth, signOut } = firebaseAuth;
+        try {
+          const auth = getAuth();
+          if (auth && auth.currentUser && typeof signOut === "function") {
+            await signOut(auth).catch(() => {});
+            console.log("Signed out from Firebase Auth (modular)");
+          }
+        } catch (e) {
+          console.log("Firebase modular signOut failed:", e);
+        }
+      } else {
+        // compat fallback (older firebase installs)
+        try {
+          const fb = r("firebase");
+          if (fb && fb.auth && typeof fb.auth === "function") {
+            try {
+              await fb
+                .auth()
+                .signOut()
+                .catch(() => {});
+              console.log("Signed out from Firebase Auth (compat)");
+            } catch (e) {
+              console.log("Firebase compat signOut failed:", e);
+            }
+          }
+        } catch (e) {
+          // compat package not available either
+          // fall through to non-critical behavior
+          console.log("Firebase compat module not available:", e);
+        }
+      }
     } catch (e) {
-      console.warn("Failed to clear AsyncStorage:", e);
+      // Non-critical; log and continue
+      console.log("Firebase signOut not available or failed:", e);
     }
     // Try to sign out the native GoogleSignin module so the next Google login
     // can pick a different account. Guard against running in Expo Go or when

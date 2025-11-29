@@ -229,3 +229,220 @@ export async function loginOrCreateUserWithGoogle({
     image: image ?? null,
   };
 }
+
+/**
+ * Ensure a local user record exists for a federated/OAuth user.
+ * If `id` is provided it will be used as the primary key (this is used
+ * for Firebase UID so local rows persist across reinstalls when the same
+ * Firebase account signs in again). If `id` is omitted we fall back to
+ * the existing `loginOrCreateUserWithGoogle` behaviour.
+ */
+export async function upsertUserFromOAuth({
+  id,
+  googleId,
+  email,
+  name,
+  image,
+}: {
+  id?: string | null;
+  googleId?: string | null;
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+}): Promise<{
+  id: string;
+  username: string;
+  name?: string | null;
+  image?: string | null;
+}> {
+  await ensureAuthTables();
+
+  const emailNorm = email ? String(email).trim().toLowerCase() : null;
+  const useId = id || (emailNorm ? null : `google:${googleId}`) || genId("u_");
+  const username = emailNorm || `google:${googleId}` || useId;
+
+  // If a row already exists with this id, update profile fields, else create.
+  const existingById = await db.getFirstAsync<{ id: string; username: string }>(
+    `SELECT id, username FROM users WHERE id = ?`,
+    [useId]
+  );
+  const now = Math.floor(Date.now() / 1000);
+
+  if (existingById) {
+    try {
+      await db.runAsync(
+        `UPDATE users SET username = COALESCE(?, username), name = COALESCE(?, name), image = COALESCE(?, image), updated_at = ? WHERE id = ?`,
+        [username, name ?? null, image ?? null, now, useId]
+      );
+    } catch (e) {
+      // non-critical
+    }
+    return { id: useId, username, name: name ?? null, image: image ?? null };
+  }
+
+  // No row with this id — attempt to create one. If username (email) collides,
+  // append suffix to keep unique.
+  let finalUsername = username;
+  if (emailNorm) {
+    const existed = await db.getFirstAsync<{ cnt: number }>(
+      `SELECT COUNT(1) AS cnt FROM users WHERE username = ?`,
+      [emailNorm]
+    );
+    if ((existed?.cnt ?? 0) > 0) {
+      // email already used by another account; fall back to `google:<id>` username
+      finalUsername = `google:${googleId}`;
+    }
+  }
+
+  const password_hash = bcrypt.hashSync(
+    Math.random().toString(36).slice(2, 10),
+    6
+  );
+  try {
+    await db.runAsync(
+      `INSERT INTO users(id,username,password_hash,name,image,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+      [
+        useId,
+        finalUsername,
+        password_hash,
+        name ?? null,
+        image ?? null,
+        now,
+        now,
+      ]
+    );
+  } catch (err: any) {
+    // If insert failed due to username uniqueness, try alternative username.
+    if (
+      String(err?.message || "").includes("UNIQUE") &&
+      finalUsername.startsWith("google:")
+    ) {
+      const alt = `${finalUsername}_${Math.random().toString(36).slice(2, 6)}`;
+      await db.runAsync(
+        `INSERT INTO users(id,username,password_hash,name,image,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+        [useId, alt, password_hash, name ?? null, image ?? null, now, now]
+      );
+      finalUsername = alt;
+    } else {
+      throw err;
+    }
+  }
+
+  return {
+    id: useId,
+    username: finalUsername,
+    name: name ?? null,
+    image: image ?? null,
+  };
+}
+
+/**
+ * Migrate local users by mapping their username (email) to a Firebase UID.
+ * `mapping` is an object where keys are email (username) and values are the
+ * corresponding Firebase UID. This function will update related tables
+ * (`accounts`, `categories`, `transactions`) to point to the new UID and
+ * remove or merge old user rows.
+ */
+export async function migrateUsersToFirebase(mapping: Record<string, string>) {
+  await ensureAuthTables();
+  const results: { migrated: number; skipped: string[]; errors: string[] } = {
+    migrated: 0,
+    skipped: [],
+    errors: [],
+  };
+
+  for (const [email, newUid] of Object.entries(mapping)) {
+    try {
+      const local = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM users WHERE username = ?`,
+        [email] as any
+      );
+      if (!local) {
+        results.skipped.push(email);
+        continue;
+      }
+      const oldId = local.id;
+      if (oldId === newUid) {
+        results.migrated++;
+        continue;
+      }
+
+      const existsNew = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM users WHERE id = ?`,
+        [newUid] as any
+      );
+
+      if (existsNew) {
+        // Merge: reassign related rows to newUid, then delete old user
+        await db.runAsync(`UPDATE accounts SET user_id = ? WHERE user_id = ?`, [
+          newUid,
+          oldId,
+        ] as any);
+        await db.runAsync(
+          `UPDATE categories SET user_id = ? WHERE user_id = ?`,
+          [newUid, oldId] as any
+        );
+        await db.runAsync(
+          `UPDATE transactions SET user_id = ? WHERE user_id = ?`,
+          [newUid, oldId] as any
+        );
+        try {
+          await db.runAsync(`DELETE FROM users WHERE id = ?`, [oldId] as any);
+        } catch (e) {
+          // ignore delete error
+        }
+      } else {
+        // Update the users primary key to newUid and move related rows
+        try {
+          await db.runAsync(
+            `UPDATE users SET id = ?, username = ? WHERE id = ?`,
+            [newUid, email, oldId] as any
+          );
+        } catch (e) {
+          // If updating primary key fails (unique constraint), try create+move
+          try {
+            const row = await db.getFirstAsync<any>(
+              `SELECT username, name, image, created_at, updated_at FROM users WHERE id = ?`,
+              [oldId] as any
+            );
+            const now = Math.floor(Date.now() / 1000);
+            await db.runAsync(
+              `INSERT INTO users(id,username,password_hash,name,image,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+              [
+                newUid,
+                row.username || email,
+                bcrypt.hashSync(Math.random().toString(36).slice(2, 8), 6),
+                row.name || null,
+                row.image || null,
+                now,
+                now,
+              ] as any
+            );
+            await db.runAsync(
+              `UPDATE accounts SET user_id = ? WHERE user_id = ?`,
+              [newUid, oldId] as any
+            );
+            await db.runAsync(
+              `UPDATE categories SET user_id = ? WHERE user_id = ?`,
+              [newUid, oldId] as any
+            );
+            await db.runAsync(
+              `UPDATE transactions SET user_id = ? WHERE user_id = ?`,
+              [newUid, oldId] as any
+            );
+            await db.runAsync(`DELETE FROM users WHERE id = ?`, [oldId] as any);
+          } catch (e2) {
+            results.errors.push(`failed to migrate ${email}: ${String(e2)}`);
+            continue;
+          }
+        }
+      }
+
+      results.migrated++;
+    } catch (err: any) {
+      results.errors.push(`error for ${email}: ${String(err)}`);
+    }
+  }
+
+  return results;
+}

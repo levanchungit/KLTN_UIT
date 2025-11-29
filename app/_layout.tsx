@@ -12,12 +12,14 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Linking,
   LogBox,
   Platform,
@@ -75,6 +77,24 @@ export default function RootLayout() {
 
     // Initialize smart notification system (daily, weekly, inactivity checks)
     initSmartNotifications();
+
+    // Initialize Firestore if config present in app config (or inferred in app.config.js)
+    (async () => {
+      try {
+        const cfg = (Constants.expoConfig as any)?.extra?.FIREBASE_CONFIG;
+        if (cfg) {
+          const fs = await import("@/services/firestoreSync");
+          await fs.initFirestore(cfg);
+          console.log("Firestore initialized (auto)");
+        } else {
+          console.log(
+            "No FIREBASE_CONFIG found in expo extra; Firestore not initialized."
+          );
+        }
+      } catch (e) {
+        console.warn("Failed to init Firestore:", e);
+      }
+    })();
 
     return unsubscribe;
   }, []);
@@ -159,9 +179,6 @@ function RootLayoutNav() {
   useEffect(() => {
     // Don't do routing while still loading session
     if (isLoading) {
-      console.log(
-        "RootLayoutNav: Still loading session, skipping routing logic"
-      );
       setHasCheckedBiometric(false);
       return;
     }
@@ -194,6 +211,53 @@ function RootLayoutNav() {
       router.replace("/(tabs)");
     }
   }, [user, segments, isLoading, hasCheckedBiometric]);
+
+  // Auto-sync on app foreground and periodically
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    let mounted = true;
+
+    const handleAppState = (next: any) => {
+      try {
+        if (next === "active") {
+          // run sync when app comes to foreground
+          if (user) {
+            import("@/services/syncService").then(({ syncAll }) =>
+              syncAll(user.id).catch((e) => console.warn("Auto sync failed", e))
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("AppState sync error", e);
+      }
+    };
+
+    const sub = AppState.addEventListener
+      ? AppState.addEventListener("change", handleAppState)
+      : // fallback for older RN
+        (AppState as any).addEventListener("change", handleAppState);
+
+    // periodic sync every 5 minutes
+    if (user) {
+      interval = setInterval(() => {
+        import("@/services/syncService").then(({ syncAll }) =>
+          syncAll(user.id).catch((e) => console.warn("Periodic sync failed", e))
+        );
+      }, 5 * 60 * 1000);
+    }
+
+    return () => {
+      mounted = false;
+      try {
+        if (sub && typeof sub.remove === "function") sub.remove();
+        else if ((AppState as any).removeEventListener)
+          (AppState as any).removeEventListener("change", handleAppState);
+      } catch (e) {
+        // ignore
+      }
+      if (interval) clearInterval(interval as any);
+    };
+  }, [user]);
 
   // Show loading screen while session is loading
   if (isLoading) {

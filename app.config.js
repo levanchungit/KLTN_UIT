@@ -96,6 +96,15 @@ export default {
       eas: {
         projectId: "17ee9dcf-d3f4-41ef-95bb-5202d44fdc8d",
       },
+      FIREBASE_CONFIG: {
+        apiKey: "AIzaSyAIagCB77cqGVaPriR-MQMB9x9ahmNr5ek",
+        authDomain: "kltn-uit-921cf.firebaseapp.com",
+        projectId: "kltn-uit-921cf",
+        storageBucket: "kltn-uit-921cf.firebasestorage.app",
+        messagingSenderId: "702360028374",
+        appId: "1:702360028374:web:6921c55ff7a5673089f577",
+        measurementId: "G-3X0H9JBFC8",
+      },
     },
   },
 };
