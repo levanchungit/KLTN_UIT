@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
   Image,
   Modal,
   Pressable,
@@ -118,18 +119,35 @@ export default function Setting() {
             </Text>
           </View>
           <TouchableOpacity
-            style={[styles.syncBtn, { backgroundColor: colors.card }]}
+            style={[
+              styles.syncBtn,
+              {
+                backgroundColor: colors.card,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            ]}
             onPress={async () => {
               try {
-                await syncAll(user?.id);
+                const trig = await import("@/services/syncTrigger");
+                if (trig && typeof trig.triggerImmediate === "function") {
+                  trig
+                    .triggerImmediate(user?.id)
+                    .catch((e: any) => console.warn("Manual sync failed:", e));
+                } else {
+                  // fallback
+                  await syncAll(user?.id);
+                }
               } catch (e) {
-                // syncState will update with error
+                console.warn("Failed to trigger sync:", e);
               }
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: "600" }}>
-              Đồng bộ
-            </Text>
+            {sync.status === "syncing" ? (
+              <ActivityIndicator size="small" color={colors.icon} />
+            ) : (
+              <MaterialIcons name="sync" size={18} color={colors.icon} />
+            )}
           </TouchableOpacity>
         </View>
         <TouchableOpacity

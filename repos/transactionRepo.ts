@@ -35,6 +35,31 @@ export async function totalInRange(
   return row?.sum ?? 0;
 }
 
+// Compute total assets by summing transactions per account (income +, expense -)
+// Only accounts with include_in_total=1 are counted. This derives the total directly
+// from the transaction history instead of relying on `accounts.balance_cached`.
+export async function totalAssetsFromTransactions(): Promise<number> {
+  await openDb();
+  const userId = await getCurrentUserId();
+  const row = await db.getFirstAsync<{ total: number }>(
+    `
+    SELECT COALESCE(SUM(COALESCE(t_signed.delta, 0)), 0) AS total
+    FROM accounts a
+    LEFT JOIN (
+      SELECT account_id,
+             SUM(CASE WHEN type='income' THEN amount WHEN type='expense' THEN -amount ELSE 0 END) AS delta
+      FROM transactions
+      WHERE user_id=?
+      GROUP BY account_id
+    ) t_signed ON t_signed.account_id = a.id
+    WHERE a.user_id=? AND a.include_in_total=1
+  
+  `,
+    [userId, userId]
+  );
+  return row?.total ?? 0;
+}
+
 export async function categoryBreakdown(
   startSec: number,
   endSec: number,

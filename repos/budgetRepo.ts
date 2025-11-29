@@ -1,5 +1,6 @@
 // budgetRepo.ts
 import { db, openDb } from "@/db";
+import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";
 import { categoryBreakdown } from "./transactionRepo";
 
@@ -118,6 +119,12 @@ export async function createBudget(input: {
     console.error("Failed to trigger budget alerts after creation:", err);
   }
 
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+
   return budgetId;
 }
 
@@ -175,6 +182,17 @@ export async function deleteBudget(id: string, userId?: string) {
     id,
     userId,
   ] as any);
+  try {
+    scheduleSyncDebounced(userId as string);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+  try {
+    const s = await import("@/services/firestoreSync");
+    s.markRemoteDeleted("budgets", id, userId).catch((e) => console.warn(e));
+  } catch (e) {
+    // ignore
+  }
 }
 
 export async function updateBudget(input: {
@@ -266,6 +284,11 @@ export async function updateBudget(input: {
     await triggerBudgetAlertsForBudget(input.id);
   } catch (err) {
     console.error("Failed to trigger budget alerts after update:", err);
+  }
+  try {
+    scheduleSyncDebounced(userId);
+  } catch (e) {
+    scheduleSyncDebounced();
   }
 }
 

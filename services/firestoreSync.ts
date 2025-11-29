@@ -13,6 +13,25 @@ let _fsModule: any = null;
 let _firebaseApp: any = null;
 let _authInitialized = false;
 
+// Defensive helper: ensure a document path has an even number of segments.
+// If odd, append a fallback document id (`meta`) and log a warning.
+function ensureDocPathEven(path: string) {
+  try {
+    const segs = path.replace(/^\/+|\/+$/g, "").split("/");
+    if (segs.length % 2 === 0) return path;
+    const fixed = path.replace(/\/+$/g, "") + "/meta";
+    console.warn(
+      "Adjusted Firestore doc path to even segments:",
+      path,
+      "->",
+      fixed
+    );
+    return fixed;
+  } catch (e) {
+    return path;
+  }
+}
+
 export async function initFirestore(firebaseConfig: any) {
   if (_initialized) return _firestore;
   if (!firebaseConfig) {
@@ -291,6 +310,32 @@ async function ensureFsModule() {
   throw new Error("Unable to import a usable firebase/firestore module");
 }
 
+// Compute per-account balance based on transactions (income +, expense -)
+// Returns a map accountId -> computed balance (number)
+async function computeAccountBalances(userId: string) {
+  try {
+    const rows = await db.getAllAsync<any>(
+      `
+      SELECT a.id AS account_id,
+             COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount WHEN t.type='expense' THEN -t.amount ELSE 0 END), 0) AS computed_balance
+      FROM accounts a
+      LEFT JOIN transactions t ON t.account_id = a.id AND t.user_id = ?
+      WHERE a.user_id = ?
+      GROUP BY a.id
+    `,
+      [userId, userId]
+    );
+    const map: Record<string, number> = {};
+    for (const r of rows || []) {
+      map[String(r.account_id)] = toNum(r.computed_balance) ?? 0;
+    }
+    return map;
+  } catch (e) {
+    console.warn("computeAccountBalances failed:", e);
+    return {};
+  }
+}
+
 /** Sync categories to Firestore under `users/{userId}/categories/{categoryId}` */
 export async function syncCategories(userId?: string) {
   const localUid = userId ?? (await getCurrentUserId());
@@ -347,8 +392,11 @@ export async function syncAccounts(userId?: string) {
     rUid = localUid;
   }
 
+  // Compute authoritative balances from transactions and prefer those when pushing
+  const computed = await computeAccountBalances(localUid);
+
   const accs = await db.getAllAsync<any>(
-    `SELECT id, name, icon, color, balance_cached, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`,
+    `SELECT id, name, icon, color, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`,
     [localUid]
   );
 
@@ -360,7 +408,8 @@ export async function syncAccounts(userId?: string) {
       name: a.name,
       icon: a.icon ?? null,
       color: a.color ?? null,
-      balance_cached: toNum(a.balance_cached) ?? 0,
+      // Use computed balance derived from transactions so remote reflects transaction history
+      balance_cached: toNum(computed[a.id]) ?? 0,
       include_in_total: a.include_in_total ? 1 : 0,
       created_at: toNum(a.created_at),
       updated_at: toNum(a.updated_at),
@@ -412,6 +461,309 @@ export async function syncTransactions(userId?: string) {
   await batch.commit();
 }
 
+/** Sync budgets and budget_allocations to Firestore under `users/{userId}/budgets/{budgetId}` and `.../allocations/{allocId}` */
+export async function syncBudgets(userId?: string) {
+  const localUid = userId ?? (await getCurrentUserId());
+  if (!localUid) throw new Error("No user logged in");
+
+  const { fdb, firestore } = await _getFirestore();
+
+  let rUid: string;
+  try {
+    rUid = await getAuthUid();
+  } catch (e) {
+    rUid = localUid;
+  }
+
+  // Load budgets and allocations
+  const budgets = await db.getAllAsync<any>(
+    `SELECT id, name, total_income, period, lifestyle_desc, start_date, end_date, created_at, updated_at FROM budgets WHERE user_id=?`,
+    [localUid]
+  );
+
+  const batch = firestore.writeBatch(fdb);
+  for (const b of budgets) {
+    const ref = firestore.doc(fdb, `users/${rUid}/budgets/${b.id}`);
+    const payload = {
+      id: b.id,
+      name: b.name,
+      total_income: toNum(b.total_income) ?? 0,
+      period: safeStr(b.period) ?? null,
+      lifestyle_desc: safeStr(b.lifestyle_desc) ?? null,
+      start_date: toNum(b.start_date) ?? null,
+      end_date: toNum(b.end_date) ?? null,
+      created_at: toNum(b.created_at) ?? null,
+      updated_at: toNum(b.updated_at) ?? null,
+      _synced_at: Math.floor(Date.now() / 1000),
+    };
+    batch.set(ref, payload, { merge: true });
+
+    // push allocations for this budget
+    const allocs = await db.getAllAsync<any>(
+      `SELECT id, budget_id, category_id, group_type, allocated_amount, created_at FROM budget_allocations WHERE budget_id=?`,
+      [b.id]
+    );
+    for (const a of allocs) {
+      const aRef = firestore.doc(
+        fdb,
+        `users/${rUid}/budgets/${b.id}/allocations/${a.id}`
+      );
+      batch.set(
+        aRef,
+        {
+          id: a.id,
+          budget_id: a.budget_id,
+          category_id: a.category_id,
+          group_type: safeStr(a.group_type) ?? null,
+          allocated_amount: toNum(a.allocated_amount) ?? 0,
+          created_at: toNum(a.created_at) ?? null,
+          _synced_at: Math.floor(Date.now() / 1000),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  await batch.commit();
+}
+
+async function syncBudgetsPullAndPush(userId?: string, remoteUid?: string) {
+  const localUid = userId ?? (await getCurrentUserId());
+  if (!localUid) throw new Error("No user logged in");
+  const { fdb, firestore } = await _getFirestore();
+
+  const rUid =
+    remoteUid ??
+    (await (async () => {
+      try {
+        return await getAuthUid();
+      } catch (_) {
+        return localUid;
+      }
+    })());
+
+  const colRef = firestore.collection(fdb, `users/${rUid}/budgets`);
+  const snap = await firestore.getDocs(colRef);
+
+  const remoteIds = new Set<string>();
+  const toPush: any[] = [];
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const id = safeStr(data.id ?? doc.id);
+    remoteIds.add(id);
+    if (data._deleted) {
+      await db.runAsync(`DELETE FROM budget_allocations WHERE budget_id=?`, [
+        id,
+      ]);
+      await db.runAsync(`DELETE FROM budgets WHERE id=? AND user_id=?`, [
+        id,
+        localUid,
+      ]);
+      continue;
+    }
+
+    const remoteUpdated = toNum(data.updated_at) ?? 0;
+    const local = await db.getFirstAsync<any>(
+      `SELECT * FROM budgets WHERE id=? AND user_id=?`,
+      [id, localUid]
+    );
+    if (!local) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO budgets(id,user_id,name,total_income,period,lifestyle_desc,start_date,end_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        [
+          id,
+          localUid,
+          safeStr(data.name),
+          toNum(data.total_income) ?? 0,
+          safeStr(data.period) ?? null,
+          safeStr(data.lifestyle_desc) ?? null,
+          toNum(data.start_date) ?? null,
+          toNum(data.end_date) ?? null,
+          toNum(data.created_at) ?? null,
+          remoteUpdated || null,
+        ]
+      );
+
+      // pull allocations for this budget
+      try {
+        const allocCol = firestore.collection(
+          fdb,
+          `users/${rUid}/budgets/${id}/allocations`
+        );
+        const allocSnap = await firestore.getDocs(allocCol);
+        for (const ad of allocSnap.docs) {
+          const adata = ad.data();
+          await db.runAsync(
+            `INSERT OR REPLACE INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
+            [
+              safeStr(adata.id ?? ad.id),
+              id,
+              safeStr(adata.category_id),
+              safeStr(adata.group_type),
+              toNum(adata.allocated_amount) ?? 0,
+              toNum(adata.created_at) ?? null,
+            ]
+          );
+        }
+      } catch (e) {
+        console.warn("Failed to pull budget allocations:", e);
+      }
+
+      continue;
+    }
+
+    const localUpdated = Number(local.updated_at) || 0;
+    if (remoteUpdated > localUpdated) {
+      await db.runAsync(
+        `UPDATE budgets SET name=?, total_income=?, period=?, lifestyle_desc=?, start_date=?, end_date=?, updated_at=? WHERE id=? AND user_id=?`,
+        [
+          safeStr(data.name),
+          toNum(data.total_income) ?? 0,
+          safeStr(data.period) ?? null,
+          safeStr(data.lifestyle_desc) ?? null,
+          toNum(data.start_date) ?? null,
+          toNum(data.end_date) ?? null,
+          remoteUpdated || null,
+          id,
+          localUid,
+        ]
+      );
+
+      // update allocations: replace existing for simplicity
+      try {
+        await db.runAsync(`DELETE FROM budget_allocations WHERE budget_id=?`, [
+          id,
+        ]);
+        const allocCol = firestore.collection(
+          fdb,
+          `users/${rUid}/budgets/${id}/allocations`
+        );
+        const allocSnap = await firestore.getDocs(allocCol);
+        for (const ad of allocSnap.docs) {
+          const adata = ad.data();
+          await db.runAsync(
+            `INSERT INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
+            [
+              safeStr(adata.id ?? ad.id),
+              id,
+              safeStr(adata.category_id) ?? null,
+              safeStr(adata.group_type) ?? null,
+              toNum(adata.allocated_amount) ?? 0,
+              toNum(adata.created_at) ?? null,
+            ]
+          );
+        }
+      } catch (e) {
+        console.warn("Failed to sync budget allocations from remote:", e);
+      }
+    } else if (localUpdated > remoteUpdated) {
+      toPush.push({ id, row: local });
+    }
+  }
+
+  // push local budgets that are missing or newer remotely
+  const locals = await db.getAllAsync<any>(
+    `SELECT id,name,total_income,period,lifestyle_desc,start_date,end_date,created_at,updated_at FROM budgets WHERE user_id=?`,
+    [localUid]
+  );
+  const fs = firestore;
+  const batch = fs.writeBatch(fdb);
+  for (const l of locals) {
+    if (!remoteIds.has(l.id)) {
+      const ref = fs.doc(fdb, `users/${rUid}/budgets/${l.id}`);
+      batch.set(
+        ref,
+        {
+          id: l.id,
+          name: l.name,
+          total_income: toNum(l.total_income) ?? 0,
+          period: safeStr(l.period) ?? null,
+          lifestyle_desc: safeStr(l.lifestyle_desc) ?? null,
+          start_date: toNum(l.start_date) ?? null,
+          end_date: toNum(l.end_date) ?? null,
+          created_at: toNum(l.created_at) ?? null,
+          updated_at: toNum(l.updated_at) ?? null,
+          _synced_at: Math.floor(Date.now() / 1000),
+        },
+        { merge: true }
+      );
+
+      // allocations for this budget
+      const allocs = await db.getAllAsync<any>(
+        `SELECT id,budget_id,category_id,group_type,allocated_amount,created_at FROM budget_allocations WHERE budget_id=?`,
+        [l.id]
+      );
+      for (const a of allocs) {
+        const aRef = fs.doc(
+          fdb,
+          `users/${rUid}/budgets/${l.id}/allocations/${a.id}`
+        );
+        batch.set(
+          aRef,
+          {
+            id: a.id,
+            budget_id: a.budget_id,
+            category_id: a.category_id,
+            group_type: safeStr(a.group_type) ?? null,
+            allocated_amount: toNum(a.allocated_amount) ?? 0,
+            created_at: toNum(a.created_at) ?? null,
+            _synced_at: Math.floor(Date.now() / 1000),
+          },
+          { merge: true }
+        );
+      }
+    }
+  }
+
+  for (const p of toPush) {
+    const ref = fs.doc(fdb, `users/${rUid}/budgets/${p.id}`);
+    batch.set(
+      ref,
+      {
+        id: p.id,
+        name: p.row.name,
+        total_income: toNum(p.row.total_income) ?? 0,
+        period: safeStr(p.row.period) ?? null,
+        lifestyle_desc: safeStr(p.row.lifestyle_desc) ?? null,
+        start_date: toNum(p.row.start_date) ?? null,
+        end_date: toNum(p.row.end_date) ?? null,
+        created_at: toNum(p.row.created_at) ?? null,
+        updated_at: toNum(p.row.updated_at) ?? null,
+        _synced_at: Math.floor(Date.now() / 1000),
+      },
+      { merge: true }
+    );
+
+    // push allocations for toPush budget
+    const allocs = await db.getAllAsync<any>(
+      `SELECT id,budget_id,category_id,group_type,allocated_amount,created_at FROM budget_allocations WHERE budget_id=?`,
+      [p.id]
+    );
+    for (const a of allocs) {
+      const aRef = fs.doc(
+        fdb,
+        `users/${rUid}/budgets/${p.id}/allocations/${a.id}`
+      );
+      batch.set(
+        aRef,
+        {
+          id: a.id,
+          budget_id: a.budget_id,
+          category_id: a.category_id,
+          group_type: safeStr(a.group_type) ?? null,
+          allocated_amount: toNum(a.allocated_amount) ?? 0,
+          created_at: toNum(a.created_at) ?? null,
+          _synced_at: Math.floor(Date.now() / 1000),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  await batch.commit();
+}
+
 /** Convenience: sync all three collections */
 export async function syncAllToFirestore(userId?: string) {
   const localUid = userId ?? (await getCurrentUserId());
@@ -441,18 +793,21 @@ export async function syncAllToFirestore(userId?: string) {
   try {
     // Ensure document reference has an even number of segments.
     // Use an explicit document id (`meta`) inside the `__meta` subcollection.
-    const metaRef = firestore.doc(fdb, `users/${authUid}/__meta/meta`);
+    const metaPath = ensureDocPathEven(`users/${authUid}/__meta/meta`);
+    const metaRef = firestore.doc(fdb, metaPath);
     const metaSnap = await firestore.getDoc(metaRef);
     if (metaSnap && metaSnap.exists && metaSnap.exists()) {
       // remote has data -> perform pull-then-push reconciliation
       await syncAccountsPullAndPush(localUid, authUid);
       await syncCategoriesPullAndPush(localUid, authUid);
       await syncTransactionsPullAndPush(localUid, authUid);
+      await syncBudgetsPullAndPush(localUid, authUid);
     } else {
       // remote empty -> push local to remote and create meta marker
       await syncAccounts(localUid);
       await syncCategories(localUid);
       await syncTransactions(localUid);
+      await syncBudgets(localUid);
       try {
         await firestore.setDoc(
           metaRef,
@@ -474,7 +829,7 @@ export async function syncAllToFirestore(userId?: string) {
  * This writes `{ _deleted: true, updated_at: now }` to the remote doc.
  */
 export async function markRemoteDeleted(
-  collectionName: "categories" | "accounts" | "transactions",
+  collectionName: "categories" | "accounts" | "transactions" | "budgets",
   id: string,
   userId?: string
 ) {
@@ -696,13 +1051,14 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
 
     const localUpdated = Number(local.updated_at) || 0;
     if (remoteUpdated > localUpdated) {
+      // Do not overwrite local `balance_cached` from remote — local balance should be
+      // authoritative via transaction history. Update other metadata only.
       await db.runAsync(
-        `UPDATE accounts SET name=?, icon=?, color=?, balance_cached=?, include_in_total=?, updated_at=? WHERE id=? AND user_id=?`,
+        `UPDATE accounts SET name=?, icon=?, color=?, include_in_total=?, updated_at=? WHERE id=? AND user_id=?`,
         [
           safeStr(data.name),
           safeStr(data.icon),
           safeStr(data.color),
-          toNum(data.balance_cached) ?? 0,
           data.include_in_total ? 1 : 0,
           remoteUpdated || null,
           id,
@@ -714,8 +1070,10 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
     }
   }
 
+  // Compute balances to use when pushing local accounts
+  const computed = await computeAccountBalances(localUid);
   const locals = await db.getAllAsync<any>(
-    `SELECT id,name,icon,color,balance_cached,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`,
+    `SELECT id,name,icon,color,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`,
     [localUid]
   );
   const fs = firestore;
@@ -730,7 +1088,7 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
           name: l.name,
           icon: l.icon ?? null,
           color: l.color ?? null,
-          balance_cached: toNum(l.balance_cached) ?? 0,
+          balance_cached: toNum(computed[l.id]) ?? 0,
           include_in_total: l.include_in_total ? 1 : 0,
           created_at: toNum(l.created_at),
           updated_at: toNum(l.updated_at),
@@ -750,7 +1108,7 @@ async function syncAccountsPullAndPush(userId?: string, remoteUid?: string) {
         name: p.row.name,
         icon: p.row.icon ?? null,
         color: p.row.color ?? null,
-        balance_cached: toNum(p.row.balance_cached) ?? 0,
+        balance_cached: toNum(computed[p.id]) ?? 0,
         include_in_total: p.row.include_in_total ? 1 : 0,
         created_at: toNum(p.row.created_at),
         updated_at: toNum(p.row.updated_at),
@@ -902,5 +1260,6 @@ export default {
   syncCategories,
   syncAccounts,
   syncTransactions,
+  syncBudgets,
   syncAllToFirestore,
 };

@@ -2,7 +2,11 @@ import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
-import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
+import {
+  categoryBreakdown,
+  totalAssetsFromTransactions,
+  totalInRange,
+} from "@/repos/transactionRepo";
 import {
   getUnreadCount,
   subscribeToNotifications,
@@ -17,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -499,6 +504,68 @@ export default function DashboardScreen() {
     }[]
   >([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [syncStatus, setSyncStatus] = useState<string>("idle");
+  const prevSyncRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    let unsub: (() => void) | undefined;
+    (async () => {
+      try {
+        const ss = await import("@/services/syncState");
+        unsub = ss.subscribe((s: any) => {
+          if (!mounted) return;
+          setSyncStatus(s.status ?? "idle");
+        });
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => {
+      mounted = false;
+      if (unsub) unsub();
+    };
+  }, []);
+
+  // Request notification permission on dashboard mount and install listener if granted
+  useEffect(() => {
+    let unsubNotif: (() => void) | undefined;
+    let mounted = true;
+    (async () => {
+      try {
+        const notif = await import("@/services/notificationService");
+        const granted = await notif.requestNotificationPermissions();
+        if (!mounted) return;
+        if (granted) {
+          try {
+            unsubNotif = notif.setupNotificationListener();
+          } catch (e) {
+            console.warn("Failed to setup notification listener:", e);
+          }
+        }
+      } catch (e) {
+        console.warn("Notification permission check failed:", e);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      try {
+        if (unsubNotif) unsubNotif();
+      } catch {}
+    };
+  }, []);
+
+  // When a background sync finishes (syncStatus transitions away from 'syncing'),
+  // refresh dashboard data so totals and lists reflect server state.
+  useEffect(() => {
+    const prev = prevSyncRef.current;
+    if (prev === "syncing" && syncStatus !== "syncing") {
+      // Sync just finished — refresh data. Do not await here to avoid blocking UI.
+      loadData().catch((e) => console.warn("Failed to refresh after sync:", e));
+    }
+    prevSyncRef.current = syncStatus;
+  }, [syncStatus, loadData]);
 
   const fmt = (d: Date) => `${d.getDate()} thg ${d.getMonth() + 1}`;
   const { startSec, endSec, label } = useMemo(() => {
@@ -532,10 +599,17 @@ export default function DashboardScreen() {
   const goToCurrentPeriod = () => setAnchor(new Date());
 
   const loadData = useCallback(async () => {
-    const accounts = (await listAccounts().catch(() => [])) ?? [];
-    const cash = accounts
-      .filter((a) => a.include_in_total === 1)
-      .reduce((s, a) => s + (a.balance_cached ?? 0), 0);
+    // Prefer authoritative total derived from transactions
+    let cash = 0;
+    try {
+      cash = await totalAssetsFromTransactions();
+    } catch (e) {
+      // Fallback to cached account balances if computation fails
+      const accounts = (await listAccounts().catch(() => [])) ?? [];
+      cash = accounts
+        .filter((a) => Number(a.include_in_total) === 1)
+        .reduce((s, a) => s + (Number(a.balance_cached) || 0), 0);
+    }
     setCashTotal(cash);
 
     const [sumExpense, sumIncome] = await Promise.all([
@@ -957,6 +1031,30 @@ export default function DashboardScreen() {
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              activeOpacity={0.85}
+              onPress={async () => {
+                try {
+                  const trig = await import("@/services/syncTrigger");
+                  if (trig && typeof trig.triggerImmediate === "function") {
+                    trig
+                      .triggerImmediate(user?.id)
+                      .catch((e: any) =>
+                        console.warn("Manual sync failed:", e)
+                      );
+                  }
+                } catch (e) {
+                  console.warn("Failed to trigger sync:", e);
+                }
+              }}
+            >
+              {syncStatus === "syncing" ? (
+                <ActivityIndicator size="small" color={colors.icon} />
+              ) : (
+                <MaterialIcons name="sync" size={20} color={colors.icon} />
+              )}
+            </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.iconButton}

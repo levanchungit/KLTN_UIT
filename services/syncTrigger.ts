@@ -2,6 +2,12 @@
 // Debounced sync trigger to avoid excessive sync calls after many repo writes.
 
 const timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+// Simple counters for observability/optimization
+const stats = {
+  coalescedCalls: 0,
+  scheduledCalls: 0,
+  immediateCalls: 0,
+};
 const DEFAULT_DELAY_MS = 4000; // 4 seconds debounce
 const lastSyncTs: Map<string, number> = new Map();
 const retryCounts: Map<string, number> = new Map();
@@ -17,9 +23,14 @@ export function scheduleSyncDebounced(
 ) {
   const key = userId ?? "__global";
   const existing = timers.get(key);
-  if (existing) clearTimeout(existing);
+  if (existing) {
+    // existing pending timer -> this call will be coalesced
+    stats.coalescedCalls++;
+    clearTimeout(existing);
+  }
 
   const t = setTimeout(async () => {
+    stats.scheduledCalls++;
     timers.delete(key);
     try {
       // Rate limit: if last sync was recent, schedule a short-delay instead of running now
@@ -75,7 +86,7 @@ export async function triggerImmediate(userId?: string) {
   const existing = timers.get(key);
   if (existing) clearTimeout(existing);
   timers.delete(key);
-
+  stats.immediateCalls++;
   try {
     const svc = await import("@/services/syncService");
     await svc.syncAll(userId);
@@ -90,4 +101,8 @@ export async function triggerImmediate(userId?: string) {
   }
 }
 
-export default { scheduleSyncDebounced, triggerImmediate };
+export function getSyncTriggerStats() {
+  return { ...stats };
+}
+
+export default { scheduleSyncDebounced, triggerImmediate, getSyncTriggerStats };

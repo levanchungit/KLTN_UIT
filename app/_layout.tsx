@@ -210,6 +210,28 @@ function RootLayoutNav() {
     if (inAuthGroup && isAuthenticated) {
       router.replace("/(tabs)");
     }
+
+    // Auto-sync once when a user becomes authenticated (app start / login)
+    if (isAuthenticated && user && user.id) {
+      (async () => {
+        try {
+          const trig = await import("@/services/syncTrigger");
+          if (trig && typeof trig.triggerImmediate === "function") {
+            trig
+              .triggerImmediate(user.id)
+              .catch((e: any) => console.warn("Initial auto-sync failed:", e));
+          } else {
+            // fallback to direct sync
+            const svc = await import("@/services/syncService");
+            svc
+              .syncAll(user.id)
+              .catch((e: any) => console.warn("Initial auto-sync failed:", e));
+          }
+        } catch (e) {
+          console.warn("Auto-sync startup error:", e);
+        }
+      })();
+    }
   }, [user, segments, isLoading, hasCheckedBiometric]);
 
   // Auto-sync on app foreground and periodically
