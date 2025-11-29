@@ -1269,6 +1269,8 @@ export default function Chatbox() {
     const procSession = eventSession;
     processingSessionRef.current = procSession;
     setMessages((m) => [...m, { role: "user", text: finalText }]);
+    // Final speech result behaves like sending a message — clear suggestions
+    setPendingPick(null);
 
     (async () => {
       try {
@@ -1815,6 +1817,8 @@ export default function Chatbox() {
 
     setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
+    // Dismiss any previous suggestions when user sends a text message
+    setPendingPick(null);
     setMessages((m) => [...m, { role: "typing" }]);
     scrollToEnd();
 
@@ -1941,6 +1945,15 @@ export default function Chatbox() {
     io: "IN" | "OUT";
     choices: { categoryId: string; name: string; score: number }[];
   } | null>(null);
+  // Animation for suggestion appearance
+  const suggestAnim = useRef(new Animated.Value(pendingPick ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(suggestAnim, {
+      toValue: pendingPick ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [pendingPick, suggestAnim]);
   const pendingLogId = useRef<string | null>(null);
 
   // Edit transaction state
@@ -2512,6 +2525,10 @@ export default function Chatbox() {
       // Use full keyboard height so when keyboard is hidden (height = 0)
       // the input bottom will be 0 as requested.
       setKeyboardHeight(h);
+      // Ensure view scrolls so input and last messages are visible
+      requestAnimationFrame(() =>
+        flatRef.current?.scrollToEnd({ animated: true })
+      );
     };
 
     const onHide = () => setKeyboardHeight(0);
@@ -2788,43 +2805,118 @@ export default function Chatbox() {
           }}
         />
 
-        {/* Gợi ý khi chưa đủ tự tin */}
-        {pendingPick && (
-          <View
-            style={[styles.suggestBar, { backgroundColor: colors.background }]}
-          >
-            {pendingPick.choices.map((c, index) => (
-              <Pressable
-                key={c.categoryId}
-                onPress={() => chooseCategory(c)}
-                style={[
-                  styles.chip,
+        {/* Gợi ý khi chưa đủ tự tin: render above the input bar so it's not covered */}
+        {
+          <Animated.View
+            pointerEvents={pendingPick ? "auto" : "none"}
+            style={[
+              styles.suggestBar,
+              {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: (insets.bottom || 0) + keyboardHeight + 70,
+                zIndex: 60,
+                // full-width + no outer background/border/shadow
+                backgroundColor: "transparent",
+                borderRadius: 0,
+                paddingVertical: 6,
+                paddingHorizontal: 0,
+                borderWidth: 0,
+                borderColor: "transparent",
+                elevation: 0,
+                // animated opacity + translate
+                opacity: suggestAnim,
+                transform: [
                   {
-                    borderColor:
-                      index === 0 && c.score > 0.5 ? "#4CAF50" : colors.divider,
-                    backgroundColor:
-                      index === 0 && c.score > 0.5
-                        ? "rgba(76, 175, 80, 0.1)"
-                        : colors.card,
-                    borderWidth: index === 0 && c.score > 0.5 ? 2 : 1,
+                    translateY: suggestAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [8, 0],
+                    }),
                   },
-                ]}
-              >
-                {index === 0 && c.score > 0.5 && (
-                  <MaterialCommunityIcons
-                    name="robot"
-                    size={14}
-                    color="#4CAF50"
-                    style={{ marginRight: 4 }}
-                  />
-                )}
-                <Text style={[styles.chipText, { color: colors.text }]}>
-                  {c.name} · {Math.round(c.score * 100)}%
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
+                ],
+                shadowColor: "transparent",
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0,
+                shadowRadius: 0,
+              },
+            ]}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                alignItems: "center",
+                paddingLeft: insets.left || 4,
+              }}
+            >
+              {pendingPick?.choices.map((c, index) => (
+                <Pressable
+                  key={c.categoryId}
+                  onPress={() => chooseCategory(c)}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor: colors.divider,
+                      backgroundColor:
+                        index === 0 && c.score > 0.5 ? "#16A34A" : colors.card,
+                      borderWidth: index === 0 && c.score > 0.5 ? 0 : 1,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      marginRight: 8,
+                      flexDirection: "row",
+                      alignItems: "center",
+                    },
+                  ]}
+                >
+                  {index === 0 && c.score > 0.5 && (
+                    <MaterialCommunityIcons
+                      name="robot"
+                      size={14}
+                      color="#fff"
+                      style={{ marginRight: 8 }}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color:
+                          index === 0 && c.score > 0.5 ? "#fff" : colors.text,
+                      },
+                    ]}
+                  >
+                    {c.name}
+                  </Text>
+                  <View
+                    style={{
+                      marginLeft: 8,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 8,
+                      backgroundColor:
+                        index === 0 && c.score > 0.5
+                          ? "rgba(255,255,255,0.12)"
+                          : "transparent",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          index === 0 && c.score > 0.5
+                            ? "#fff"
+                            : colors.subText,
+                        fontSize: 12,
+                      }}
+                    >
+                      {Math.round(c.score * 100)}%
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        }
 
         {/* Edit Modal */}
         <Modal
@@ -3235,11 +3327,28 @@ export default function Chatbox() {
                     );
                     setKeyboardHeight(est);
                   }
-                  // scroll to end so last messages remain visible
+                  // Scroll to end so last messages remain visible. Use multiple
+                  // attempts to handle timing differences across keyboards/ROMs.
+                  try {
+                    requestAnimationFrame(() =>
+                      flatRef.current?.scrollToEnd({ animated: true })
+                    );
+                  } catch (e) {}
+
                   setTimeout(
                     () => flatRef.current?.scrollToEnd({ animated: true }),
                     120
                   );
+                  setTimeout(
+                    () => flatRef.current?.scrollToEnd({ animated: true }),
+                    420
+                  );
+                  // Also attempt after interactions settle
+                  try {
+                    InteractionManager.runAfterInteractions(() => {
+                      flatRef.current?.scrollToEnd({ animated: true });
+                    });
+                  } catch (e) {}
                 }}
                 onBlur={() => {
                   setKeyboardHeight(0);
@@ -3514,11 +3623,8 @@ const styles = StyleSheet.create({
 
   suggestBar: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    backgroundColor: "#fafafa",
+    // container styles are applied inline so keep this minimal
+    overflow: "hidden",
   },
   chip: {
     flexDirection: "row",
@@ -3528,9 +3634,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#e0e0e0",
-    backgroundColor: "#f7f7f7",
+    backgroundColor: "transparent",
   },
-  chipText: { fontSize: 13, color: "#222" },
+  chipText: { fontSize: 13, color: "#222", fontWeight: "600" },
   dot: {
     width: 6,
     height: 6,
