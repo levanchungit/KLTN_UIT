@@ -1050,9 +1050,9 @@ export default function DashboardScreen() {
               }}
             >
               {syncStatus === "syncing" ? (
-                <ActivityIndicator size="small" color={colors.icon} />
+                <ActivityIndicator size="small" color="#F59E0B" />
               ) : (
-                <MaterialIcons name="sync" size={20} color={colors.icon} />
+                <MaterialIcons name="sync" size={20} color="#F59E0B" />
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -1060,7 +1060,7 @@ export default function DashboardScreen() {
               style={styles.iconButton}
               onPress={() => router.push("/charts")}
             >
-              <Ionicons name="bar-chart" size={22} color={colors.icon} />
+              <Ionicons name="bar-chart" size={22} color="#3B82F6" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconButton}
@@ -1069,7 +1069,7 @@ export default function DashboardScreen() {
               <Ionicons
                 name="notifications-outline"
                 size={22}
-                color={colors.icon}
+                color="#EF4444"
               />
               {unreadCount > 0 && (
                 <View style={styles.badge}>

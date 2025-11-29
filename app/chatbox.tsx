@@ -1311,9 +1311,20 @@ export default function Chatbox() {
 
       // clear any previous cancel flag
       cancelledRef.current = false;
-      // xin quyền
-      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!perm.granted) {
+      // xin quyền (robustly accept different response shapes)
+      let perm: any;
+      try {
+        perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      } catch (e) {
+        // some platforms may throw or not implement this call
+        perm = null;
+      }
+
+      const permGranted =
+        perm === true ||
+        (perm && (perm.granted === true || perm.status === "granted"));
+
+      if (!permGranted) {
         Alert.alert("Cần quyền microphone");
         return;
       }
@@ -1351,13 +1362,49 @@ export default function Chatbox() {
         recordStartRef.current = null;
         return;
       }
-
       try {
         await ExpoSpeechRecognitionModule.start({
           lang: "vi-VN",
           interimResults: true,
           continuous: true,
         });
+
+        // Wait briefly for the recognition "start" event to arrive. If the
+        // underlying module fails to emit events (some OEM ROMs / Android
+        // combinations), abort the recording to avoid a stuck state.
+        const waitForStart = async (timeout = 6000) => {
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            if (recognizing) return true;
+            // small delay
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => setTimeout(r, 150));
+          }
+          return false;
+        };
+
+        const started = await waitForStart(6000);
+        if (!started) {
+          console.warn("Speech recognition did not start in time, aborting");
+          try {
+            await ExpoSpeechRecognitionModule.stop();
+          } catch {}
+          try {
+            await audioMeter.stop();
+          } catch {}
+          setIsRecording(false);
+          if (recordTimerRef.current) {
+            clearInterval(recordTimerRef.current);
+            recordTimerRef.current = null;
+          }
+          recordStartRef.current = null;
+          // Removed blocking alert here to avoid intrusive UI on some devices.
+          // Set a non-blocking error state for optional UI feedback and log.
+          try {
+            setError("Không thể bắt đầu ghi âm. Vui lòng thử lại.");
+          } catch {}
+          return;
+        }
       } catch (e) {
         console.warn("SpeechRecognition start failed", e);
         // stop meter and reset
@@ -1583,7 +1630,6 @@ export default function Chatbox() {
         // optional: small measurable log when keyboard appears
         const showListener = Keyboard.addListener("keyboardDidShow", () => {
           // eslint-disable-next-line no-console
-          console.log("Chatbox: keyboardDidShow after focus");
           showListener.remove();
         });
 

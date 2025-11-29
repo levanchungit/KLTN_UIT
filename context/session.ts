@@ -1,6 +1,7 @@
 // src/session.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
+import { writeAsStringAsync } from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
 
 export type UserSession = {
@@ -42,7 +43,7 @@ export async function saveSession(user: UserSession) {
     try {
       const path =
         (FileSystem.documentDirectory || "") + "kltn_widget_user.json";
-      await FileSystem.writeAsStringAsync(
+      await writeAsStringAsync(
         path,
         JSON.stringify({ id: user.id, username: user.username })
       );
@@ -60,7 +61,7 @@ export async function saveSession(user: UserSession) {
       try {
         const path =
           (FileSystem.documentDirectory || "") + "kltn_widget_user.json";
-        await FileSystem.writeAsStringAsync(
+        await writeAsStringAsync(
           path,
           JSON.stringify({ id: user.id, username: user.username })
         );

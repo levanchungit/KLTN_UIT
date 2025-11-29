@@ -35,12 +35,40 @@ export default function useAudioMeter(): UseAudioMeter {
         playsInSilentModeIOS: true,
       });
 
-      const recording = new Audio.Recording();
+      // Ensure Recording class is available. Some runtimes / adapters may not
+      // expose `Audio.Recording` directly — try to resolve a Recording class
+      // from common locations and fail gracefully with a helpful message.
+      let RecordingClass: any = Audio && Audio.Recording;
+      if (!RecordingClass) {
+        try {
+          // Try expo-av directly as a fallback
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const av = require("expo-av");
+          RecordingClass =
+            (av && (av.Audio?.Recording || av.Recording)) || null;
+        } catch (e) {
+          RecordingClass = null;
+        }
+      }
+
+      if (!RecordingClass || typeof RecordingClass !== "function") {
+        console.warn("Recording class not available on this platform", {
+          hasAudio: !!Audio,
+          recordingPresent: !!(Audio && (Audio as any).Recording),
+        });
+        throw new Error(
+          "Recording not supported: Recording class is unavailable on this device."
+        );
+      }
+
+      const recording = new RecordingClass();
       recordingRef.current = recording;
 
-      await recording.prepareToRecordAsync(
-        Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY
-      );
+      const recordingOptions =
+        (Audio && (Audio as any).RECORDING_OPTIONS_PRESET_HIGH_QUALITY) ||
+        undefined;
+
+      await recording.prepareToRecordAsync(recordingOptions);
 
       // set a status update to read metering when available
       recording.setOnRecordingStatusUpdate((status: any) => {
@@ -121,9 +149,31 @@ export default function useAudioMeter(): UseAudioMeter {
     try {
       const rec = recordingRef.current;
       if (!rec) return;
-      await rec.stopAndUnloadAsync();
-      const uri = rec.getURI() || null;
-      setRecordingUri(uri);
+
+      try {
+        await rec.stopAndUnloadAsync();
+      } catch (err: any) {
+        // Some devices / runtimes throw when the native recorder is already
+        // gone (e.g. "Recorder does not exist."). Treat that as a non-fatal
+        // condition: log at debug level and continue cleanup.
+        const msg = err && err.message ? String(err.message) : String(err);
+        if (
+          /recorder does not exist/i.test(msg) ||
+          /recorder.*not.*exist/i.test(msg) ||
+          /recorder.*gone/i.test(msg)
+        ) {
+          console.log("stopAndUnloadAsync: recorder missing (ignored)", msg);
+        } else {
+          console.warn("stop recording failed", err);
+        }
+      }
+
+      try {
+        const uri = recordingRef.current?.getURI?.() || null;
+        setRecordingUri(uri);
+      } catch {}
+
+      // Ensure we always clear internal refs/state even if stop failed
       recordingRef.current = null;
       setIsRecording(false);
       setLevel(0);
@@ -140,7 +190,7 @@ export default function useAudioMeter(): UseAudioMeter {
         } catch {}
       });
     } catch (e) {
-      console.warn("stop recording failed", e);
+      console.warn("stop recording failed (cleanup)", e);
     }
   };
 

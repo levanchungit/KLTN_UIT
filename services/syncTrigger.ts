@@ -44,15 +44,28 @@ export function scheduleSyncDebounced(
       }
 
       // Try to detect offline state (best-effort). If NetInfo is available, use it.
+      // Be defensive: handle default export, missing native module, and call failures.
       let online = true;
       try {
-        const NetInfo = await import("@react-native-community/netinfo");
-        if (NetInfo && NetInfo.fetch) {
-          const state = await NetInfo.fetch();
-          online = !!state.isConnected;
+        const netMod = await import("@react-native-community/netinfo");
+        const NetInfo = (netMod && (netMod.default || netMod)) as any;
+        const fetchFn = NetInfo && (NetInfo.fetch || NetInfo.getCurrentState);
+        if (typeof fetchFn === "function") {
+          try {
+            // Call the available API and guard against native errors
+            const state = await fetchFn.call(NetInfo);
+            online = !!(state && state.isConnected);
+          } catch (callErr) {
+            console.warn(
+              "NetInfo available but fetch/getCurrentState failed:",
+              callErr
+            );
+            // If NetInfo is broken (native module missing), assume online to avoid crashes
+            online = true;
+          }
         }
       } catch (e) {
-        // netinfo not installed; assume online
+        // netinfo not installed or import failed; assume online
       }
       if (!online) {
         // schedule retry with backoff
