@@ -133,10 +133,7 @@ export default function WalletSettingsScreen() {
                     if (success) {
                       setBiometricEnabled(true);
                       await saveBiometricEnabled(true);
-                      Alert.alert(
-                        t("success"),
-                        t("biometricSuccess", { type: biometricType })
-                      );
+                      // Biometric enabled — no success alert shown (silently enable)
                     } else {
                       Alert.alert(
                         t("biometricFailed"),

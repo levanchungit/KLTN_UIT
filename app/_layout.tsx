@@ -6,6 +6,7 @@ import { UserProvider, useUser } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
 import { initSmartNotifications } from "@/services/smartNotificationService";
+import { isBiometricEnabled } from "@/utils/biometric";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
   DarkTheme,
@@ -202,8 +203,25 @@ function RootLayoutNav() {
       !inAuthGroup &&
       !hasCheckedBiometric
     ) {
+      // Mark checked to avoid repeated routing
       setHasCheckedBiometric(true);
-      router.replace("/biometric-loading");
+
+      // Only show biometric-loading screen if the user explicitly enabled biometric unlock
+      (async () => {
+        try {
+          const enabled = await isBiometricEnabled();
+          if (enabled) {
+            router.replace("/biometric-loading");
+          } else {
+            // No biometric requested by user — proceed to main app
+            router.replace("/(tabs)");
+          }
+        } catch (e) {
+          console.warn("Failed to check biometric preference:", e);
+          // Fail safe: don't block navigation
+          router.replace("/(tabs)");
+        }
+      })();
     }
 
     // If we're on auth and already logged in with a real account, go to main tabs
@@ -236,7 +254,7 @@ function RootLayoutNav() {
 
   // Auto-sync on app foreground and periodically
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     let mounted = true;
 
     const handleAppState = (next: any) => {
