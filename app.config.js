@@ -86,7 +86,12 @@ export default {
       typedRoutes: true,
     },
     extra: {
-      EXPO_PUBLIC_OPENAI_API_KEY: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
+      EXPO_PUBLIC_HUGGINGFACE_API_KEY:
+        process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY ||
+        process.env.HUGGINGFACE_API_KEY,
+      EXPO_PUBLIC_HUGGINGFACE_MODEL:
+        process.env.EXPO_PUBLIC_HUGGINGFACE_MODEL ||
+        process.env.HUGGINGFACE_MODEL,
       EXPO_PUBLIC_OCR_SPACE_API_KEY: process.env.EXPO_PUBLIC_OCR_SPACE_API_KEY,
       EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID:
         process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID,

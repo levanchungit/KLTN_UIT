@@ -15,6 +15,7 @@ import {
   deleteTx,
   updateTransaction,
 } from "@/repos/transactionRepo";
+import { sendToHf } from "@/services/hfChatbot";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -56,8 +57,13 @@ import {
 } from "react-native-safe-area-context";
 
 // Minimal placeholders (keeps file compiling if config values/helpers missing)
-const OPENAI_API_KEY =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || "";
+const HUGGINGFACE_API_KEY =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_HUGGINGFACE_API_KEY ||
+  Constants.expoConfig?.extra?.HUGGINGFACE_API_KEY;
+const HUGGINGFACE_MODEL =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_HUGGINGFACE_MODEL ||
+  Constants.expoConfig?.extra?.HUGGINGFACE_MODEL ||
+  "llama-3.1-8b-instant";
 const OCR_SPACE_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_OCR_SPACE_API_KEY || "";
 
@@ -76,6 +82,130 @@ function makeShortMsg(io: any, categoryName: any, amount: any, note: any) {
   return io === "OUT" ? `Đã ghi nhận chi ${money}` : `Đã ghi nhận thu ${money}`;
 }
 
+// Parse date from AI response or user input
+function parseDateFromAI(aiResponse: string, originalNote: string): Date {
+  const today = new Date();
+  const combined = (aiResponse + " " + originalNote).toLowerCase();
+
+  console.log("🔍 Parsing date from:", originalNote);
+
+  // Priority 1: Check for specific date formats
+
+  // Format 1: DD/MM/YYYY or DD-MM-YYYY (full date with year)
+  const ddmmyyyyMatch = originalNote.match(
+    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
+  );
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1]);
+    const month = parseInt(ddmmyyyyMatch[2]) - 1; // Month is 0-indexed
+    const year = parseInt(ddmmyyyyMatch[3]);
+    const parsedDate = new Date(year, month, day);
+    console.log(`✅ Found date format DD/MM/YYYY: ${day}/${month + 1}/${year}`);
+    return parsedDate;
+  }
+
+  // Format 2: DD/MM or DD-MM (no year - use current year or infer intelligently)
+  const ddmmMatch = originalNote.match(
+    /(?:ngày\s+)?(\d{1,2})[\/\-](\d{1,2})(?!\d)/
+  );
+  if (ddmmMatch) {
+    const day = parseInt(ddmmMatch[1]);
+    const month = parseInt(ddmmMatch[2]) - 1; // Month is 0-indexed
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+
+    // Smart year inference: if month is in the future, use current year; otherwise check if it makes sense
+    let year = currentYear;
+    const parsedDate = new Date(year, month, day);
+
+    // If the date is more than 1 month in the future, assume user meant last year
+    const diffDays =
+      (parsedDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+    if (diffDays > 31) {
+      year = currentYear - 1;
+    }
+
+    const finalDate = new Date(year, month, day);
+    console.log(
+      `✅ Found date format DD/MM (no year): ${day}/${month + 1} → ${day}/${
+        month + 1
+      }/${year}`
+    );
+    return finalDate;
+  }
+
+  // Format 3: YYYY-MM-DD
+  const yyyymmddMatch = originalNote.match(
+    /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/
+  );
+  if (yyyymmddMatch) {
+    const year = parseInt(yyyymmddMatch[1]);
+    const month = parseInt(yyyymmddMatch[2]) - 1;
+    const day = parseInt(yyyymmddMatch[3]);
+    const parsedDate = new Date(year, month, day);
+    console.log(`✅ Found date format YYYY-MM-DD: ${year}-${month + 1}-${day}`);
+    return parsedDate;
+  }
+
+  // Priority 2: Vietnamese relative date expressions
+  if (originalNote.toLowerCase().includes("hôm qua")) {
+    console.log('✅ Found "hôm qua"');
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday;
+  }
+
+  if (originalNote.toLowerCase().includes("hôm nay")) {
+    console.log('✅ Found "hôm nay"');
+    return today;
+  }
+
+  // Check for "N ngày trước" pattern
+  const vnDaysMatch = originalNote.match(/(\d+)\s*ngày\s*trước/i);
+  if (vnDaysMatch) {
+    const daysAgo = parseInt(vnDaysMatch[1]);
+    console.log(`✅ Found "${daysAgo} ngày trước"`);
+    const date = new Date(today);
+    date.setDate(date.getDate() - daysAgo);
+    return date;
+  }
+
+  if (originalNote.toLowerCase().includes("tuần trước")) {
+    console.log('✅ Found "tuần trước"');
+    const lastWeek = new Date(today);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    return lastWeek;
+  }
+
+  if (originalNote.toLowerCase().includes("tháng trước")) {
+    console.log('✅ Found "tháng trước"');
+    const lastMonth = new Date(today);
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    return lastMonth;
+  }
+
+  // Priority 3: Check AI response for keywords
+  if (combined.includes("yesterday")) {
+    console.log('✅ AI suggested "yesterday"');
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday;
+  }
+
+  // Check for N_days_ago pattern in AI response
+  const daysAgoMatch = combined.match(/(\d+)_days?_ago/);
+  if (daysAgoMatch) {
+    const daysAgo = parseInt(daysAgoMatch[1]);
+    console.log(`✅ AI suggested "${daysAgo} days ago"`);
+    const date = new Date(today);
+    date.setDate(date.getDate() - daysAgo);
+    return date;
+  }
+
+  console.log("⚠️ No date found, using today");
+  return today;
+}
+
 type Msg = any;
 
 async function getEmotionalReplyDirect(args: {
@@ -83,72 +213,150 @@ async function getEmotionalReplyDirect(args: {
   categoryName: string;
   amount: number | null;
   note: string;
+  originalText?: string; // Full original text for date parsing
 }): Promise<{
   message: string;
   categoryId?: string;
   amount: number | null;
   io: "IN" | "OUT";
   note: string;
+  date?: Date;
 }> {
-  const { io, categoryName, amount, note } = args;
+  const { io, categoryName, amount, note, originalText } = args;
 
   const listCategoriesUser = await listCategories();
-  const system = `
-System: Bạn là trợ thủ tài chính của ứng dụng.
-Trả về DUY NHẤT một JSON theo mẫu sau (không giải thích thêm bên ngoài JSON):
-{
-  "amount": number | null,
-  "io": "IN" | "OUT",
-  "categoryId": string | null,
-  "note": string,
-  "feature": "_taogiaodich",
-  "message": string
-}
-- "message": 1–2 câu tiếng Việt tự nhiên mô tả giao dịch (không kèm JSON).
-- Nếu không chắc categoryId, có thể để null.
-Danh mục hiện có:
-${listCategoriesUser.map((c) => `- ${c.id}: ${c.name}`).join("\n")}
-  `.trim();
+
+  // Parse date from original text (before cleaning) for accurate date extraction
+  console.log("🔍 getEmotionalReplyDirect inputs:");
+  console.log("  - note:", note);
+  console.log("  - originalText:", originalText);
+
+  if (!originalText) {
+    console.warn(
+      "⚠️ WARNING: originalText is undefined! Date parsing may fail!"
+    );
+    console.warn(
+      "⚠️ This means the old code path is running. Please RELOAD the app!"
+    );
+  }
+
+  const textForDateParsing = originalText || note;
+  console.log("  - textForDateParsing:", textForDateParsing);
+
+  const extractedDate: Date = parseDateFromAI("", textForDateParsing);
+  console.log(
+    "📅 Parsed date from:",
+    textForDateParsing,
+    "→",
+    extractedDate.toLocaleDateString("vi-VN")
+  );
+
+  const isToday = extractedDate.toDateString() === new Date().toDateString();
+  const isFuture = extractedDate > new Date();
+  const isPast = extractedDate < new Date() && !isToday;
+
+  let dateDisplay: string;
+  let timeContext: string;
+
+  if (isToday) {
+    dateDisplay = "hôm nay";
+    timeContext = "hôm nay";
+  } else if (isFuture) {
+    dateDisplay = extractedDate.toLocaleDateString("vi-VN");
+    timeContext = `cho ngày ${dateDisplay} (tương lai)`;
+  } else {
+    dateDisplay = extractedDate.toLocaleDateString("vi-VN");
+    timeContext = `ngày ${dateDisplay}`;
+  }
+
+  const prompt = `Bạn là trợ thủ tài chính thân thiện của người Việt. Tạo câu xác nhận giao dịch ngắn gọn, tự nhiên.
+
+📝 Người dùng nói: "${note}"
+
+✓ Đã xác định:
+- ${io === "IN" ? "Thu" : "Chi"}: ${
+    amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
+  }
+- Danh mục: ${categoryName}
+- Ngày: ${dateDisplay}${isFuture ? " (TƯƠNG LAI)" : ""}
+
+📋 VÍ DỤ CHUẨN (học theo):
+
+"Du lịch đà lạt 397k ngày 25/12/2025"
+→ Đã lên lịch chi 397.000đ cho chuyến du lịch Đà Lạt vào ngày 25/12/2025. Đừng quên nhé! 📅🎒
+
+"hôm qua mua cafe 50k"
+→ Đã ghi hôm qua chi 50.000đ mua cafe. Thư giãn tuyệt! ☕
+
+"ngày 5/12 mua vé máy bay 2tr"
+→ Đã lên lịch chi 2.000.000đ mua vé máy bay ngày 5/12/2025. Chuẩn bị hành lý nhé! ✈️
+
+"nhận lương 15tr"
+→ Đã ghi thu 15.000.000đ từ lương hôm nay. Chúc mừng bạn! 💰
+
+"ăn trưa 45k"
+→ Đã ghi chi 45.000đ ăn trưa hôm nay. Ngon miệng! 🍜
+
+YÊU CẦU: Tạo câu tương tự (1-2 câu, emoji cuối), CHỈ TRẢ CÂU PHẢN HỒI:`;
 
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: note },
-        ],
-        temperature: 0.5,
-        max_tokens: 80,
-      }),
-    });
-    const data = await r.json();
-    const raw = data?.choices?.[0]?.message?.content || "";
-    const j = tryPickJson(raw);
+    if (HUGGINGFACE_API_KEY) {
+      console.log("🤖 Calling AI for response...");
+      const reply = await sendToHf(
+        prompt,
+        HUGGINGFACE_MODEL,
+        HUGGINGFACE_API_KEY,
+        {
+          max_new_tokens: 150,
+          temperature: 0.8,
+        }
+      );
 
-    if (j?.message) {
-      return {
-        message: String(j.message),
-        categoryId: j.categoryId ?? undefined,
-        amount: typeof j.amount === "number" ? j.amount : amount,
-        io: j.io === "IN" || j.io === "OUT" ? j.io : io,
-        note: String(j.note ?? note),
-      };
+      console.log("✅ AI replied:", reply?.substring(0, 100));
+
+      if (reply && reply.trim()) {
+        return {
+          message: reply.trim(),
+          categoryId: undefined,
+          amount,
+          io,
+          note,
+          date: extractedDate,
+        };
+      }
     }
-  } catch {}
+  } catch (e) {
+    console.warn("❌ AI failed:", e);
+  }
 
-  // Fallback: không parse được JSON → tự tạo câu ngắn
+  // Fallback: Smart response with full context
+  let dateStr = "";
+  let verb = "Đã ghi";
+
+  if (isFuture) {
+    dateStr = ` cho ngày ${extractedDate.toLocaleDateString("vi-VN")}`;
+    verb = "Đã lên lịch";
+  } else if (isPast) {
+    dateStr = ` ngày ${extractedDate.toLocaleDateString("vi-VN")}`;
+    verb = "Đã ghi";
+  } else {
+    dateStr = " hôm nay";
+    verb = "Đã ghi";
+  }
+
+  const amountStr = amount ? amount.toLocaleString("vi-VN") + "đ " : "";
+  const fallbackMsg =
+    io === "OUT"
+      ? `${verb} chi ${amountStr}${note}${dateStr}. ${isFuture ? "📅" : "✓"}`
+      : `${verb} thu ${amountStr}${note}${dateStr}. ${isFuture ? "📅" : "✓"}`;
+
   return {
-    message: makeShortMsg(io, categoryName, amount, note),
+    message: fallbackMsg,
     categoryId: undefined,
     amount,
     io,
     note,
+    date: extractedDate,
   };
 }
 
@@ -653,52 +861,348 @@ async function processReceiptImage(imageUri: string): Promise<{
 }
 
 /* ---------------- Helpers: VN money + GPT fallback ---------------- */
+// ✨ UNIFIED AI PARSER - Single API call to parse everything
+const parseTransactionWithAI = async (
+  text: string
+): Promise<{
+  amount: number | null;
+  note: string;
+  categoryName: string;
+  io: "IN" | "OUT";
+  date: Date;
+  message: string;
+} | null> => {
+  try {
+    if (!HUGGINGFACE_API_KEY || HUGGINGFACE_API_KEY.length < 10) {
+      console.log("❌ No API key");
+      return null;
+    }
+
+    const today = new Date();
+    const todayStr = today.toLocaleDateString("vi-VN");
+
+    const prompt = `Bạn là AI phân tích giao dịch tài chính của người Việt. Phân tích văn bản và trả về JSON CHÍNH XÁC.
+
+VĂN BẢN: "${text}"
+
+PHÂN TÍCH VÀ TRẢ VỀ JSON:
+{
+  "amount": <số tiền VNĐ, số nguyên>,
+  "note": "<mô tả ngắn gọn>",
+  "categoryName": "<tên danh mục>",
+  "io": "<IN hoặc OUT>",
+  "date": "<YYYY-MM-DD>",
+  "message": "<câu xác nhận thân thiện>"
+}
+
+QUY TẮC PHÂN TÍCH:
+
+1. SỐ TIỀN:
+- "4tr8" = 4800000 (4 triệu 8 trăm nghìn)
+- "847k948" = 847948 (847 nghìn 948)
+- "1tr238k" = 1238000
+- "2tr5" = 2500000 (2 triệu 5 trăm nghìn)
+- "50k" = 50000
+- Luôn trả về số nguyên VNĐ
+
+2. NGÀY (format: YYYY-MM-DD):
+- "hôm nay" / không có ngày → "2025-12-01"
+- "hôm qua" → "2025-11-30"
+- "25/11/2025" → "2025-11-25"
+- "30/11/2025" → "2025-11-30"
+- "2 ngày trước" → "2025-11-29"
+- "tuần trước" → "2025-11-24"
+QUAN TRỌNG: Luôn tính toán và trả về ngày chính xác theo format YYYY-MM-DD
+
+3. DANH MỤC (chọn phù hợp nhất):
+- Du lịch: du lịch, đi chơi, khách sạn, vé máy bay
+- Ăn uống: ăn, uống, cafe, nhà hàng, cơm, bún, phở
+- Di chuyển: xăng, grab, taxi, xe, vé xe
+- Mua sắm: mua, shopping, shopee, lazada, quần áo
+- Giải trí: phim, game, vui chơi
+- Nhà cửa: tiền nhà, thuê nhà, điện, nước
+- Thu nhập: lương, thưởng, nhận tiền
+
+4. LOẠI (io):
+- "OUT" (chi tiêu): mua, chi, mất, trả, nạp
+- "IN" (thu nhập): nhận, thu, lương, thưởng
+
+5. MÔ TẢ (note): Giữ nội dung chính, bỏ số tiền và ngày
+
+6. MESSAGE: Câu xác nhận ngắn gọn, thân thiện, có emoji
+
+VÍ DỤ:
+
+Input: "Du lịch đà lạt 4tr8 ngày 25/11/2025"
+Output:
+{
+  "amount": 4800000,
+  "note": "Du lịch đà lạt",
+  "categoryName": "Du lịch",
+  "io": "OUT",
+  "date": "2025-11-25",
+  "message": "Đã ghi chi 4.800.000đ cho chuyến du lịch Đà Lạt ngày 25/11/2025. Chúc bạn có chuyến đi vui vẻ! 🎒"
+}
+
+Input: "hôm qua ăn trưa 45k"
+Output:
+{
+  "amount": 45000,
+  "note": "ăn trưa",
+  "categoryName": "Ăn uống",
+  "io": "OUT",
+  "date": "2025-11-30",
+  "message": "Đã ghi hôm qua chi 45.000đ ăn trưa. Ngon miệng! 🍜"
+}
+
+Input: "mua xăng 500k ngày 28/11/2025"
+Output:
+{
+  "amount": 500000,
+  "note": "mua xăng",
+  "categoryName": "Di chuyển",
+  "io": "OUT",
+  "date": "2025-11-28",
+  "message": "Đã ghi chi 500.000đ mua xăng ngày 28/11/2025. ⛽"
+}
+
+CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH:`;
+
+    const response = await sendToHf(
+      prompt,
+      HUGGINGFACE_MODEL,
+      HUGGINGFACE_API_KEY,
+      {
+        max_new_tokens: 200,
+        temperature: 0.3,
+      }
+    );
+
+    if (!response || !response.trim()) {
+      console.log("❌ Empty AI response");
+      return null;
+    }
+
+    // Try to extract JSON from response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log("❌ No JSON found in response:", response.substring(0, 100));
+      return null;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.log("❌ JSON parse error:", parseError);
+      console.log("❌ Invalid JSON string:", jsonMatch[0].substring(0, 200));
+      return null;
+    }
+
+    // Validate and convert
+    if (!parsed.amount || !parsed.note || !parsed.io) {
+      console.log("❌ Invalid JSON structure:", parsed);
+      return null;
+    }
+
+    // Parse date - ALWAYS parse from original text first (most reliable)
+    let parsedDate = today;
+
+    console.log("📅 Parsing date from original text:", text);
+
+    // PRIORITY 1: Parse date directly from original text using regex
+    const textDateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (textDateMatch) {
+      const day = parseInt(textDateMatch[1]);
+      const month = parseInt(textDateMatch[2]) - 1; // 0-indexed
+      const year = parseInt(textDateMatch[3]);
+      parsedDate = new Date(year, month, day);
+      console.log(
+        `✅ Text date: ${day}/${month + 1}/${year} →`,
+        parsedDate.toLocaleDateString("vi-VN")
+      );
+    } else {
+      // PRIORITY 2: Try AI parsed date if no date in text
+      console.log("📅 No date in text, trying AI date:", parsed.date);
+      if (parsed.date) {
+        const dateMatch = parsed.date.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+          const year = parseInt(dateMatch[1]);
+          const month = parseInt(dateMatch[2]) - 1;
+          const day = parseInt(dateMatch[3]);
+          parsedDate = new Date(year, month, day);
+          console.log(
+            `✅ AI date: ${year}-${month + 1}-${day} →`,
+            parsedDate.toLocaleDateString("vi-VN")
+          );
+        }
+      }
+
+      // PRIORITY 3: Parse Vietnamese relative dates from text
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes("hôm qua")) {
+        parsedDate = new Date(today);
+        parsedDate.setDate(parsedDate.getDate() - 1);
+        console.log("✅ hôm qua →", parsedDate.toLocaleDateString("vi-VN"));
+      } else if (lowerText.includes("tuần trước")) {
+        parsedDate = new Date(today);
+        parsedDate.setDate(parsedDate.getDate() - 7);
+        console.log("✅ tuần trước →", parsedDate.toLocaleDateString("vi-VN"));
+      } else {
+        const daysAgoMatch = lowerText.match(/(\d+)\s*ngày\s*trước/);
+        if (daysAgoMatch) {
+          const daysAgo = parseInt(daysAgoMatch[1]);
+          parsedDate = new Date(today);
+          parsedDate.setDate(parsedDate.getDate() - daysAgo);
+          console.log(
+            `✅ ${daysAgo} ngày trước →`,
+            parsedDate.toLocaleDateString("vi-VN")
+          );
+        }
+      }
+    }
+
+    console.log("📅 Final date:", parsedDate.toLocaleDateString("vi-VN"));
+
+    return {
+      amount: parseInt(parsed.amount),
+      note: parsed.note.trim(),
+      categoryName: parsed.categoryName || "Khác",
+      io: parsed.io === "IN" ? "IN" : "OUT",
+      date: parsedDate,
+      message: parsed.message || "Đã ghi nhận giao dịch.",
+    };
+  } catch (error) {
+    console.log(
+      "❌ AI parsing error:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return null;
+  }
+};
+
 const parseAmountVN = async (text: string): Promise<number | null> => {
   if (!text || typeof text !== "string") return null;
 
-  // Remove common non-numeric characters but keep numbers, dots, commas
+  // PRIORITY 1: Always try AI first for complex cases
+  console.log("🤖 Calling AI for amount extraction...");
+  const aiAmount = await getAmountFromHF(text);
+  if (aiAmount !== null && aiAmount > 0) {
+    console.log("✅ AI extracted amount:", aiAmount);
+    return aiAmount;
+  }
+
+  // PRIORITY 2: Regex fallback if AI fails
+  console.log("⚠️ AI failed, trying regex...");
   const cleaned = text.replace(/[^\d.,ktrmđvnd]/gi, " ").trim();
 
-  // Try regex first
+  // Try regex first - Enhanced to handle complex formats like "847k948đ"
   let regexAmount: number | null = null;
 
-  // Pattern 2: Numbers with units (25k, 100tr, 1tr238k, 1 triệu, etc.) - match all and sum
-  const pattern2 = text.match(
-    /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/gi
+  // Enhanced Pattern: Parse complex formats like "847k948" or "1tr238k"
+  // Match patterns: <number><unit><number><unit>...
+  const complexPattern = text.match(
+    /(\d+)(k|tr|tỷ|ty|t|triệu|nghìn)(\d+)?(k|đ|vnd)?/gi
   );
-  if (pattern2) {
-    console.log("Pattern2 matches:", pattern2);
-    let total = 0;
-    for (const match of pattern2) {
-      const subMatch = match.match(
-        /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/i
-      );
-      if (subMatch && subMatch[2]) {
-        // Only sum if has unit
-        const num = parseFloat(subMatch[1].replace(",", "."));
-        const unit = subMatch[2]?.toLowerCase();
-        let factor = 1;
-        if (unit === "k" || unit === "nghìn" || unit === "ng") factor = 1000;
-        else if (
-          unit === "tr" ||
-          unit === "triệu" ||
-          unit === "trieu" ||
-          unit === "m"
-        )
-          factor = 1000000;
-        else if (unit === "tỷ" || unit === "ty" || unit === "t")
-          factor = 1000000000;
-        else if (unit === "vnd" || unit === "đ") factor = 1;
-        total += num * factor;
-        console.log(
-          `Match: ${match} -> num: ${num}, unit: ${unit}, factor: ${factor}, add: ${
-            num * factor
-          }`
-        );
+  if (complexPattern && complexPattern.length > 0) {
+    console.log("Complex pattern matches:", complexPattern);
+    // Take the longest/most specific match
+    const bestMatch = complexPattern.sort((a, b) => b.length - a.length)[0];
+
+    // Parse: "847k948đ" -> 847000 + 948 = 847948
+    const parseComplex = (str: string): number | null => {
+      str = str.toLowerCase();
+      let total = 0;
+
+      // Match: number followed by optional unit, repeatedly
+      const parts = str.match(/(\d+)(k|tr|triệu|trieu|tỷ|ty|t|nghìn|ng)?/gi);
+      if (!parts) return null;
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const m = part.match(/(\d+)(k|tr|triệu|trieu|tỷ|ty|t|nghìn|ng)?/i);
+        if (!m) continue;
+
+        const num = parseInt(m[1]);
+        const unit = m[2]?.toLowerCase();
+
+        if (unit === "tr" || unit === "triệu" || unit === "trieu") {
+          total += num * 1000000;
+        } else if (unit === "tỷ" || unit === "ty" || unit === "t") {
+          total += num * 1000000000;
+        } else if (unit === "k" || unit === "nghìn" || unit === "ng") {
+          total += num * 1000;
+        } else {
+          // No unit - if this comes after a unit, treat as smaller denomination
+          if (total > 0) {
+            // After a unit, determine the scale based on previous unit
+            // After 'tr' or 'triệu': treat as hundred thousands (e.g., "4tr8" = 4,800,000)
+            // After 'k': treat as ones (e.g., "847k948" = 847,948)
+            const prevUnit =
+              i > 0 ? parts[i - 1].match(/[a-z]+/i)?.[0]?.toLowerCase() : null;
+            if (prevUnit && (prevUnit === "tr" || prevUnit.includes("tri"))) {
+              // After tr: 8 = 800,000 (hundred thousands)
+              total += num * 100000;
+            } else {
+              // After k or other: just add the number
+              total += num;
+            }
+          } else {
+            total = num;
+          }
+        }
       }
+
+      return total > 0 ? total : null;
+    };
+
+    const parsed = parseComplex(bestMatch);
+    if (parsed) {
+      console.log("Regex parsed complex amount:", parsed, "from", bestMatch);
+      regexAmount = parsed;
     }
-    console.log("Regex Total:", total);
-    if (total > 0) regexAmount = Math.round(total);
+  }
+
+  // Fallback: Original simple pattern (if complex parsing failed)
+  if (!regexAmount) {
+    // Pattern 2: Numbers with units (25k, 100tr, 1 triệu, etc.) - match all and sum
+    const pattern2 = text.match(
+      /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/gi
+    );
+    if (pattern2) {
+      console.log("Pattern2 matches:", pattern2);
+      let total = 0;
+      for (const match of pattern2) {
+        const subMatch = match.match(
+          /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/i
+        );
+        if (subMatch && subMatch[2]) {
+          // Only sum if has unit
+          const num = parseFloat(subMatch[1].replace(",", "."));
+          const unit = subMatch[2]?.toLowerCase();
+          let factor = 1;
+          if (unit === "k" || unit === "nghìn" || unit === "ng") factor = 1000;
+          else if (
+            unit === "tr" ||
+            unit === "triệu" ||
+            unit === "trieu" ||
+            unit === "m"
+          )
+            factor = 1000000;
+          else if (unit === "tỷ" || unit === "ty" || unit === "t")
+            factor = 1000000000;
+          else if (unit === "vnd" || unit === "đ") factor = 1;
+          total += num * factor;
+          console.log(
+            `Match: ${match} -> num: ${num}, unit: ${unit}, factor: ${factor}, add: ${
+              num * factor
+            }`
+          );
+        }
+      }
+      console.log("Regex Total:", total);
+      if (total > 0) regexAmount = Math.round(total);
+    }
   }
 
   // Other patterns...
@@ -736,61 +1240,63 @@ const parseAmountVN = async (text: string): Promise<number | null> => {
     }
   }
 
-  // Always call GPT to verify and get best result
-  console.log("Calling GPT for verification...");
-  const gptAmount = await getAmountFromGPT(text);
-  if (gptAmount !== null) {
-    console.log("GPT found amount:", gptAmount);
-    // Prefer GPT result as it's more accurate
-    return gptAmount;
-  }
-
-  // Fallback to regex if GPT fails
-  console.log("GPT failed, using regex amount:", regexAmount);
+  // Fallback to regex if HF fails
+  console.log("Regex amount:", regexAmount);
   return regexAmount;
 };
 
-// GPT fallback for amount extraction
-const getAmountFromGPT = async (text: string): Promise<number | null> => {
+// Hugging Face fallback for amount extraction
+const getAmountFromHF = async (text: string): Promise<number | null> => {
   try {
-    const apiKey = OPENAI_API_KEY;
-    if (!apiKey || apiKey === "YOUR_OPENAI_API_KEY") {
-      console.log("No OpenAI API key, skipping GPT");
+    if (!HUGGINGFACE_API_KEY || HUGGINGFACE_API_KEY.length < 10) {
+      console.log(
+        "❌ No Hugging Face API key, skipping AI extraction. Key:",
+        HUGGINGFACE_API_KEY ? "invalid" : "missing"
+      );
       return null;
     }
+    console.log(
+      "✅ Using HF API key:",
+      HUGGINGFACE_API_KEY.substring(0, 8) + "..."
+    );
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a helpful assistant that extracts monetary amounts from Vietnamese text. Return only the number in VND (without currency symbol), or 'null' if no amount is found. Be precise and consider Vietnamese number formats like 1tr = 1,000,000, 25k = 25,000, etc. For concatenated numbers like '8tr4' means 8,000,004 VND (8 million + 4), '1tr238k' means 1,238,000 VND (1 million + 238 thousand), '74tr387k398đ' means 74,387,398 VND, '74tr480k' means 74,480,000 VND (74 million + 480 thousand).",
-          },
-          {
-            role: "user",
-            content: `Extract the monetary amount from this text: "${text}"`,
-          },
-        ],
-        max_tokens: 50,
-        temperature: 0,
-      }),
-    });
+    const prompt = `Trích xuất số tiền CHÍNH XÁC từ văn bản tiếng Việt. Chỉ trả về SỐ (VNĐ), không có chữ, dấu, ký tự khác.
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (content && content !== "null") {
-      const num = parseFloat(content.replace(/[^\d.]/g, ""));
-      if (!isNaN(num) && num > 0) return Math.round(num);
+QUY TẮC QUAN TRỌNG:
+- "847k948đ" = 847948 (847 × 1000 + 948)
+- "1tr238k" = 1238000 (1 × 1000000 + 238 × 1000)
+- "2tr5" = 2500000 (2 × 1000000 + 5 × 100000, vì 5 đứng sau tr = 500 nghìn)
+- "50k" = 50000
+- "100đ" = 100
+- "du lich da lat 847k948d" = 847948
+
+Văn bản: "${text}"
+
+CHỈ TRẢ VỀ SỐ NGUYÊN (ví dụ: 847948):`;
+
+    const response = await sendToHf(
+      prompt,
+      HUGGINGFACE_MODEL,
+      HUGGINGFACE_API_KEY,
+      {
+        max_new_tokens: 20,
+        temperature: 0.1,
+      }
+    );
+
+    if (response && response.trim()) {
+      // Extract ONLY digits from response
+      const cleaned = response.trim().replace(/\D/g, "");
+      const num = parseInt(cleaned, 10);
+      if (!isNaN(num) && num > 0) {
+        console.log("✅ AI parsed:", response.trim(), "→", num);
+        return num;
+      } else {
+        console.log("⚠️ AI response invalid:", response.trim());
+      }
     }
   } catch (error) {
-    console.error("GPT API error:", error);
+    console.error("❌ AI extraction error:", error);
   }
   return null;
 };
@@ -1081,6 +1587,7 @@ async function createTransaction(draft: {
   io: "IN" | "OUT";
   categoryId?: string; // cần có để tạo; nếu chưa có hãy dùng pendingPick
   note: string;
+  date?: Date; // Optional date from AI extraction
   allowZeroAmount?: boolean; // Allow creating transaction with 0 amount (for image receipts)
 }) {
   if (!draft.allowZeroAmount && (!draft.amount || draft.amount <= 0)) {
@@ -1090,18 +1597,35 @@ async function createTransaction(draft: {
     throw new Error("Chưa có danh mục để tạo giao dịch.");
   }
 
+  // Validate date: prevent future dates
+  const transactionDate = draft.date || new Date();
+  const today = new Date();
+  today.setHours(23, 59, 59, 999); // Set to end of today for comparison
+
+  if (transactionDate > today) {
+    throw new Error(
+      "❌ Không thể tạo giao dịch cho ngày tương lai. Vui lòng chọn ngày hôm nay hoặc quá khứ."
+    );
+  }
+
   // chọn account mặc định: ưu tiên include_in_total=1 rồi đến account đầu tiên
   const accounts = await listAccounts().catch(() => []);
   const acc =
     accounts.find((a: any) => a.include_in_total === 1) || accounts[0] || null;
   if (!acc?.id) throw new Error("Chưa có tài khoản để ghi giao dịch.");
+  console.log(
+    "💾 Creating transaction with date:",
+    transactionDate.toISOString(),
+    "→",
+    transactionDate.toLocaleDateString("vi-VN")
+  );
 
   const common = {
     accountId: acc.id as string,
     categoryId: draft.categoryId as string,
     amount: draft.amount || 0, // Use 0 if amount is null
     note: draft.note,
-    when: new Date(),
+    when: transactionDate,
     updatedAt: new Date(),
   };
 
@@ -1869,19 +2393,24 @@ export default function Chatbox() {
     scrollToEnd();
 
     // Parse amount and clean note from text
+    // IMPORTANT: Skip parseTransactionText's amount, use AI-powered parseAmountVN instead
     const parsed = parseTransactionText(text);
     const cleanNote = parsed.note || text;
-    const parsedAmount = parsed.amount;
+
+    // Use full text for amount parsing (AI can handle complex formats better)
+    console.log("💰 Parsing amount from:", text);
+    const amount = await parseAmountVN(text);
+    console.log("💰 Final amount:", amount);
 
     const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
     const best = ranked[0];
-    const amount = parsedAmount || (await parseAmountVN(text));
 
     const ai = await getEmotionalReplyDirect({
       io,
       categoryName: best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
       amount,
       note: cleanNote,
+      originalText: text, // ← FIX: Pass original text for date parsing!
     });
 
     // Quyết định danh mục cuối:
@@ -1928,21 +2457,26 @@ export default function Chatbox() {
         amount: ai.amount,
         io: ai.io,
         choices: ranked.slice(0, 4), // Show top 4 suggestions
-      });
+        date: ai.date, // Store date for later use
+      } as any);
       scrollToEnd();
       return; // đợi user chọn trước khi tạo
     }
 
     // Đủ dữ kiện → tạo giao dịch
     try {
+      console.log("📅 Creating transaction with date:", ai.date);
       const txn = await createTransaction({
         amount: ai.amount,
         io: ai.io,
         categoryId: finalCategoryId,
         note: ai.note,
+        date: ai.date,
       });
 
-      const when = new Date().toLocaleDateString();
+      const transactionDate = ai.date || new Date();
+      console.log("📅 Transaction created with date:", transactionDate);
+      const when = transactionDate.toLocaleDateString();
       const selectedCategory = items.find((c) => c.id === finalCategoryId);
       setMessages((m) => [
         ...m.slice(0, -1), // remove typing
@@ -2024,9 +2558,11 @@ export default function Chatbox() {
         io: pendingPick.io,
         categoryId: c.categoryId,
         note: pendingPick.text,
+        date: (pendingPick as any).date, // Pass date if available
       });
 
-      const when = new Date().toLocaleDateString();
+      const transactionDate = (pendingPick as any).date || new Date();
+      const when = transactionDate.toLocaleDateString();
       const selectedCategory = items.find((cat) => cat.id === c.categoryId);
       setMessages((m) => [
         ...m,
@@ -2257,66 +2793,194 @@ export default function Chatbox() {
       });
       scrollToEnd();
 
-      // Parse amount and clean note from text
-      const parsed = parseTransactionText(userText);
-      const cleanNote = parsed.note || userText;
-      const parsedAmount = parsed.amount;
+      // ✨ SINGLE AI CALL - Parse everything at once (AI will parse date intelligently)
+      console.log("🚀 Calling unified AI parser for:", userText);
+      const aiResult = await parseTransactionWithAI(userText);
 
-      // Parse and classify with AI
-      const amt = parsedAmount || (await parseAmountVN(userText));
-      const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+      console.log("🔍 AI Result:", aiResult ? "SUCCESS" : "FAILED");
 
-      if (!ranked || ranked.length === 0) {
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
-            role: "bot",
-            text: t("askAmount"),
-          },
-        ]);
+      if (!aiResult) {
+        // AI failed completely - use fallback
+        console.log("❌ AI parsing failed, using fallback");
+        console.log("⚠️ FALLBACK: This should parse date from original text!");
+        const parsed = parseTransactionText(userText);
+        const cleanNote = parsed.note || userText;
+        const amt = parsed.amount || (await parseAmountVN(userText));
+        const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+
+        if (!ranked || ranked.length === 0) {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            { role: "bot", text: t("askAmount") },
+          ]);
+          return;
+        }
+
+        const topPred = ranked[0];
+        console.log(
+          "🔄 Using fallback autoCreateTransaction with originalText:",
+          userText
+        );
+        await autoCreateTransaction(
+          cleanNote,
+          amt,
+          io,
+          topPred.categoryId,
+          userText
+        );
         return;
       }
 
-      const topPred = ranked[0];
-      if (topPred.score >= 0.6) {
-        // Auto-create with high confidence
-        await autoCreateTransaction(cleanNote, amt, io, topPred.categoryId);
+      // Use AI parsed result
+      console.log("✅ AI parsed:", JSON.stringify(aiResult, null, 2));
+
+      // Find matching category from user's categories
+      const matchedCategory = items.find(
+        (c) =>
+          c.name.toLowerCase().includes(aiResult.categoryName.toLowerCase()) ||
+          aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
+      );
+
+      if (matchedCategory) {
+        await autoCreateTransactionDirect(aiResult, matchedCategory.id);
       } else {
-        // Show suggestions (replace typing with suggestion prompt)
-        setMessages((m) => m.slice(0, -1));
-        setPendingPick({
-          text: cleanNote,
-          amount: amt,
-          io,
-          choices: ranked.slice(0, 3),
-        });
+        // Show category suggestions if no exact match
+        const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
+        if (ranked && ranked.length > 0 && ranked[0].score >= 0.6) {
+          await autoCreateTransactionDirect(aiResult, ranked[0].categoryId);
+        } else {
+          setMessages((m) => m.slice(0, -1));
+          setPendingPick({
+            text: aiResult.note,
+            amount: aiResult.amount,
+            io: aiResult.io,
+            choices: ranked?.slice(0, 3) || [],
+          });
+        }
       }
     } finally {
       processingTextRef.current = false;
     }
   };
 
-  // ----- Auto create transaction -----
+  // ----- Auto create transaction (NEW - from AI parsed result) -----
+  const autoCreateTransactionDirect = async (
+    aiResult: {
+      amount: number | null;
+      note: string;
+      categoryName: string;
+      io: "IN" | "OUT";
+      date: Date;
+      message: string;
+    },
+    categoryId: string
+  ) => {
+    try {
+      const selectedCategory = items.find((c) => c.id === categoryId);
+
+      console.log("💾 Creating transaction from AI result:", aiResult);
+
+      // Create transaction with AI parsed data
+      const txn = await createTransaction({
+        amount: aiResult.amount,
+        io: aiResult.io,
+        categoryId,
+        note: aiResult.note,
+        date: aiResult.date,
+      });
+
+      console.log("✅ Transaction created:", txn.id);
+
+      const when = aiResult.date.toLocaleDateString("vi-VN");
+
+      // Remove typing indicator and add bot response + transaction card
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        {
+          role: "bot",
+          text: aiResult.message,
+        },
+        {
+          role: "card",
+          transactionId: txn.id,
+          accountId: txn.accountId,
+          amount: txn.amount ?? null,
+          io: aiResult.io,
+          categoryId,
+          categoryName: selectedCategory?.name || aiResult.categoryName,
+          categoryIcon: selectedCategory?.icon || "wallet",
+          categoryColor: selectedCategory?.color || "#6366F1",
+          note: aiResult.note,
+          when,
+          date: aiResult.date,
+        },
+      ]);
+      scrollToEnd();
+    } catch (e: any) {
+      console.error("❌ Transaction creation failed:", e);
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        {
+          role: "bot",
+          text: "Tạo giao dịch thất bại. " + (e?.message || ""),
+        },
+      ]);
+    }
+  };
+
+  // ----- Auto create transaction (OLD - legacy fallback) -----
   const autoCreateTransaction = async (
     text: string,
     amount: number | null,
     io: "IN" | "OUT",
-    categoryId: string
+    categoryId: string,
+    originalText?: string // Original text with date for parsing
   ) => {
     try {
-      const txn = await createTransaction({
-        amount,
-        io,
-        categoryId,
-        note: text,
-      });
-
+      // Get AI response with date extraction
       const selectedCategory = items.find((c) => c.id === categoryId);
       const categoryName = selectedCategory?.name || "Unknown";
-      const when = new Date().toLocaleDateString();
 
+      console.log("🔄 autoCreateTransaction called:");
+      console.log("  - text:", text);
+      console.log("  - originalText:", originalText);
+      console.log(
+        "  - Will pass to getEmotionalReplyDirect:",
+        originalText || text
+      );
+
+      const aiResponse = await getEmotionalReplyDirect({
+        io,
+        categoryName,
+        amount,
+        note: text,
+        originalText: originalText || text, // Use original text for date parsing
+      });
+
+      console.log("📅 Creating transaction with date:", aiResponse.date);
+
+      // Create transaction with extracted date
+      const txn = await createTransaction({
+        amount: aiResponse.amount,
+        io: aiResponse.io,
+        categoryId,
+        note: text,
+        date: aiResponse.date, // Use extracted date
+      });
+
+      console.log("✅ Transaction created:", txn.id, "date:", txn.date);
+
+      const when = aiResponse.date
+        ? aiResponse.date.toLocaleDateString("vi-VN")
+        : new Date().toLocaleDateString("vi-VN");
+
+      // Remove typing indicator and add bot response + transaction card
       setMessages((m) => [
         ...m.slice(0, -1),
+        {
+          role: "bot",
+          text: aiResponse.message, // AI's contextual response
+        },
         {
           role: "card",
           transactionId: txn.id,
@@ -2329,21 +2993,21 @@ export default function Chatbox() {
           categoryColor: selectedCategory?.color || "#6366F1",
           note: text,
           when,
+          date: aiResponse.date, // Store date object for future reference
         },
       ]);
       scrollToEnd();
     } catch (e: any) {
+      console.error("❌ Transaction creation failed:", e);
       setMessages((m) => [
-        ...m,
+        ...m.slice(0, -1),
         {
           role: "bot",
           text: "Tạo giao dịch thất bại. " + (e?.message || ""),
         },
       ]);
     }
-  };
-
-  // Edit transaction handlers
+  }; // Edit transaction handlers
   const handleEditTransaction = (item: Extract<Msg, { role: "card" }>) => {
     // Ensure io is properly set from the card data
     const txType = item.io || "OUT"; // default to OUT if not set
@@ -2798,8 +3462,8 @@ export default function Chatbox() {
                 <View
                   style={{
                     flexDirection: "row",
-                    gap: 8,
-                    marginTop: 12,
+                    gap: 10,
+                    marginTop: 16,
                     justifyContent: "flex-end",
                   }}
                 >
@@ -2808,14 +3472,30 @@ export default function Chatbox() {
                     style={[
                       styles.actionBtn,
                       {
-                        borderColor: colors.divider,
                         backgroundColor:
-                          mode === "dark" ? colors.card : "#f9f9f9",
+                          mode === "dark" ? "#1E40AF" : "#DBEAFE",
+                        borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+                        shadowColor: "#3B82F6",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
                       },
                     ]}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="create-outline" size={18} color="#3B82F6" />
-                    <Text style={{ color: "#3B82F6", fontSize: 13 }}>
+                    <Ionicons
+                      name="create-outline"
+                      size={18}
+                      color={mode === "dark" ? "#93C5FD" : "#2563EB"}
+                    />
+                    <Text
+                      style={{
+                        color: mode === "dark" ? "#93C5FD" : "#2563EB",
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
                       {t("edit")}
                     </Text>
                   </TouchableOpacity>
@@ -2834,14 +3514,30 @@ export default function Chatbox() {
                     style={[
                       styles.actionBtn,
                       {
-                        borderColor: colors.divider,
                         backgroundColor:
-                          mode === "dark" ? colors.card : "#f9f9f9",
+                          mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+                        borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+                        shadowColor: "#EF4444",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
                       },
                     ]}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                    <Text style={{ color: "#EF4444", fontSize: 13 }}>
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
+                    />
+                    <Text
+                      style={{
+                        color: mode === "dark" ? "#FCA5A5" : "#DC2626",
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
                       {t("delete")}
                     </Text>
                   </TouchableOpacity>
@@ -3658,13 +4354,13 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#e5e5ea",
-    backgroundColor: "#f9f9f9",
+    minWidth: 90,
+    justifyContent: "center",
   },
 
   suggestBar: {
