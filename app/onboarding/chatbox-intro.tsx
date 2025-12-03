@@ -1,19 +1,13 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { db } from "@/db";
 import { useI18n } from "@/i18n/I18nProvider";
-import { listAccounts } from "@/repos/accountRepo";
 import {
   listCategories,
   seedCategoryDefaults,
   type Category,
 } from "@/repos/categoryRepo";
-import { logCorrection, logPrediction } from "@/repos/mlRepo";
-import {
-  addExpense,
-  addIncome,
-  deleteTx,
-  updateTransaction,
-} from "@/repos/transactionRepo";
+import { logCorrection } from "@/repos/mlRepo";
+import { deleteTx, updateTransaction } from "@/repos/transactionRepo";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -22,8 +16,6 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 // import Voice from "@react-native-voice/voice";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
-import * as FileSystem from "expo-file-system";
-import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -31,8 +23,10 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -47,575 +41,6 @@ const OPENAI_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || "";
 const OCR_SPACE_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_OCR_SPACE_API_KEY || "";
-
-// ↓ Helper: lấy JSON từ chuỗi có thể lẫn text
-function tryPickJson(text: string) {
-  if (!text) return null;
-  const m = text.match(/\{[\s\S]*\}/); // lấy đoạn {...} đầu tiên
-  try {
-    return m ? JSON.parse(m[0]) : JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-// ↓ Tạo câu fallback ngắn gọn khi GPT không parse được
-function makeShortMsg(
-  io: "IN" | "OUT",
-  categoryName: string,
-  amount: number | null,
-  note: string
-) {
-  const money = amount ? amount.toLocaleString("vi-VN") + "đ" : "";
-  if (io === "OUT")
-    return `Đã ghi nhận chi ${money}${
-      categoryName ? ` cho ${categoryName.toLowerCase()}` : ""
-    }.`;
-  return `Đã ghi nhận thu ${money}${
-    categoryName ? ` vào ${categoryName.toLowerCase()}` : ""
-  }.`;
-}
-
-async function getEmotionalReplyDirect(args: {
-  io: "IN" | "OUT";
-  categoryName: string;
-  amount: number | null;
-  note: string;
-}): Promise<{
-  message: string;
-  categoryId?: string;
-  amount: number | null;
-  io: "IN" | "OUT";
-  note: string;
-}> {
-  const { io, categoryName, amount, note } = args;
-
-  const listCategoriesUser = await listCategories();
-  const system = `
-System: Bạn là trợ thủ tài chính của ứng dụng.
-Trả về DUY NHẤT một JSON theo mẫu sau (không giải thích thêm bên ngoài JSON):
-{
-  "amount": number | null,
-  "io": "IN" | "OUT",
-  "categoryId": string | null,
-  "note": string,
-  "feature": "_taogiaodich",
-  "message": string
-}
-- "message": 1–2 câu tiếng Việt tự nhiên mô tả giao dịch (không kèm JSON).
-- Nếu không chắc categoryId, có thể để null.
-Danh mục hiện có:
-${listCategoriesUser.map((c) => `- ${c.id}: ${c.name}`).join("\n")}
-  `.trim();
-
-  try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: note },
-        ],
-        temperature: 0.5,
-        max_tokens: 80,
-      }),
-    });
-    const data = await r.json();
-    const raw = data?.choices?.[0]?.message?.content || "";
-    const j = tryPickJson(raw);
-
-    if (j?.message) {
-      return {
-        message: String(j.message),
-        categoryId: j.categoryId ?? undefined,
-        amount: typeof j.amount === "number" ? j.amount : amount,
-        io: j.io === "IN" || j.io === "OUT" ? j.io : io,
-        note: String(j.note ?? note),
-      };
-    }
-  } catch {}
-
-  // Fallback: không parse được JSON → tự tạo câu ngắn
-  return {
-    message: makeShortMsg(io, categoryName, amount, note),
-    categoryId: undefined,
-    amount,
-    io,
-    note,
-  };
-}
-
-/* ---------------- OCR: OCR.space API (Free 25,000 requests/month) ---------------- */
-async function processReceiptImage(imageUri: string): Promise<{
-  amount: number | null;
-  text: string;
-  merchantName?: string;
-}> {
-  try {
-    console.log("📷 Processing receipt with OCR.space:", imageUri);
-
-    // Upload image to OCR.space API (free 25,000 requests/month)
-    const formData = new FormData();
-    formData.append("file", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "receipt.jpg",
-    } as any);
-    formData.append("apikey", OCR_SPACE_API_KEY); // Free API key
-    formData.append("language", "eng"); // English (works well for numbers and common text)
-    formData.append("isOverlayRequired", "false");
-    formData.append("OCREngine", "2"); // Engine 2 for better accuracy
-
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    console.log("📝 OCR Result:", JSON.stringify(result, null, 2));
-
-    if (!result.IsErroredOnProcessing && result.ParsedResults?.[0]) {
-      const ocrText = result.ParsedResults[0].ParsedText || "";
-
-      if (!ocrText || ocrText.trim().length === 0) {
-        return {
-          amount: null,
-          text: "❌ Không đọc được text từ hóa đơn.\n\nVui lòng thử ảnh rõ hơn.",
-          merchantName: "",
-        };
-      }
-
-      // Extract final total amount from OCR text (ưu tiên miễn phí, rule-based)
-      const extractAmount = (text: string): number | null => {
-        console.log("🔍 Extracting amount from text:", text);
-
-        if (!text || !text.trim()) return null;
-
-        // --- Chuẩn hoá & tách dòng ---
-        const rawLines = text
-          .split(/[\r\n]+/)
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-
-        if (rawLines.length === 0) return null;
-
-        const totalLines = rawLines.length;
-        const bottomStart = Math.floor(totalLines * 0.4); // lấy ~40% cuối
-        const bottomLines = rawLines.slice(bottomStart);
-
-        // -----------------------------
-        // 🔥 1) Hàm chuyển "bằng chữ" → số
-        // -----------------------------
-        const wordsToNumberVN = (s: string): number | null => {
-          if (!s) return null;
-
-          const mapUnit: Record<string, number> = {
-            không: 0,
-            khong: 0,
-            một: 1,
-            mot: 1,
-            mốt: 1,
-            mot1: 1,
-            hai: 2,
-            ba: 3,
-            bốn: 4,
-            bon: 4,
-            tư: 4,
-            tu: 4,
-            năm: 5,
-            nam: 5,
-            lăm: 5,
-            lam: 5,
-            sáu: 6,
-            sau: 6,
-            bảy: 7,
-            bay: 7,
-            tám: 8,
-            tam: 8,
-            chín: 9,
-            chin: 9,
-          };
-
-          const mapMul: Record<string, number> = {
-            mươi: 10,
-            muoi: 10,
-            mười: 10,
-            chục: 10,
-            chuc: 10,
-            trăm: 100,
-            tram: 100,
-            nghìn: 1000,
-            nghin: 1000,
-            ngàn: 1000,
-            ngan: 1000,
-            triệu: 1000000,
-            trieu: 1000000,
-            tỷ: 1000000000,
-            ty: 1000000000,
-          };
-
-          const cleaned = s
-            .toLowerCase()
-            .replace(
-              /[^a-z0-9\sáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ\-]/g,
-              " "
-            )
-            .replace(/\-+/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          if (!cleaned) return null;
-          const tokens = cleaned.split(" ");
-
-          let total = 0;
-          let current = 0;
-
-          for (let i = 0; i < tokens.length; i++) {
-            const w = tokens[i];
-            if (!w) continue;
-
-            // bỏ các từ nối / filler
-            if (
-              w === "và" ||
-              w === "va" ||
-              w === "lẻ" ||
-              w === "le" ||
-              w === "linh" ||
-              w === "chẵn" ||
-              w === "chan"
-            )
-              continue;
-
-            if (mapUnit[w] !== undefined) {
-              current += mapUnit[w];
-              continue;
-            }
-
-            if (mapMul[w] !== undefined) {
-              const mul = mapMul[w];
-
-              if (mul >= 1000) {
-                // nghìn / triệu / tỷ
-                const base = current || 1;
-                total += base * mul;
-                current = 0;
-              } else if (mul === 10) {
-                if (current === 0) {
-                  current = 10;
-                } else {
-                  const hundreds = Math.floor(current / 100) * 100;
-                  let ones = current - hundreds;
-
-                  if (ones === 0) {
-                    current = hundreds + 10;
-                  } else {
-                    current = hundreds + ones * 10;
-                  }
-                }
-              } else {
-                if (current === 0) current = 1;
-                current = current * mul;
-              }
-              continue;
-            }
-
-            const num = parseInt(w.replace(/[^0-9]/g, ""), 10);
-            if (!isNaN(num)) {
-              current += num;
-              continue;
-            }
-          }
-
-          const result = total + current;
-          if (!result || result < 100) return null;
-          return Math.round(result);
-        };
-
-        const wordKeywords = [
-          "một",
-          "hai",
-          "ba",
-          "bốn",
-          "tư",
-          "năm",
-          "lăm",
-          "sáu",
-          "bảy",
-          "tám",
-          "chín",
-          "mươi",
-          "mười",
-          "trăm",
-          "nghìn",
-          "ngàn",
-          "triệu",
-          "tỷ",
-          "dong",
-          "đồng",
-          "dong.",
-          "đồng.",
-          "vnd",
-          "vnđ",
-        ];
-
-        const wordRe = new RegExp(
-          `(?:${wordKeywords.join("|")})(?:[\\s\\-]+(?:${wordKeywords.join(
-            "|"
-          )}))*`,
-          "i"
-        );
-
-        const hasMoneyUnit = (line: string) =>
-          /(đồng|dong|vnđ|vnd)/i.test(line);
-
-        // ------------------------------------------
-        // 🔥 2) ƯU TIÊN LẤY "SỐ TIỀN BẰNG CHỮ"
-        //    - Chỉ parse phần sau "bằng chữ" tới trước "đồng"
-        // ------------------------------------------
-        const tryExtractByWordsLine = (lines: string[]): number | null => {
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i];
-            const lower = line.toLowerCase();
-
-            if (/(bằng\s*chữ|bang\s*chu|in\s*words)/i.test(lower)) {
-              // dạng: "Số tiền bằng chữ: Năm trăm nghìn đồng chẵn."
-              const m =
-                line.match(/bằng\s*chữ[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
-                line.match(/bang\s*chu[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
-                line.match(/in\s*words[:\-]?\s*(.+)$/i);
-
-              let phrase = "";
-              if (m && m[1]) {
-                phrase = m[1];
-              } else {
-                // fallback: lấy cụm "từ đầu tới 'đồng'"
-                const m2 = line.match(/(.+?)(đồng|dong|vnđ|vnd)/i);
-                if (m2 && m2[1]) phrase = m2[1];
-              }
-
-              if (!phrase) {
-                // cuối cùng: dùng wordRe trên cả dòng
-                const m3 = line.match(wordRe);
-                if (m3) phrase = m3[0];
-              }
-
-              if (!phrase) continue;
-
-              const v = wordsToNumberVN(phrase);
-              if (v && v >= 1000) {
-                console.log(
-                  "✅ Detected amount by VN words (bằng chữ):",
-                  v,
-                  " | line:",
-                  line
-                );
-                return v;
-              }
-            }
-          }
-          return null;
-        };
-
-        // 2a) quét phần cuối trước
-        const amountFromWordsBottom = tryExtractByWordsLine(bottomLines);
-        if (amountFromWordsBottom) return amountFromWordsBottom;
-
-        // 2b) fallback: quét toàn bộ hoá đơn
-        const amountFromWordsAll = tryExtractByWordsLine(rawLines);
-        if (amountFromWordsAll) return amountFromWordsAll;
-
-        // ------------------------------------------
-        // 🔥 3) Nếu không có "bằng chữ": thử các dòng
-        //     có đơn vị tiền + nhiều từ số
-        // ------------------------------------------
-        const tryWordsNoLabel = (lines: string[]): number | null => {
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i];
-            if (!hasMoneyUnit(line)) continue;
-            if (!wordRe.test(line)) continue;
-
-            const m = line.match(wordRe);
-            if (!m) continue;
-            const v = wordsToNumberVN(m[0]);
-            if (v && v >= 1000) {
-              console.log(
-                "✅ Detected amount by VN words (no label):",
-                v,
-                " | line:",
-                line
-              );
-              return v;
-            }
-          }
-          return null;
-        };
-
-        const vBottomNoLabel = tryWordsNoLabel(bottomLines);
-        if (vBottomNoLabel) return vBottomNoLabel;
-
-        const vAllNoLabel = tryWordsNoLabel(rawLines);
-        if (vAllNoLabel) return vAllNoLabel;
-
-        // ------------------------------------------
-        // 🔥 4) Fallback: heuristic theo số (giống bản cũ),
-        //     chấm điểm từng dòng và chọn score cao nhất
-        // ------------------------------------------
-        const FINAL_TOTAL_KEYWORDS = [
-          /tổng\s*cộng/i,
-          /tong\s*cong/i,
-          /tổng\s*thanh\s*toán/i,
-          /tong\s*thanh\s*toan/i,
-          /tổng\s*tiền\s*thanh\s*toán/i,
-          /tổng\s*phải\s*trả/i,
-          /grand\s*total/i,
-          /amount\s*due/i,
-          /total\s*due/i,
-          /total\s*payment/i,
-          /balance\s*due/i,
-        ];
-
-        const SUBTOTAL_KEYWORDS = [
-          /cộng\s*tiền\s*hàng/i,
-          /cong\s*tien\s*hang/i,
-          /tạm\s*tính/i,
-          /tam\s*tinh/i,
-          /subtotal/i,
-          /total\s*before\s*tax/i,
-        ];
-
-        const TAX_KEYWORDS = [/thuế/i, /thue/i, /vat/i, /gtgt/i, /tax/i];
-
-        const TAX_CODE_KEYWORDS = [/\bmst\b/i, /mã\s*số\s*thuế/i];
-
-        const extractNumericAmountFromLine = (line: string): number | null => {
-          const normalized = line.replace(/[oO]/g, "0").replace(/[lI]/g, "1");
-
-          const matches = normalized.match(
-            /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d{4,}/g
-          );
-          if (!matches) return null;
-
-          const nums = matches
-            .map((raw) => {
-              const n = parseInt(raw.replace(/[,\.]/g, ""), 10);
-              if (isNaN(n)) return null;
-              const isPhone = n >= 900000000 && n < 10000000000; // 9–11 chữ số
-              const isValid = n >= 1000 && n <= 100000000000; // tới 100 tỷ
-              return !isPhone && isValid ? n : null;
-            })
-            .filter((n) => n !== null) as number[];
-
-          if (!nums.length) return null;
-          return Math.max(...nums);
-        };
-
-        const scoreLine = (
-          line: string,
-          amount: number,
-          index: number,
-          total: number
-        ): number => {
-          let score = 0;
-          const lower = line.toLowerCase();
-
-          if (TAX_CODE_KEYWORDS.some((re) => re.test(lower))) {
-            return -9999;
-          }
-
-          if (
-            TAX_KEYWORDS.some((re) => re.test(lower)) &&
-            !FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))
-          ) {
-            score -= 3;
-          }
-
-          if (SUBTOTAL_KEYWORDS.some((re) => re.test(lower))) {
-            score += 1;
-          }
-
-          if (FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))) {
-            score += 10;
-          }
-
-          if (total > 1) {
-            const pos = index / (total - 1); // 0..1
-            score += pos * 4; // tối đa +4
-          }
-
-          const mag = Math.log10(amount + 1);
-          score += mag;
-
-          return score;
-        };
-
-        type Candidate = {
-          line: string;
-          amount: number;
-          index: number;
-          score: number;
-        };
-
-        const candidates: Candidate[] = [];
-
-        rawLines.forEach((line, idx) => {
-          const amount = extractNumericAmountFromLine(line);
-          if (amount == null) return;
-          const s = scoreLine(line, amount, idx, totalLines);
-          if (s > -1000) {
-            candidates.push({ line, amount, index: idx, score: s });
-          }
-        });
-
-        if (!candidates.length) {
-          console.log("❌ No numeric amount candidate found");
-          return null;
-        }
-
-        candidates.sort((a, b) => b.score - a.score);
-        const best = candidates[0];
-        console.log("✅ Best numeric candidate:", best);
-        return best.amount;
-      };
-
-      // Extract merchant name from first line
-      const extractMerchant = (text: string): string => {
-        const lines = text.split("\n").filter((l) => l.trim().length > 3);
-        return lines[0]?.trim() || "Hóa đơn";
-      };
-
-      const amount = extractAmount(ocrText);
-      const merchantName = extractMerchant(ocrText);
-
-      return {
-        amount,
-        text: ocrText.substring(0, 500), // Limit text length
-        merchantName,
-      };
-    } else {
-      const errorMsg = result.ErrorMessage?.[0] || "Không thể đọc được văn bản";
-      return {
-        amount: null,
-        text: `❌ ${errorMsg}\n\nVui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
-        merchantName: "",
-      };
-    }
-  } catch (error) {
-    console.error("OCR.space error:", error);
-    const errorMsg = error instanceof Error ? error.message : "Lỗi OCR";
-
-    return {
-      amount: null,
-      text: `❌ ${errorMsg}\n\nKiểm tra kết nối internet và thử lại.`,
-      merchantName: "",
-    };
-  }
-}
 
 /* ---------------- ML: Logistic Regression JSON on-device ---------------- */
 type LRModel = {
@@ -672,45 +97,6 @@ function mapMLToUserCategory(
     if (!best || sim > best.sim) best = { category: c, sim };
   }
   return best;
-}
-
-/* ---------------- Create transaction (plug your API) ---------------- */
-// ⬇️ Thay thế hoàn toàn hàm createTransaction cũ:
-async function createTransaction(draft: {
-  amount: number | null;
-  io: "IN" | "OUT";
-  categoryId?: string; // cần có để tạo; nếu chưa có hãy dùng pendingPick
-  note: string;
-  allowZeroAmount?: boolean; // Allow creating transaction with 0 amount (for image receipts)
-}) {
-  if (!draft.allowZeroAmount && (!draft.amount || draft.amount <= 0)) {
-    throw new Error("Số tiền chưa hợp lệ.");
-  }
-  if (!draft.categoryId) {
-    throw new Error("Chưa có danh mục để tạo giao dịch.");
-  }
-
-  // chọn account mặc định: ưu tiên include_in_total=1 rồi đến account đầu tiên
-  const accounts = await listAccounts().catch(() => []);
-  const acc =
-    accounts.find((a: any) => a.include_in_total === 1) || accounts[0] || null;
-  if (!acc?.id) throw new Error("Chưa có tài khoản để ghi giao dịch.");
-
-  const common = {
-    accountId: acc.id as string,
-    categoryId: draft.categoryId as string,
-    amount: draft.amount || 0, // Use 0 if amount is null
-    note: draft.note,
-    when: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const id =
-    draft.io === "OUT"
-      ? await addExpense(common as any)
-      : await addIncome(common as any);
-
-  return { id, ...draft, accountId: acc.id };
 }
 
 /* ---------------- Chat types ---------------- */
@@ -1015,6 +401,9 @@ export default function ChatboxIntro() {
   ]);
   const flatRef = useRef<FlatList>(null);
 
+  // Keyboard state
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
   // Voice states
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
@@ -1025,63 +414,6 @@ export default function ChatboxIntro() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-
-  // useEffect(() => {
-  //   if (Platform.OS === "android" || Platform.OS === "ios") {
-  //     Voice.onSpeechResults = (e: any) => {
-  //       const text = e.value?.[0] || "";
-  //       console.log("Speech results:", text);
-  //       // xử lý luôn:
-  //       processTextInput(text);
-  //     };
-
-  //     Voice.onSpeechError = (e: any) => {
-  //       console.log("onSpeechError", e);
-  //       Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-  //       setIsRecording(false);
-  //       setIsProcessingVoice(false);
-  //     };
-
-  //     Voice.onSpeechEnd = () => {
-  //       console.log("onSpeechEnd");
-  //       setIsRecording(false);
-  //       setIsProcessingVoice(false);
-  //     };
-  //   }
-
-  //   return () => {
-  //     Voice.destroy()
-  //       .then(Voice.removeAllListeners)
-  //       .catch(() => {});
-  //   };
-  // }, []);
-
-  // useEffect(() => {
-  //   const initVoice = async () => {
-  //     // Không chạy trên web
-  //     if (Platform.OS !== "android" && Platform.OS !== "ios") {
-  //       setIsVoiceAvailable(false);
-  //       return;
-  //     }
-
-  //     try {
-  //       console.log("Voice module keys:", Object.keys(Voice));
-  //       // Coi như có Voice nếu không crash khi require
-  //       setIsVoiceAvailable(true);
-  //     } catch (error) {
-  //       console.log("Init Voice error:", error);
-  //       setIsVoiceAvailable(false);
-  //     }
-  //   };
-
-  //   initVoice();
-
-  //   return () => {
-  //     Voice.destroy()
-  //       .then(Voice.removeAllListeners)
-  //       .catch(() => {});
-  //   };
-  // }, []);
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
@@ -1096,6 +428,27 @@ export default function ChatboxIntro() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Listen to keyboard events
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -1315,7 +668,6 @@ export default function ChatboxIntro() {
     return { io, ranked: hs };
   }
 
-  // ⬇️ Trong handleSend, đổi phần "tạo giao dịch" để fallback sang pendingPick khi chưa chắc danh mục:
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
@@ -1324,102 +676,8 @@ export default function ChatboxIntro() {
     setMessages((m) => [...m, { role: "user", text }]);
     scrollToEnd();
 
-    // Parse amount and clean note from text
-    const parsed = parseTransactionText(text);
-    const cleanNote = parsed.note || text;
-    const parsedAmount = parsed.amount;
-
-    const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
-    const best = ranked[0];
-    const amount = parsedAmount || parseAmountVN(text);
-
-    const ai = await getEmotionalReplyDirect({
-      io,
-      categoryName: best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
-      amount,
-      note: cleanNote,
-    });
-
-    // Quyết định danh mục cuối:
-    const finalCategoryId = ai.categoryId || best?.categoryId;
-    const finalCategoryName =
-      items.find((c) => c.id === finalCategoryId)?.name ||
-      best?.name ||
-      "Chưa rõ";
-
-    // Nếu chưa có amount → nhắn nhắc người dùng bổ sung và dừng
-    if (!ai.amount || ai.amount <= 0) {
-      setMessages((m) => [...m, { role: "bot", text: t("askAmount") }]);
-      scrollToEnd();
-      return;
-    }
-
-    // Nếu chưa có categoryId HOẶC điểm tự tin thấp → bật gợi ý chọn danh mục
-    const confidence = best?.score ?? 0;
-    const lowConfidence = confidence < 0.3; // Only ask user if very unsure
-
-    // Log initial prediction
-    try {
-      pendingLogId.current = await logPrediction({
-        text: cleanNote,
-        amount: ai.amount ?? null,
-        io,
-        predictedCategoryId: best?.categoryId || null,
-        confidence,
-      });
-    } catch {}
-    if (!finalCategoryId || lowConfidence) {
-      setPendingPick({
-        text: cleanNote,
-        amount: ai.amount,
-        io: ai.io,
-        choices: ranked.slice(0, 4), // Show top 4 suggestions
-      });
-      return; // đợi user chọn trước khi tạo
-    }
-
-    // Đủ dữ kiện → tạo giao dịch demo (không lưu vào DB)
-    try {
-      const when = new Date().toLocaleDateString();
-      const selectedCategory = items.find((c) => c.id === finalCategoryId);
-      setMessages((m) => [
-        ...m,
-        {
-          role: "card",
-          transactionId: `demo-${Date.now()}`,
-          accountId: "demo-account",
-          amount: ai.amount ?? null,
-          io: ai.io,
-          categoryId: finalCategoryId,
-          categoryName: finalCategoryName,
-          categoryIcon: selectedCategory?.icon || "wallet",
-          categoryColor: selectedCategory?.color || "#6366F1",
-          note: ai.note,
-          when,
-        },
-      ]);
-      // If user did not correct (direct accept), log correction equal to prediction
-      try {
-        if (pendingLogId.current && finalCategoryId) {
-          await logCorrection({
-            id: pendingLogId.current,
-            chosenCategoryId: finalCategoryId,
-          });
-          pendingLogId.current = null;
-        }
-      } catch {}
-      scrollToEnd();
-    } catch (e: any) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "bot",
-          text:
-            "Tạo giao dịch demo thất bại. " +
-            (e?.message ? `(${e.message})` : "Vui lòng thử lại."),
-        },
-      ]);
-    }
+    // Process using unified logic from chatbox.tsx
+    await processTextInput(text);
   };
 
   // ----- Gợi ý khi chưa đủ tự tin -----
@@ -1480,259 +738,63 @@ export default function ChatboxIntro() {
     scrollToEnd();
   };
 
-  // const handleVoicePress = async () => {
-  //   try {
-  //     if (isRecording) {
-  //       setIsRecording(false);
-  //       setIsProcessingVoice(true);
-  //       await Voice.stop();
-  //       return;
-  //     }
-
-  //     setMessages((m) => [
-  //       ...m,
-  //       {
-  //         role: "bot",
-  //         text: "🎤 Đang lắng nghe... hãy nói nội dung giao dịch",
-  //       },
-  //     ]);
-  //     scrollToEnd();
-
-  //     setIsRecording(true);
-  //     setIsProcessingVoice(false);
-
-  //     await Voice.start("vi-VN");
-  //   } catch (error) {
-  //     console.error("Voice error:", error);
-  //     const msg =
-  //       error instanceof Error
-  //         ? error.message
-  //         : "Không thể nhận diện giọng nói";
-  //     Alert.alert("Lỗi Voice", msg);
-  //     setIsRecording(false);
-  //     setIsProcessingVoice(false);
-  //   }
-  // };
-
-  // useEffect(() => {
-  //   Voice.onSpeechResults = (e: any) => {
-  //     const text = e.value?.[0] || "";
-  //     console.log("Speech results:", text);
-  //     setMessages((m) => [...m, { role: "user", text }]);
-  //     // hoặc: processTextInput(text);
-  //   };
-
-  //   Voice.onSpeechError = (e: any) => {
-  //     console.log("onSpeechError", e);
-  //     Alert.alert("Lỗi Voice", JSON.stringify(e.error || e));
-  //     setIsRecording(false);
-  //     setIsProcessingVoice(false);
-  //   };
-
-  //   Voice.onSpeechEnd = () => {
-  //     console.log("onSpeechEnd");
-  //     setIsRecording(false);
-  //     setIsProcessingVoice(false);
-  //   };
-
-  //   return () => {
-  //     Voice.destroy()
-  //       .then(Voice.removeAllListeners)
-  //       .catch(() => {});
-  //   };
-  // }, []);
-
-  // ----- Image Receipt Handler -----
-  const handleImagePress = async () => {
-    try {
-      // Ask user to choose between camera or gallery
-      const choice = await new Promise<"camera" | "gallery" | null>(
-        (resolve) => {
-          Alert.alert(
-            "Chọn nguồn ảnh",
-            "Bạn muốn chụp ảnh mới hay chọn từ thư viện?",
-            [
-              { text: "Chụp ảnh", onPress: () => resolve("camera") },
-              { text: "Chọn từ thư viện", onPress: () => resolve("gallery") },
-              { text: "Hủy", style: "cancel", onPress: () => resolve(null) },
-            ]
-          );
-        }
-      );
-
-      if (!choice) return;
-
-      let permissionStatus;
-      let pickerResult;
-
-      if (choice === "camera") {
-        // Request camera permissions
-        const cameraPermission =
-          await ImagePicker.requestCameraPermissionsAsync();
-        if (cameraPermission.status !== "granted") {
-          Alert.alert(
-            "Quyền truy cập",
-            "Cần quyền truy cập camera để chụp ảnh"
-          );
-          return;
-        }
-
-        pickerResult = await ImagePicker.launchCameraAsync({
-          mediaTypes: "images" as any,
-          allowsEditing: true,
-          quality: 0.6,
-        });
-      } else {
-        // Request media library permissions
-        const mediaPermission =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (mediaPermission.status !== "granted") {
-          Alert.alert("Quyền truy cập", "Cần quyền truy cập thư viện ảnh");
-          return;
-        }
-
-        pickerResult = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: "images" as any,
-          allowsEditing: true,
-          quality: 0.6,
-        });
-      }
-
-      if (pickerResult.canceled) return;
-      const imageUri = pickerResult.assets[0].uri;
-
-      // Check image size before processing
-      const imageInfo = await FileSystem.getInfoAsync(imageUri).catch(
-        () => null
-      );
-      if (imageInfo?.exists && imageInfo.size && imageInfo.size > 1024 * 1024) {
-        Alert.alert(
-          "Ảnh quá lớn",
-          `Ảnh có kích thước ${(imageInfo.size / 1024 / 1024).toFixed(
-            2
-          )}MB. OCR.space chỉ hỗ trợ tối đa 1MB. Ảnh sẽ được tự động nén.`,
-          [{ text: "Tiếp tục" }]
-        );
-      }
-
-      // Show image and processing message
-      setMessages((m) => [
-        ...m,
-        { role: "user", text: "", imageUri: imageUri },
-        {
-          role: "bot",
-          text: "🤖 Đang quét hóa đơn...",
-        },
-      ]);
-
-      console.log("📷 Receipt image selected:", imageUri);
-
-      // OCR with Tesseract - Auto extract and create transaction
-      const ocrResult = await processReceiptImage(imageUri);
-
-      if (!ocrResult.amount || ocrResult.amount <= 0) {
-        // OCR failed - show error message
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
-            role: "bot",
-            text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${
-              ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
-            }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
-          },
-        ]);
-        scrollToEnd();
-        return;
-      }
-
-      // OCR successful - Auto create transaction
-      const amount = ocrResult.amount;
-      const merchantName = ocrResult.merchantName || "Hóa đơn";
-      const note = `${merchantName}`;
-
-      // Classify category
-      const { ranked } = await classifyToUserCategoriesAI(merchantName);
-      const finalCategoryId = ranked[0]?.categoryId;
-
-      if (!finalCategoryId) {
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
-            role: "bot",
-            text: "❌ Không tìm thấy danh mục. Vui lòng tạo danh mục Chi tiêu trước.",
-          },
-        ]);
-        return;
-      }
-
-      // Create demo transaction automatically
-      const when = new Date().toLocaleDateString();
-      const selectedCategory = items.find((c) => c.id === finalCategoryId);
-
-      setMessages((m) => [
-        ...m.slice(0, -1),
-        {
-          role: "card",
-          transactionId: `demo-${Date.now()}`,
-          accountId: "demo-account",
-          amount: amount ?? null,
-          io: "OUT",
-          categoryId: finalCategoryId,
-          categoryName: selectedCategory?.name || "Mua sắm",
-          categoryIcon: selectedCategory?.icon || "cart",
-          categoryColor: selectedCategory?.color || "#6366F1",
-          note,
-          when,
-        },
-        {
-          role: "bot",
-          text: `✅ Tạo giao dịch demo thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${
-            selectedCategory?.name || "Mua sắm"
-          }`,
-        },
-      ]);
-      scrollToEnd();
-    } catch (error) {
-      console.error("Image selection error:", error);
-      Alert.alert("Lỗi", "Không thể chọn ảnh");
-    }
-  };
-
-  // ----- Process text input (shared by voice, image, and text) -----
+  const processingTextRef = useRef(false);
   const processTextInput = async (text: string) => {
     const userText = text.trim();
     if (!userText) return;
 
-    // Add typing indicator
-    setMessages((m) => [...m, { role: "typing" }]);
-    scrollToEnd();
+    // Prevent concurrent processing
+    if (processingTextRef.current) return;
+    processingTextRef.current = true;
 
-    // Parse amount and clean note from text
-    const parsed = parseTransactionText(userText);
-    const cleanNote = parsed.note || userText;
-    const parsedAmount = parsed.amount;
+    try {
+      // Add typing indicator
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (last && last.role === "typing") return m;
+        return [...m, { role: "typing" }];
+      });
+      scrollToEnd();
 
-    // Parse and classify with AI
-    const amt = parsedAmount || parseAmountVN(userText);
-    const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+      // Parse amount and clean note from text
+      const parsed = parseTransactionText(userText);
+      const cleanNote = parsed.note || userText;
+      const parsedAmount = parsed.amount;
+      const amt = parsedAmount || parseAmountVN(userText);
 
-    if (!ranked || ranked.length === 0) {
-      setMessages((m) => [
-        ...m.slice(0, -1),
-        {
-          role: "bot",
-          text: t("askAmount"),
-        },
-      ]);
-      return;
-    }
+      // Classify with AI
+      const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
 
-    const topPred = ranked[0];
-    if (topPred.score >= 0.6) {
+      if (!ranked || ranked.length === 0) {
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          { role: "bot", text: t("askAmount") },
+        ]);
+        return;
+      }
+
+      const topPred = ranked[0];
+
+      // Check confidence
+      const confidence = topPred.score ?? 0;
+      const lowConfidence = confidence < 0.3;
+
+      // If low confidence or no amount, show suggestions
+      if (!amt || amt <= 0 || lowConfidence) {
+        setMessages((m) => m.slice(0, -1));
+        setPendingPick({
+          text: cleanNote,
+          amount: amt,
+          io,
+          choices: ranked.slice(0, 4),
+        });
+        return;
+      }
+
       // Auto-create demo transaction with high confidence
       const selectedCategory = items.find((c) => c.id === topPred.categoryId);
       const categoryName = selectedCategory?.name || "Unknown";
-      const when = new Date().toLocaleDateString();
+      const when = new Date().toLocaleDateString("vi-VN");
 
       setMessages((m) => [
         ...m.slice(0, -1),
@@ -1751,62 +813,8 @@ export default function ChatboxIntro() {
         },
       ]);
       scrollToEnd();
-    } else {
-      // Show suggestions
-      setMessages((m) => m.slice(0, -1));
-      setPendingPick({
-        text: cleanNote,
-        amount: amt,
-        io,
-        choices: ranked.slice(0, 3),
-      });
-    }
-  };
-
-  // ----- Auto create transaction -----
-  const autoCreateTransaction = async (
-    text: string,
-    amount: number | null,
-    io: "IN" | "OUT",
-    categoryId: string
-  ) => {
-    try {
-      const txn = await createTransaction({
-        amount,
-        io,
-        categoryId,
-        note: text,
-      });
-
-      const selectedCategory = items.find((c) => c.id === categoryId);
-      const categoryName = selectedCategory?.name || "Unknown";
-      const when = new Date().toLocaleDateString();
-
-      setMessages((m) => [
-        ...m.slice(0, -1),
-        {
-          role: "card",
-          transactionId: txn.id,
-          accountId: txn.accountId,
-          amount: txn.amount ?? null,
-          io,
-          categoryId,
-          categoryName,
-          categoryIcon: selectedCategory?.icon || "wallet",
-          categoryColor: selectedCategory?.color || "#6366F1",
-          note: text,
-          when,
-        },
-      ]);
-      scrollToEnd();
-    } catch (e: any) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "bot",
-          text: "Tạo giao dịch thất bại. " + (e?.message || ""),
-        },
-      ]);
+    } finally {
+      processingTextRef.current = false;
     }
   };
 
@@ -1908,9 +916,11 @@ export default function ChatboxIntro() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: colors.background }}
-        behavior={"padding"}
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+        }}
       >
         {/* Title and Description in center */}
         <View style={styles.centerContent}>
@@ -2081,8 +1091,8 @@ export default function ChatboxIntro() {
                 <View
                   style={{
                     flexDirection: "row",
-                    gap: 8,
-                    marginTop: 12,
+                    gap: 10,
+                    marginTop: 16,
                     justifyContent: "flex-end",
                   }}
                 >
@@ -2091,14 +1101,30 @@ export default function ChatboxIntro() {
                     style={[
                       styles.actionBtn,
                       {
-                        borderColor: colors.divider,
                         backgroundColor:
-                          mode === "dark" ? colors.card : "#f9f9f9",
+                          mode === "dark" ? "#1E40AF" : "#DBEAFE",
+                        borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+                        shadowColor: "#3B82F6",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
                       },
                     ]}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="create-outline" size={18} color="#3B82F6" />
-                    <Text style={{ color: "#3B82F6", fontSize: 13 }}>
+                    <Ionicons
+                      name="create-outline"
+                      size={18}
+                      color={mode === "dark" ? "#93C5FD" : "#2563EB"}
+                    />
+                    <Text
+                      style={{
+                        color: mode === "dark" ? "#93C5FD" : "#2563EB",
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
                       {t("edit")}
                     </Text>
                   </TouchableOpacity>
@@ -2117,14 +1143,30 @@ export default function ChatboxIntro() {
                     style={[
                       styles.actionBtn,
                       {
-                        borderColor: colors.divider,
                         backgroundColor:
-                          mode === "dark" ? colors.card : "#f9f9f9",
+                          mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+                        borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+                        shadowColor: "#EF4444",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
                       },
                     ]}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                    <Text style={{ color: "#EF4444", fontSize: 13 }}>
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
+                    />
+                    <Text
+                      style={{
+                        color: mode === "dark" ? "#FCA5A5" : "#DC2626",
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
                       {t("delete")}
                     </Text>
                   </TouchableOpacity>
@@ -2479,48 +1521,13 @@ export default function ChatboxIntro() {
         <View
           style={[
             styles.inputBar,
-            { borderColor: colors.divider, backgroundColor: colors.card },
+            {
+              borderColor: colors.divider,
+              backgroundColor: colors.card,
+              marginBottom: keyboardHeight > 0 ? keyboardHeight : 0,
+            },
           ]}
         >
-          {/* Voice button */}
-          <Pressable
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: isRecording
-                  ? "#EF4444"
-                  : mode === "dark"
-                  ? colors.background
-                  : "#F3F4F6",
-                borderColor: colors.divider,
-              },
-            ]}
-            onPress={handleVoicePress}
-            disabled={isProcessingVoice}
-          >
-            <Ionicons
-              name={isRecording ? "stop-circle" : "mic"}
-              size={22}
-              color={isRecording ? "#fff" : colors.icon}
-            />
-          </Pressable>
-
-          {/* Image button */}
-          <Pressable
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor:
-                  mode === "dark" ? colors.background : "#F3F4F6",
-                borderColor: colors.divider,
-              },
-            ]}
-            onPress={handleImagePress}
-            disabled={isProcessingVoice}
-          >
-            <Ionicons name="image" size={22} color={colors.icon} />
-          </Pressable>
-
           <TextInput
             placeholder={t("inputPlaceholder")}
             placeholderTextColor={colors.subText}
@@ -2532,6 +1539,7 @@ export default function ChatboxIntro() {
                 borderColor: colors.divider,
                 backgroundColor: colors.background,
                 color: colors.text,
+                flex: 1,
               },
             ]}
             returnKeyType="send"
@@ -2593,7 +1601,7 @@ export default function ChatboxIntro() {
             )}
           </View>
         </Modal>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -2608,17 +1616,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
   },
   centerContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
-    paddingVertical: 40,
   },
   title: {
     fontSize: 24,
@@ -2708,13 +1711,13 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#e5e5ea",
-    backgroundColor: "#f9f9f9",
+    minWidth: 90,
+    justifyContent: "center",
   },
   suggestBar: {
     flexDirection: "row",
