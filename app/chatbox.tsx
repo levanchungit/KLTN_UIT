@@ -1260,40 +1260,92 @@ const getAmountFromHF = async (text: string): Promise<number | null> => {
       HUGGINGFACE_API_KEY.substring(0, 8) + "..."
     );
 
-    const prompt = `Trích xuất số tiền CHÍNH XÁC từ văn bản tiếng Việt. Chỉ trả về SỐ (VNĐ), không có chữ, dấu, ký tự khác.
+    const prompt = `Trích xuất số tiền CHÍNH XÁC từ văn bản tiếng Việt. Trả về format: <số><đơn vị>
 
-QUY TẮC QUAN TRỌNG:
-- "847k948đ" = 847948 (847 × 1000 + 948)
-- "1tr238k" = 1238000 (1 × 1000000 + 238 × 1000)
-- "2tr5" = 2500000 (2 × 1000000 + 5 × 100000, vì 5 đứng sau tr = 500 nghìn)
-- "50k" = 50000
-- "100đ" = 100
-- "du lich da lat 847k948d" = 847948
+QUY TẮC:
+- "847k948đ" → "847k948"
+- "1tr238k" → "1tr238k"
+- "2tr5" → "2tr5"
+- "50k" → "50k"
+- "749k" → "749k"
+- "100đ" → "100"
 
 Văn bản: "${text}"
 
-CHỈ TRẢ VỀ SỐ NGUYÊN (ví dụ: 847948):`;
+Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
 
     const response = await sendToHf(
       prompt,
       HUGGINGFACE_MODEL,
       HUGGINGFACE_API_KEY,
       {
-        max_new_tokens: 20,
+        max_new_tokens: 30,
         temperature: 0.1,
       }
     );
 
     if (response && response.trim()) {
-      // Extract ONLY digits from response
-      const cleaned = response.trim().replace(/\D/g, "");
-      const num = parseInt(cleaned, 10);
-      if (!isNaN(num) && num > 0) {
-        console.log("✅ AI parsed:", response.trim(), "→", num);
-        return num;
-      } else {
-        console.log("⚠️ AI response invalid:", response.trim());
+      console.log("✅ AI parsed:", response.trim());
+
+      // Parse Vietnamese amount format using the same logic as textPreprocessing.ts
+      const cleaned = response.trim().toLowerCase();
+
+      // Pattern 1: Complex formats like "847k948" or "1tr238k"
+      const complexTrK = cleaned.match(/(\d+)tr(\d+)k?/i);
+      if (complexTrK) {
+        const millions = parseInt(complexTrK[1], 10);
+        const thousands = parseInt(complexTrK[2], 10);
+        const result = millions * 1000000 + thousands * 100000;
+        console.log(
+          `✅ Parsed ${complexTrK[0]}: ${millions}tr${thousands} = ${result}`
+        );
+        return result;
       }
+
+      const complexK = cleaned.match(/(\d+)k(\d+)/i);
+      if (complexK) {
+        const thousands = parseInt(complexK[1], 10);
+        const hundreds = parseInt(complexK[2], 10);
+        const result = thousands * 1000 + hundreds;
+        console.log(
+          `✅ Parsed ${complexK[0]}: ${thousands}k${hundreds} = ${result}`
+        );
+        return result;
+      }
+
+      // Pattern 2: Simple formats like "749k", "50k", "2tr5"
+      const simpleMatch = cleaned.match(
+        /(\d+(?:[.,]\d+)?)\s*(k|tr|triệu|trieu|tỷ|ty)?/i
+      );
+      if (simpleMatch) {
+        const numStr = simpleMatch[1].replace(",", ".");
+        const n = parseFloat(numStr);
+        const unit = (simpleMatch[2] || "").toLowerCase();
+
+        let factor = 1;
+        if (unit.startsWith("k")) {
+          factor = 1000;
+        } else if (unit.startsWith("tr")) {
+          factor = 1000000;
+        } else if (unit.startsWith("tỷ") || unit.startsWith("ty")) {
+          factor = 1000000000;
+        }
+
+        const result = Math.round(n * factor);
+        console.log(
+          `✅ Parsed ${simpleMatch[0]}: ${n} × ${factor} = ${result}`
+        );
+        return result;
+      }
+
+      // Fallback: plain number
+      const plainNum = parseInt(cleaned.replace(/\D/g, ""), 10);
+      if (!isNaN(plainNum) && plainNum > 0) {
+        console.log(`✅ Parsed plain number: ${plainNum}`);
+        return plainNum;
+      }
+
+      console.log("⚠️ AI response invalid:", response.trim());
     }
   } catch (error) {
     console.error("❌ AI extraction error:", error);

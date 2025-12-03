@@ -103,24 +103,51 @@ export function parseTransactionText(text: string): {
  * Parse Vietnamese money amount
  */
 function parseAmountVN(text: string): number | null {
-  const t = text.toLowerCase().replace(/[,\.](?=\d{3}\b)/g, "");
-  const m = t.match(
-    /(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|tr|triệu|trieu|tỷ|ty|đ|d|vnd)?/i
+  if (!text || typeof text !== "string") return null;
+
+  const cleaned = text.toLowerCase().trim();
+
+  // Pattern for Vietnamese money formats:
+  // 500k, 4tr8, 1tr238k, 847k948, etc.
+  const complexMatch = cleaned.match(/(\d+)tr(\d+)k?/i);
+  if (complexMatch) {
+    const millions = parseInt(complexMatch[1], 10);
+    const thousands = parseInt(complexMatch[2], 10);
+    // 4tr8 = 4,800,000
+    return millions * 1000000 + thousands * 100000;
+  }
+
+  const complexMatch2 = cleaned.match(/(\d+)k(\d+)/i);
+  if (complexMatch2) {
+    const thousands = parseInt(complexMatch2[1], 10);
+    const hundreds = parseInt(complexMatch2[2], 10);
+    // 847k948 = 847,948
+    return thousands * 1000 + hundreds;
+  }
+
+  // Simple pattern: number + unit
+  const simpleMatch = cleaned.match(
+    /(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b)?/i
   );
 
-  if (!m) return null;
+  if (!simpleMatch) return null;
 
-  const n = parseFloat(m[1].replace(",", "."));
-  const unit = (m[2] || "").toLowerCase();
+  const numStr = simpleMatch[1].replace(",", ".");
+  const n = parseFloat(numStr);
 
-  const factor =
-    unit.startsWith("k") || unit.startsWith("ng")
-      ? 1e3
-      : unit.startsWith("tr") || unit.startsWith("tri")
-      ? 1e6
-      : unit.startsWith("tỷ") || unit.startsWith("ty")
-      ? 1e9
-      : 1;
+  if (isNaN(n)) return null;
+
+  const unit = (simpleMatch[2] || "").toLowerCase();
+
+  // Determine multiplier based on unit
+  let factor = 1;
+  if (unit.startsWith("k") || unit.startsWith("ng")) {
+    factor = 1000; // k, nghìn, ngàn
+  } else if (unit.startsWith("tr") || unit === "m") {
+    factor = 1000000; // tr, triệu, m (million)
+  } else if (unit.startsWith("tỷ") || unit.startsWith("ty") || unit === "b") {
+    factor = 1000000000; // tỷ, billion
+  }
 
   return Math.round(n * factor);
 }
