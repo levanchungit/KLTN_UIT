@@ -16,6 +16,7 @@ import {
   updateTransaction,
 } from "@/repos/transactionRepo";
 import { sendToHf } from "@/services/hfChatbot";
+import { phobertExtractor } from "@/services/phobertAmountExtractor";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -844,11 +845,6 @@ const parseTransactionWithAI = async (
       return null;
     }
 
-    // 🔥 CRITICAL FIX: Use ML Classifier for category, NOT TensorFlow!
-    // TensorFlow gives low confidence (10%), use our trained ML model instead
-    console.log(
-      `🧠 Using ML Classifier to predict category for: "${result.note}"`
-    );
     const mlPrediction = await transactionClassifier.predictCategory(
       result.note
     );
@@ -884,8 +880,7 @@ const parseTransactionWithAI = async (
             ? ` (${(confidence * 100).toFixed(0)}% chắc chắn)`
             : " ✓";
 
-        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}. ${emoji}`;
-        console.log(`📝 Regenerated message with ML category: ${message}`);
+        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
       }
     } else if (mlPrediction) {
       console.log(
@@ -1771,6 +1766,18 @@ export default function Chatbox() {
     })();
   }, []);
 
+  // Initialize PhoBERT Amount Extractor
+  useEffect(() => {
+    (async () => {
+      try {
+        await phobertExtractor.initialize();
+        const info = phobertExtractor.getModelInfo();
+      } catch (err) {
+        console.warn("❌ PhoBERT initialization failed:", err);
+      }
+    })();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -2416,10 +2423,30 @@ export default function Chatbox() {
       const aiResult = await parseTransactionWithAI(userText, items);
 
       if (!aiResult) {
-        // ⚠️ FALLBACK: Regex-based parsing (only for simple cases)
+        // ⚠️ FALLBACK: Use PhoBERT + Regex hybrid parsing
 
-        // Parse amount directly from original text
-        const amountFromOriginal = parseAmountVN(userText);
+        // Try PhoBERT first for context-aware extraction
+        console.log("⚠️ AI parsing failed, trying PhoBERT hybrid...");
+
+        let amountFromOriginal: number | null = null;
+        try {
+          const phobertResult = await phobertExtractor.extractAmount(userText);
+          if (phobertResult.amount && phobertResult.confidence > 0.5) {
+            amountFromOriginal = phobertResult.amount;
+            console.log(
+              `✅ PhoBERT extracted: ${amountFromOriginal} (${(
+                phobertResult.confidence * 100
+              ).toFixed(1)}%)`
+            );
+          } else {
+            // Low confidence, fallback to regex
+            amountFromOriginal = parseAmountVN(userText);
+            console.log(`⚠️ Using regex fallback: ${amountFromOriginal}`);
+          }
+        } catch (error) {
+          console.error("❌ PhoBERT failed, using regex:", error);
+          amountFromOriginal = parseAmountVN(userText);
+        }
 
         // Clean text for category prediction
         const parsed = parseTransactionText(userText);
@@ -2668,7 +2695,7 @@ export default function Chatbox() {
       ]);
       scrollToEnd();
     } catch (e: any) {
-      console.error("❌ Transaction creation failed:", e);
+      console.warn("❌ Transaction creation failed:", e);
       setMessages((m) => [
         ...m.slice(0, -1),
         {
@@ -2737,7 +2764,7 @@ export default function Chatbox() {
       ]);
       scrollToEnd();
     } catch (e: any) {
-      console.error("❌ Transaction creation failed:", e);
+      console.warn("❌ Transaction creation failed:", e);
       setMessages((m) => [
         ...m.slice(0, -1),
         {

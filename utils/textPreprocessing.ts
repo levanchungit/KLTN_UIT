@@ -128,14 +128,48 @@ export function parseAmountVN(text: string): number | null {
 
   // PRIORITY 2: Vietnamese shorthand formats
 
+  // Format 0: Complex format "8tr354k238d" = 8,354,238 (8M + 354k + 238)
+  const complexFullMatch = cleaned.match(
+    /(\d+)tr(\d+)k(\d+)(?:đ|d|dong|đồng)?/i
+  );
+  if (complexFullMatch) {
+    const millions = parseInt(complexFullMatch[1], 10);
+    const thousands = parseInt(complexFullMatch[2], 10);
+    const ones = parseInt(complexFullMatch[3], 10);
+    const result = millions * 1000000 + thousands * 1000 + ones;
+    console.log(`✅ Parsed complex tr+k+d: ${complexFullMatch[0]} → ${result}`);
+    return result;
+  }
+
+  // Format 0.5: "8tr476k" = 8,476,000 (8M + 476k)
+  const trKFormat2 = cleaned.match(/(\d+)tr(\d+)k(?![\d])/i);
+  if (trKFormat2) {
+    const millions = parseInt(trKFormat2[1], 10);
+    const thousands = parseInt(trKFormat2[2], 10);
+    const result = millions * 1000000 + thousands * 1000;
+    console.log(`✅ Parsed tr+k: ${trKFormat2[0]} → ${result}`);
+    return result;
+  }
+
   // Format A: "5tr873" = 5,873,000 (5 million 873 thousand)
+  // Format A2: "4tr8" = 4,800,000 (4 million 8 hundred thousand)
   // NOT "5 triệu 873" with space (that's handled separately)
   const trKFormat = cleaned.match(/(\d+)tr(\d+)(?!k)/i);
   if (trKFormat) {
     const millions = parseInt(trKFormat[1], 10);
-    const thousands = parseInt(trKFormat[2], 10);
-    // "5tr873" = 5,873,000 (direct concatenation: 5 million + 873 thousand)
-    const result = millions * 1000000 + thousands * 1000;
+    const extra = parseInt(trKFormat[2], 10);
+
+    let result: number;
+    if (extra < 10) {
+      // Single digit after "tr" = hundreds of thousands
+      // "4tr8" = 4,800,000 (4 million + 800 thousand)
+      result = millions * 1000000 + extra * 100000;
+    } else {
+      // Multiple digits = exact thousands
+      // "5tr873" = 5,873,000 (5 million + 873 thousand)
+      result = millions * 1000000 + extra * 1000;
+    }
+
     console.log(`✅ Parsed tr+number: ${trKFormat[0]} → ${result}`);
     return result;
   }

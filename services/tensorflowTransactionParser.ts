@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-react-native";
 import { parseAmountVN } from "../utils/textPreprocessing";
+import { phobertExtractor } from "./phobertAmountExtractor";
 
 interface Category {
   id: string;
@@ -130,8 +131,6 @@ class TensorFlowTransactionParser {
       loss: "categoricalCrossentropy",
       metrics: ["accuracy"],
     });
-
-    console.log("✅ Model created successfully");
   }
 
   /**
@@ -150,9 +149,11 @@ class TensorFlowTransactionParser {
       const action = this.detectActionType(text);
       console.log("📋 Action type:", action);
 
-      // Step 2: Parse amount (using existing robust parser)
+      // Step 2: Parse amount with hybrid approach (PhoBERT + fallback)
       const amount =
-        action === "CREATE_TRANSACTION" ? parseAmountVN(text) : null;
+        action === "CREATE_TRANSACTION"
+          ? await this.parseAmountHybrid(text)
+          : null;
       console.log("💰 Amount:", amount);
 
       // Step 3: Detect IO type
@@ -507,6 +508,60 @@ class TensorFlowTransactionParser {
     const transactionType = category?.type === "income" ? "thu" : "chi";
 
     return `Đã ghi ${transactionType} ${formattedAmount}đ cho ${note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
+  }
+
+  /**
+   * Hybrid amount parser: PhoBERT (ML) + parseAmountVN (regex fallback)
+   * Uses PhoBERT for context-aware extraction with confidence scoring
+   */
+  private async parseAmountHybrid(text: string): Promise<number | null> {
+    try {
+      // Step 1: Try PhoBERT extractor (ML-based, context-aware)
+      const phobertResult = await phobertExtractor.extractAmount(text);
+
+      if (phobertResult.amount && phobertResult.confidence > 0.7) {
+        // High confidence from PhoBERT - use it
+        console.log(
+          `✅ PhoBERT: ${phobertResult.amount} (${(
+            phobertResult.confidence * 100
+          ).toFixed(1)}% confidence)`
+        );
+        return phobertResult.amount;
+      }
+
+      // Step 2: Low confidence, try regex fallback
+      const regexAmount = parseAmountVN(text);
+
+      if (phobertResult.amount && regexAmount) {
+        // Both methods agree - high confidence
+        if (phobertResult.amount === regexAmount) {
+          console.log(`✅ PhoBERT + Regex agree: ${regexAmount}`);
+          return regexAmount;
+        }
+
+        // Disagreement - use PhoBERT if reasonable confidence
+        if (phobertResult.confidence > 0.5) {
+          console.log(
+            `⚖️ Disagreement (PhoBERT: ${phobertResult.amount}, Regex: ${regexAmount}), using PhoBERT`
+          );
+          return phobertResult.amount;
+        }
+      }
+
+      // Step 3: Fallback priority
+      const finalAmount = phobertResult.amount || regexAmount;
+
+      if (finalAmount) {
+        const source = phobertResult.amount ? "PhoBERT" : "Regex";
+        console.log(`⚠️ Low confidence, using ${source}: ${finalAmount}`);
+      }
+
+      return finalAmount;
+    } catch (error) {
+      // Step 4: Emergency fallback to regex
+      console.error("❌ PhoBERT failed, using regex fallback:", error);
+      return parseAmountVN(text);
+    }
   }
 
   /**

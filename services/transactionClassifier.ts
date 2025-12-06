@@ -547,13 +547,7 @@ class TransactionClassifier {
 
     const count = result?.count || 0;
 
-    // CONTINUOUS LEARNING: Train after every transaction
-    console.log(
-      `🎓 Continuous learning: Training model after transaction #${count}`
-    );
-
     await this.trainModel(true);
-    console.log(`✅ Model trained successfully with ${count} transactions`);
   }
 
   /**
