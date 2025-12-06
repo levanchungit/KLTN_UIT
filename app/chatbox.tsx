@@ -22,6 +22,7 @@ import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import TextRecognition from "@react-native-ml-kit/text-recognition";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
@@ -360,451 +361,321 @@ function BackBar() {
     </View>
   );
 }
+
 async function processReceiptImage(imageUri: string): Promise<{
   amount: number | null;
   text: string;
   merchantName?: string;
 }> {
   try {
-    // Optimize image size before uploading (using ImagePicker quality only)
-    // const optimizedUri = await optimizeImageForOCR(imageUri);
-    const optimizedUri = imageUri; // Use original image with quality=0.6 from ImagePicker
+    // Sử dụng ML Kit Text Recognition để nhận diện text từ ảnh
+    const result = await TextRecognition.recognize(imageUri);
 
-    // Upload image to OCR.space API (free 25,000 requests/month)
-    const formData = new FormData();
-    formData.append("file", {
-      uri: optimizedUri,
-      type: "image/jpeg",
-      name: "receipt.jpg",
-    } as any);
-    formData.append("apikey", OCR_SPACE_API_KEY); // Free API key
-    formData.append("language", "eng"); // English (works well for numbers and common text)
-    formData.append("isOverlayRequired", "false");
-    formData.append("OCREngine", "2"); // Engine 2 for better accuracy
+    console.log("=== ML Kit Text Recognition Results ===");
+    console.log("Total blocks found:", result?.blocks?.length || 0);
 
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    if (!result.IsErroredOnProcessing && result.ParsedResults?.[0]) {
-      const ocrText = result.ParsedResults[0].ParsedText || "";
-
-      if (!ocrText || ocrText.trim().length === 0) {
-        return {
-          amount: null,
-          text: "❌ Không đọc được text từ hóa đơn.\n\nVui lòng thử ảnh rõ hơn.",
-          merchantName: "",
-        };
-      }
-
-      // Extract final total amount from OCR text (ưu tiên miễn phí, rule-based)
-      const extractAmount = (text: string): number | null => {
-        if (!text || !text.trim()) return null;
-
-        // --- Chuẩn hoá & tách dòng ---
-        const rawLines = text
-          .split(/[\r\n]+/)
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-
-        if (rawLines.length === 0) return null;
-
-        const totalLines = rawLines.length;
-        const bottomStart = Math.floor(totalLines * 0.4); // lấy ~40% cuối
-        const bottomLines = rawLines.slice(bottomStart);
-
-        // -----------------------------
-        // 🔥 1) Hàm chuyển "bằng chữ" → số
-        // -----------------------------
-        const wordsToNumberVN = (s: string): number | null => {
-          if (!s) return null;
-
-          const mapUnit: Record<string, number> = {
-            không: 0,
-            khong: 0,
-            một: 1,
-            mot: 1,
-            mốt: 1,
-            mot1: 1,
-            hai: 2,
-            ba: 3,
-            bốn: 4,
-            bon: 4,
-            tư: 4,
-            tu: 4,
-            năm: 5,
-            nam: 5,
-            lăm: 5,
-            lam: 5,
-            sáu: 6,
-            sau: 6,
-            bảy: 7,
-            bay: 7,
-            tám: 8,
-            tam: 8,
-            chín: 9,
-            chin: 9,
-          };
-
-          const mapMul: Record<string, number> = {
-            mươi: 10,
-            muoi: 10,
-            mười: 10,
-            chục: 10,
-            chuc: 10,
-            trăm: 100,
-            tram: 100,
-            nghìn: 1000,
-            nghin: 1000,
-            ngàn: 1000,
-            ngan: 1000,
-            triệu: 1000000,
-            trieu: 1000000,
-            tỷ: 1000000000,
-            ty: 1000000000,
-          };
-
-          const cleaned = s
-            .toLowerCase()
-            .replace(
-              /[^a-z0-9\sáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ\-]/g,
-              " "
-            )
-            .replace(/\-+/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          if (!cleaned) return null;
-          const tokens = cleaned.split(" ");
-
-          let total = 0;
-          let current = 0;
-
-          for (let i = 0; i < tokens.length; i++) {
-            const w = tokens[i];
-            if (!w) continue;
-
-            // bỏ các từ nối / filler
-            if (
-              w === "và" ||
-              w === "va" ||
-              w === "lẻ" ||
-              w === "le" ||
-              w === "linh" ||
-              w === "chẵn" ||
-              w === "chan"
-            )
-              continue;
-
-            if (mapUnit[w] !== undefined) {
-              current += mapUnit[w];
-              continue;
-            }
-
-            if (mapMul[w] !== undefined) {
-              const mul = mapMul[w];
-
-              if (mul >= 1000) {
-                // nghìn / triệu / tỷ
-                const base = current || 1;
-                total += base * mul;
-                current = 0;
-              } else if (mul === 10) {
-                if (current === 0) {
-                  current = 10;
-                } else {
-                  const hundreds = Math.floor(current / 100) * 100;
-                  let ones = current - hundreds;
-
-                  if (ones === 0) {
-                    current = hundreds + 10;
-                  } else {
-                    current = hundreds + ones * 10;
-                  }
-                }
-              } else {
-                if (current === 0) current = 1;
-                current = current * mul;
-              }
-              continue;
-            }
-
-            const num = parseInt(w.replace(/[^0-9]/g, ""), 10);
-            if (!isNaN(num)) {
-              current += num;
-              continue;
-            }
-          }
-
-          const result = total + current;
-          if (!result || result < 100) return null;
-          return Math.round(result);
-        };
-
-        const wordKeywords = [
-          "một",
-          "hai",
-          "ba",
-          "bốn",
-          "tư",
-          "năm",
-          "lăm",
-          "sáu",
-          "bảy",
-          "tám",
-          "chín",
-          "mươi",
-          "mười",
-          "trăm",
-          "nghìn",
-          "ngàn",
-          "triệu",
-          "tỷ",
-          "dong",
-          "đồng",
-          "dong.",
-          "đồng.",
-          "vnd",
-          "vnđ",
-        ];
-
-        const wordRe = new RegExp(
-          `(?:${wordKeywords.join("|")})(?:[\\s\\-]+(?:${wordKeywords.join(
-            "|"
-          )}))*`,
-          "i"
-        );
-
-        const hasMoneyUnit = (line: string) =>
-          /(đồng|dong|vnđ|vnd)/i.test(line);
-
-        // ------------------------------------------
-        // 🔥 2) ƯU TIÊN LẤY "SỐ TIỀN BẰNG CHỮ"
-        //    - Chỉ parse phần sau "bằng chữ" tới trước "đồng"
-        // ------------------------------------------
-        const tryExtractByWordsLine = (lines: string[]): number | null => {
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i];
-            const lower = line.toLowerCase();
-
-            if (/(bằng\s*chữ|bang\s*chu|in\s*words)/i.test(lower)) {
-              // dạng: "Số tiền bằng chữ: Năm trăm nghìn đồng chẵn."
-              const m =
-                line.match(/bằng\s*chữ[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
-                line.match(/bang\s*chu[:\-]?\s*(.+?)(đồng|dong|vnđ|vnd)?$/i) ||
-                line.match(/in\s*words[:\-]?\s*(.+)$/i);
-
-              let phrase = "";
-              if (m && m[1]) {
-                phrase = m[1];
-              } else {
-                // fallback: lấy cụm "từ đầu tới 'đồng'"
-                const m2 = line.match(/(.+?)(đồng|dong|vnđ|vnd)/i);
-                if (m2 && m2[1]) phrase = m2[1];
-              }
-
-              if (!phrase) {
-                // cuối cùng: dùng wordRe trên cả dòng
-                const m3 = line.match(wordRe);
-                if (m3) phrase = m3[0];
-              }
-
-              if (!phrase) continue;
-
-              const v = wordsToNumberVN(phrase);
-              if (v && v >= 1000) {
-                return v;
-              }
-            }
-          }
-          return null;
-        };
-
-        // 2a) quét phần cuối trước
-        const amountFromWordsBottom = tryExtractByWordsLine(bottomLines);
-        if (amountFromWordsBottom) return amountFromWordsBottom;
-
-        // 2b) fallback: quét toàn bộ hoá đơn
-        const amountFromWordsAll = tryExtractByWordsLine(rawLines);
-        if (amountFromWordsAll) return amountFromWordsAll;
-
-        // ------------------------------------------
-        // 🔥 3) Nếu không có "bằng chữ": thử các dòng
-        //     có đơn vị tiền + nhiều từ số
-        // ------------------------------------------
-        const tryWordsNoLabel = (lines: string[]): number | null => {
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i];
-            if (!hasMoneyUnit(line)) continue;
-            if (!wordRe.test(line)) continue;
-
-            const m = line.match(wordRe);
-            if (!m) continue;
-            const v = wordsToNumberVN(m[0]);
-            if (v && v >= 1000) {
-              return v;
-            }
-          }
-          return null;
-        };
-
-        const vBottomNoLabel = tryWordsNoLabel(bottomLines);
-        if (vBottomNoLabel) return vBottomNoLabel;
-
-        const vAllNoLabel = tryWordsNoLabel(rawLines);
-        if (vAllNoLabel) return vAllNoLabel;
-
-        // ------------------------------------------
-        // 🔥 4) Fallback: heuristic theo số (giống bản cũ),
-        //     chấm điểm từng dòng và chọn score cao nhất
-        // ------------------------------------------
-        const FINAL_TOTAL_KEYWORDS = [
-          /tổng\s*cộng/i,
-          /tong\s*cong/i,
-          /tổng\s*thanh\s*toán/i,
-          /tong\s*thanh\s*toan/i,
-          /tổng\s*tiền\s*thanh\s*toán/i,
-          /tổng\s*phải\s*trả/i,
-          /grand\s*total/i,
-          /amount\s*due/i,
-          /total\s*due/i,
-          /total\s*payment/i,
-          /balance\s*due/i,
-        ];
-
-        const SUBTOTAL_KEYWORDS = [
-          /cộng\s*tiền\s*hàng/i,
-          /cong\s*tien\s*hang/i,
-          /tạm\s*tính/i,
-          /tam\s*tinh/i,
-          /subtotal/i,
-          /total\s*before\s*tax/i,
-        ];
-
-        const TAX_KEYWORDS = [/thuế/i, /thue/i, /vat/i, /gtgt/i, /tax/i];
-
-        const TAX_CODE_KEYWORDS = [/\bmst\b/i, /mã\s*số\s*thuế/i];
-
-        const extractNumericAmountFromLine = (line: string): number | null => {
-          const normalized = line.replace(/[oO]/g, "0").replace(/[lI]/g, "1");
-
-          const matches = normalized.match(
-            /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d{4,}/g
-          );
-          if (!matches) return null;
-
-          const nums = matches
-            .map((raw) => {
-              const n = parseInt(raw.replace(/[,\.]/g, ""), 10);
-              if (isNaN(n)) return null;
-              const isPhone = n >= 900000000 && n < 10000000000; // 9–11 chữ số
-              const isValid = n >= 1000 && n <= 100000000000; // tới 100 tỷ
-              return !isPhone && isValid ? n : null;
-            })
-            .filter((n) => n !== null) as number[];
-
-          if (!nums.length) return null;
-          return Math.max(...nums);
-        };
-
-        const scoreLine = (
-          line: string,
-          amount: number,
-          index: number,
-          total: number
-        ): number => {
-          let score = 0;
-          const lower = line.toLowerCase();
-
-          if (TAX_CODE_KEYWORDS.some((re) => re.test(lower))) {
-            return -9999;
-          }
-
-          if (
-            TAX_KEYWORDS.some((re) => re.test(lower)) &&
-            !FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))
-          ) {
-            score -= 3;
-          }
-
-          if (SUBTOTAL_KEYWORDS.some((re) => re.test(lower))) {
-            score += 1;
-          }
-
-          if (FINAL_TOTAL_KEYWORDS.some((re) => re.test(lower))) {
-            score += 10;
-          }
-
-          if (total > 1) {
-            const pos = index / (total - 1); // 0..1
-            score += pos * 4; // tối đa +4
-          }
-
-          const mag = Math.log10(amount + 1);
-          score += mag;
-
-          return score;
-        };
-
-        type Candidate = {
-          line: string;
-          amount: number;
-          index: number;
-          score: number;
-        };
-
-        const candidates: Candidate[] = [];
-
-        rawLines.forEach((line, idx) => {
-          const amount = extractNumericAmountFromLine(line);
-          if (amount == null) return;
-          const s = scoreLine(line, amount, idx, totalLines);
-          if (s > -1000) {
-            candidates.push({ line, amount, index: idx, score: s });
-          }
-        });
-
-        if (!candidates.length) {
-          return null;
-        }
-
-        candidates.sort((a, b) => b.score - a.score);
-        const best = candidates[0];
-        return best.amount;
-      };
-
-      // Extract merchant name from first line
-      const extractMerchant = (text: string): string => {
-        const lines = text.split("\n").filter((l) => l.trim().length > 3);
-        return lines[0]?.trim() || "Hóa đơn";
-      };
-
-      const amount = extractAmount(ocrText);
-      const merchantName = extractMerchant(ocrText);
-
-      return {
-        amount,
-        text: ocrText.substring(0, 500), // Limit text length
-        merchantName,
-      };
-    } else {
-      const errorMsg = result.ErrorMessage?.[0] || "Không thể đọc được văn bản";
+    if (!result || !result.text || result.text.trim().length === 0) {
       return {
         amount: null,
-        text: `❌ ${errorMsg}\n\nVui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
+        text: "❌ Không đọc được text từ hóa đơn.\n\nVui lòng thử ảnh rõ hơn.",
         merchantName: "",
       };
     }
+
+    const blocks = result.blocks || [];
+
+    // Log boundingBox để debug
+    blocks.forEach((block: any, index: any) => {
+      console.log(`\nBlock ${index + 1}:`);
+      console.log("  Text:", block.text);
+      console.log(
+        "  BoundingBox (frame):",
+        JSON.stringify(block.frame, null, 2)
+      );
+    });
+    console.log("=== End of Recognition Results ===\n");
+
+    const ocrText = result.text;
+
+    // Helper: Extract số tiền từ text
+    const extractNumber = (text: string): number => {
+      const normalized = text.replace(/[oOlI]/g, (m) =>
+        m === "o" || m === "O" ? "0" : "1"
+      );
+      const matches = normalized.match(
+        /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?|\d{4,}/g
+      );
+      if (!matches) return 0;
+
+      const nums = matches
+        .map((raw) => {
+          const n = parseInt(raw.replace(/[,\.]/g, ""), 10);
+          if (isNaN(n) || n < 1000 || n > 100000000000) return 0;
+          // Filter phone numbers (9-11 digits)
+          if (n >= 900000000 && n < 10000000000) return 0;
+          return n;
+        })
+        .filter((n) => n > 0);
+
+      return Math.max(...nums, 0);
+    };
+
+    // Extract merchant name from first line
+    const extractMerchant = (text: string): string => {
+      const lines = text.split("\n").filter((l) => l.trim().length > 3);
+      return lines[0]?.trim() || "Hóa đơn";
+    };
+
+    // Tính chiều cao ảnh
+    const imageHeight = Math.max(
+      ...blocks.map((b: any) => (b.frame?.top || 0) + (b.frame?.height || 0))
+    );
+
+    // STRATEGY 1: Tìm cặp (Label + Amount) theo vị trí ngang
+    const findTotalByHorizontalPair = (): number => {
+      const totalZone = blocks.filter(
+        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.6
+      );
+
+      const totalKeywords =
+        /total|tổng|sum|cộng|thanh\s*toán|phải\s*trả|grand|amount|due|balance/i;
+
+      for (const labelBlock of totalZone) {
+        if (!totalKeywords.test(labelBlock.text)) continue;
+
+        // Tìm block chứa số ở cùng hàng (Y tương đương) và bên phải
+        // Tăng tolerance Y lên 50px vì có thể không hoàn toàn cùng hàng
+        const sameRowBlocks = totalZone.filter(
+          (b: any) =>
+            Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0)) < 50 && // Increased from 30 to 50
+            (b.frame?.left || 0) > (labelBlock.frame?.left || 0) - 50 // Cho phép overlap nhỏ
+        );
+
+        // Sort by Y distance (gần hơn có priority cao hơn)
+        const sortedBlocks = sameRowBlocks.sort(
+          (a: any, b: any) =>
+            Math.abs((a.frame?.top || 0) - (labelBlock.frame?.top || 0)) -
+            Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0))
+        );
+
+        for (const amountBlock of sortedBlocks) {
+          const amount = extractNumber(amountBlock.text);
+          if (amount > 0) {
+            console.log(
+              `✅ Strategy 1 (Horizontal Pair): ${amount} from "${labelBlock.text}" -> "${amountBlock.text}"`
+            );
+            return amount;
+          }
+        }
+
+        // Fallback: Tìm số trong chính label block
+        const amount = extractNumber(labelBlock.text);
+        if (amount > 0) {
+          console.log(
+            `✅ Strategy 1 (Same Block): ${amount} from "${labelBlock.text}"`
+          );
+          return amount;
+        }
+      }
+
+      return 0;
+    };
+
+    // STRATEGY 0 (NEW - PRIORITY): Tìm "Tổng tiền thanh toán" và lấy số bên cạnh
+    const findFinalTotal = (): number => {
+      // Tìm block có "Tổng tiền thanh toán" keyword (đây là dấu hiệu tổng tiền)
+      const totalKeywords = /tổng\s*tiền\s*thanh\s*toán|total|tổng\s*cộng/i;
+      const totalLabelBlocks = blocks.filter((b: any) =>
+        totalKeywords.test(b.text)
+      );
+
+      if (totalLabelBlocks.length > 0) {
+        // Lấy block gần cuối (nếu có nhiều, lấy cái dưới nhất)
+        const labelBlock = totalLabelBlocks.sort(
+          (a: any, b: any) => (b.frame?.top || 0) - (a.frame?.top || 0)
+        )[0];
+
+        console.log(
+          `🔍 Strategy 0: Found "Tổng tiền thanh toán" at top=${labelBlock.frame?.top}`
+        );
+
+        // Tìm các blocks gần label này (cùng hàng, bên phải, hoặc dưới gần)
+        const nearbyBlocks = blocks.filter((b: any) => {
+          const topDiff = Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0));
+          const leftDiff = (b.frame?.left || 0) - (labelBlock.frame?.left || 0);
+
+          // Block bên phải cùng hàng hoặc phía dưới gần
+          return (
+            (topDiff < 40 && leftDiff > 50) || // Cùng hàng, bên phải
+            (topDiff < 50 && topDiff > 0 && leftDiff > 0) // Phía dưới một chút, bên phải
+          );
+        });
+
+        // Lọc và tìm số hợp lệ (không phải năm, địa chỉ, v.v.)
+        const validAmounts = nearbyBlocks
+          .map((b: any) => ({
+            value: extractNumber(b.text),
+            text: b.text,
+            top: b.frame?.top || 0,
+          }))
+          .filter(
+            (a: any) =>
+              a.value > 0 &&
+              a.value < 100000000 && // Không quá lớn (năm, ID)
+              !/2025|2024|2023|địa|địa chỉ|đường|quận|phố|hotline|https/i.test(a.text)
+          )
+          .sort((a: any, b: any) => {
+            // Ưu tiên block gần nhất (trên cùng), sau đó giá trị lớn nhất
+            const topDiffA = Math.abs(a.top - (labelBlock.frame?.top || 0));
+            const topDiffB = Math.abs(b.top - (labelBlock.frame?.top || 0));
+            if (topDiffA !== topDiffB) return topDiffA - topDiffB;
+            return b.value - a.value;
+          });
+
+        if (validAmounts.length > 0) {
+          console.log(
+            `✅ Strategy 0 (Total Label): ${validAmounts[0].value} from "${validAmounts[0].text}"`
+          );
+          return validAmounts[0].value;
+        }
+      }
+
+      // Fallback: Lấy 20% phía dưới và tìm số lớn nhất (không có "tổng" keyword)
+      const finalZone = blocks.filter(
+        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.8
+      );
+
+      if (finalZone.length > 0) {
+        const excludeKeywords = /mst|mã\s*số\s*thuế|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
+        const validBlocks = finalZone.filter(
+          (b: any) => !excludeKeywords.test(b.text)
+        );
+
+        const amounts = validBlocks
+          .map((b: any) => ({
+            value: extractNumber(b.text),
+            text: b.text,
+            top: b.frame?.top || 0,
+          }))
+          .filter((a: any) => a.value > 0 && a.value < 100000000)
+          .sort((a: any, b: any) => {
+            // Ưu tiên giá trị lớn nhất
+            return b.value - a.value;
+          });
+
+        if (amounts.length > 0) {
+          console.log(
+            `✅ Strategy 0 (Final Zone): ${amounts[0].value} from "${amounts[0].text}"`
+          );
+          return amounts[0].value;
+        }
+      }
+
+      return 0;
+    };
+
+    // STRATEGY 2: Tìm số lớn nhất ở 60% phía dưới nhưng ưu tiên "Tổng tiền"
+    const findLargestAmountInBottom = (): number => {
+      const bottomZone = blocks.filter(
+        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.6
+      );
+
+      // Filter ra các keywords không liên quan đến tổng tiền
+      const excludeKeywords =
+        /mst|mã\s*số\s*thuế|tax\s*code|phone|tel|sdt|hotline|thanh\s*toán/i;
+      const validBlocks = bottomZone.filter(
+        (b: any) => !excludeKeywords.test(b.text)
+      );
+
+      // Tách blocks thành 2 nhóm: có "Tổng tiền" vs không có
+      const totalKeywords = /tổng\s*tiền|total|tổng/i;
+      const totalBlocks = validBlocks.filter((b: any) =>
+        totalKeywords.test(b.text)
+      );
+      const otherBlocks = validBlocks.filter(
+        (b: any) => !totalKeywords.test(b.text)
+      );
+
+      // Ưu tiên tìm trong blocks có "Tổng tiền"
+      const blocksToSearch = totalBlocks.length > 0 ? totalBlocks : otherBlocks;
+
+      const amounts = blocksToSearch
+        .map((b: any) => ({
+          value: extractNumber(b.text),
+          text: b.text,
+          y: b.frame?.top || 0,
+        }))
+        .filter((a: any) => a.value > 0)
+        .sort((a: any, b: any) => b.value - a.value);
+
+      if (amounts.length > 0) {
+        console.log(
+          `✅ Strategy 2 (Largest Bottom): ${amounts[0].value} from "${amounts[0].text}"`
+        );
+        return amounts[0].value;
+      }
+
+      return 0;
+    };
+
+    // STRATEGY 3: Tìm số lớn nhất trong các block có từ khóa total
+    const findByKeywords = (): number => {
+      const keywords = /total|tổng|cộng|thanh\s*toán|phải\s*trả/i;
+      const matchingBlocks = blocks.filter((b: any) => keywords.test(b.text));
+
+      let maxAmount = 0;
+      let maxText = "";
+
+      for (const block of matchingBlocks) {
+        const amount = extractNumber(block.text);
+        if (amount > maxAmount) {
+          maxAmount = amount;
+          maxText = block.text;
+        }
+      }
+
+      if (maxAmount > 0) {
+        console.log(
+          `✅ Strategy 3 (Keyword Match): ${maxAmount} from "${maxText}"`
+        );
+      }
+
+      return maxAmount;
+    };
+
+    // Thực thi các strategies theo thứ tự ưu tiên
+    let amount = findFinalTotal(); // Strategy 0 - Ưu tiên "Tổng thanh toán" cuối
+
+    if (!amount || amount === 0) {
+      amount = findTotalByHorizontalPair();
+    }
+
+    if (!amount || amount === 0) {
+      amount = findLargestAmountInBottom();
+    }
+
+    if (!amount || amount === 0) {
+      amount = findByKeywords();
+    }
+
+    const merchantName = extractMerchant(ocrText);
+
+    console.log(`🎯 Final Amount: ${amount}`);
+    console.log(`🏪 Merchant: ${merchantName}`);
+
+    return {
+      amount: amount || null,
+      text: ocrText.substring(0, 500),
+      merchantName,
+    };
   } catch (error) {
-    console.error("OCR.space error:", error);
-    const errorMsg = error instanceof Error ? error.message : "Lỗi OCR";
+    console.error("ML Kit Text Recognition error:", error);
+    const errorMsg =
+      error instanceof Error ? error.message : "Lỗi nhận diện text";
 
     return {
       amount: null,
-      text: `❌ ${errorMsg}\n\nKiểm tra kết nối internet và thử lại.`,
+      text: `❌ ${errorMsg}\n\nVui lòng thử lại với ảnh rõ hơn.`,
       merchantName: "",
     };
   }
@@ -857,13 +728,8 @@ const parseTransactionWithAI = async (
 
     if (mlPrediction && mlPrediction.confidence > 0.1) {
       // ML has a good prediction - use it instead!
-      console.log(
-        `✅ ML prediction: ${mlPrediction.categoryName} (${(
-          mlPrediction.confidence * 100
-        ).toFixed(1)}%)`
-      );
       categoryId = mlPrediction.categoryId;
-      categoryName = mlPrediction.categoryName;
+      categoryName = mlPrediction.categoryName || result.categoryName;
       confidence = mlPrediction.confidence;
       // Clear alternatives since we're using ML prediction
       alternatives = [];
@@ -883,13 +749,8 @@ const parseTransactionWithAI = async (
         message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
       }
     } else if (mlPrediction) {
-      console.log(
-        `⚠️ ML confidence too low (${(mlPrediction.confidence * 100).toFixed(
-          1
-        )}%), using TensorFlow fallback`
-      );
     } else {
-      console.log(`❌ ML prediction failed, using TensorFlow fallback`);
+      console.warn(`❌ ML prediction failed, using TensorFlow fallback`);
     }
 
     // Include confidence and alternatives from the parser
@@ -1615,7 +1476,7 @@ export default function Chatbox() {
         return;
       }
     } catch (e) {
-      console.log("start error", e);
+      console.warn("start error", e);
       setIsRecording(false);
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current);
@@ -1710,10 +1571,10 @@ export default function Chatbox() {
         const result = await transactionClassifier.trainModel(true);
         if (result.success) {
         } else {
-          console.log("⚠️ Model training failed:", result.message);
+          console.warn("⚠️ Model training failed:", result.message);
         }
       } catch (error) {
-        console.log("❌ Error training model on startup:", error);
+        console.warn("❌ Error training model on startup:", error);
       }
     })();
   }, []); // Run once on mount
@@ -1936,12 +1797,6 @@ export default function Chatbox() {
         );
 
         if (mlCategory) {
-          console.log(
-            `🎓 ML Model (learned from history): ${mlCategory.name} (${(
-              mlPrediction.confidence * 100
-            ).toFixed(1)}%)`
-          );
-
           // Calculate scores for ALL categories, giving HIGH weight to ML prediction
           const allScores = relevantItems.map((c) => {
             const heuristicBase = heuristicScore(text, c, io);
@@ -1978,31 +1833,17 @@ export default function Chatbox() {
           const ranked = allScores
             .sort((a, b) => b.score - a.score)
             .slice(0, 6);
-
-          console.log(
-            `✅ Top suggestion from ML: ${ranked[0].name} (${(
-              ranked[0].score * 100
-            ).toFixed(1)}%)`
-          );
-          console.log("📊 All category scores:");
-          ranked.forEach((r, i) => {
-            console.log(
-              `   ${i + 1}. ${r.name}: ${(r.score * 100).toFixed(1)}% ${
-                r.isFromML ? "[ML]" : "[Heuristic]"
-              }`
-            );
-          });
           return { io, ranked };
         }
       } else if (mlPrediction) {
-        console.log(
+        console.warn(
           `⚠️ ML confidence too low: ${(mlPrediction.confidence * 100).toFixed(
             1
           )}%`
         );
       }
     } catch (error) {
-      console.log("ML prediction failed, falling back to heuristic:", error);
+      console.warn("ML prediction failed, falling back to heuristic:", error);
     }
 
     // PRIORITY 2: Fallback to existing static ML or heuristic
@@ -2158,10 +1999,6 @@ export default function Chatbox() {
 
         // 2. Only log if user chose a DIFFERENT category than what was predicted
         if (topSuggestion && topSuggestion.categoryId !== c.categoryId) {
-          console.log(
-            `📊 Correction detected: "${pendingPick.text}" was predicted as "${topSuggestion.name}" but user chose "${c.name}"`
-          );
-
           // Log the prediction record
           const sampleId = await logPrediction({
             text: pendingPick.text,
@@ -2170,7 +2007,6 @@ export default function Chatbox() {
             predictedCategoryId: topSuggestion.categoryId,
             confidence: topSuggestion.score || 0.5,
           });
-          console.log(`✅ Logged prediction: ${sampleId}`);
 
           // Log the correction
           if (sampleId) {
@@ -2178,7 +2014,6 @@ export default function Chatbox() {
               id: sampleId,
               chosenCategoryId: c.categoryId,
             });
-            console.log(`✅ Logged correction for sample ${sampleId}`);
           }
 
           // Now retrain with the correction in the database
@@ -2186,11 +2021,7 @@ export default function Chatbox() {
             pendingPick.text,
             c.categoryId
           );
-          console.log("✅ Model retrained with correction!");
         } else if (topSuggestion && topSuggestion.categoryId === c.categoryId) {
-          console.log(
-            `✅ User agreed with prediction: "${pendingPick.text}" → "${c.name}"`
-          );
           // Still log as a positive example (user confirmed the prediction was correct)
           await logPrediction({
             text: pendingPick.text,
@@ -2200,9 +2031,6 @@ export default function Chatbox() {
             confidence: topSuggestion.score || 0.8,
           });
         } else {
-          console.log(
-            `ℹ️ No suggestions available, user selected: "${c.name}"`
-          );
           // Log as prediction anyway
           await logPrediction({
             text: pendingPick.text,
@@ -2414,37 +2242,20 @@ export default function Chatbox() {
       });
       scrollToEnd();
 
-      // ✨ STRATEGY: AI-First approach for best accuracy
-      // AI (Groq) handles complex cases better than regex:
-      // - Complex amounts: "5tr873k387d"
-      // - Context understanding: "Du lịch" → Travel category
-      // - Date parsing: "ngày 23/11"
-      // - Category matching from user's list
       const aiResult = await parseTransactionWithAI(userText, items);
 
       if (!aiResult) {
-        // ⚠️ FALLBACK: Use PhoBERT + Regex hybrid parsing
-
-        // Try PhoBERT first for context-aware extraction
-        console.log("⚠️ AI parsing failed, trying PhoBERT hybrid...");
-
         let amountFromOriginal: number | null = null;
         try {
           const phobertResult = await phobertExtractor.extractAmount(userText);
           if (phobertResult.amount && phobertResult.confidence > 0.5) {
             amountFromOriginal = phobertResult.amount;
-            console.log(
-              `✅ PhoBERT extracted: ${amountFromOriginal} (${(
-                phobertResult.confidence * 100
-              ).toFixed(1)}%)`
-            );
           } else {
             // Low confidence, fallback to regex
             amountFromOriginal = parseAmountVN(userText);
-            console.log(`⚠️ Using regex fallback: ${amountFromOriginal}`);
           }
         } catch (error) {
-          console.error("❌ PhoBERT failed, using regex:", error);
+          console.warn("❌ PhoBERT failed, using regex:", error);
           amountFromOriginal = parseAmountVN(userText);
         }
 
@@ -2666,7 +2477,7 @@ export default function Chatbox() {
           categoryId
         );
       } catch (err) {
-        console.log("⚠️ Auto-learning failed:", err);
+        console.warn("⚠️ Auto-learning failed:", err);
       }
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
@@ -2821,14 +2632,6 @@ export default function Chatbox() {
 
       // 🎓 CORRECTION LEARNING: If user changed category, retrain AI immediately
       if (categoryChanged && editNote) {
-        console.log(
-          "🔄 User corrected category:",
-          editNote,
-          oldCategoryId,
-          "→",
-          editCategoryId
-        );
-
         // Create training sample for this correction
         try {
           const sampleId = await logPrediction({
@@ -2844,10 +2647,6 @@ export default function Chatbox() {
             id: sampleId,
             chosenCategoryId: editCategoryId,
           });
-          console.log(
-            `✅ Logged correction: "${editNote}" → ${editCategoryId}`
-          );
-          console.log(`📊 Sample ID: ${sampleId} saved to ml_training_samples`);
         } catch (err) {
           console.warn("⚠️ Failed to log correction:", err);
         }
@@ -2858,7 +2657,6 @@ export default function Chatbox() {
             editNote,
             editCategoryId
           );
-          console.log("✅ Model retrained with correction!");
         } catch (err) {
           console.warn("⚠️ Model retraining failed:", err);
         }
