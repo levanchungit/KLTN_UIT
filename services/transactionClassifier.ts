@@ -63,9 +63,11 @@ class TransactionClassifier {
 
   /**
    * Fetch training data from database
+   * Priority: User corrections (chosen_category_id) > Transactions
    */
   private async fetchTrainingData(): Promise<{
     data: TrainingData[];
+    corrections: Set<string>; // Track which notes are from corrections
     categories: Category[];
   }> {
     await openDb();
@@ -75,7 +77,25 @@ class TransactionClassifier {
       "SELECT * FROM categories WHERE type = 'expense' OR type = 'income'"
     );
 
-    // Get all transactions with notes (expense or income)
+    // Get user corrections (highest priority for learning)
+    // These are explicit user feedback when they fixed wrong predictions
+    const corrections = await db.getAllAsync<{
+      text: string;
+      chosen_category_id: string;
+    }>(`
+      SELECT text, chosen_category_id 
+      FROM ml_training_samples
+      WHERE chosen_category_id IS NOT NULL
+        AND text IS NOT NULL 
+        AND text != ''
+      ORDER BY created_at DESC
+      LIMIT 500
+    `);
+
+    // Track correction notes for weighted building
+    const correctionNotes = new Set(corrections.map((c) => c.text));
+
+    // Get all transactions with notes (expense or income) as secondary data
     const transactions = await db.getAllAsync<{
       note: string;
       category_id: string;
@@ -90,27 +110,52 @@ class TransactionClassifier {
       LIMIT 1000
     `);
 
-    const data: TrainingData[] = transactions.map((t) => ({
-      note: t.note,
-      categoryId: t.category_id,
-    }));
+    // Combine data: corrections first (user feedback), then transactions
+    // IMPORTANT: Deduplicate to avoid counting same note twice
+    const dataMap = new Map<string, TrainingData>();
 
-    return { data, categories };
+    // Add corrections first (higher priority)
+    corrections.forEach((c) => {
+      const key = `${c.text}||${c.chosen_category_id}`;
+      dataMap.set(key, {
+        note: c.text,
+        categoryId: c.chosen_category_id,
+      });
+    });
+
+    // Add transactions (skip if already in corrections)
+    transactions.forEach((t) => {
+      const key = `${t.note}||${t.category_id}`;
+      if (!dataMap.has(key)) {
+        dataMap.set(key, {
+          note: t.note,
+          categoryId: t.category_id,
+        });
+      }
+    });
+
+    const data: TrainingData[] = Array.from(dataMap.values());
+
+    return { data, corrections: correctionNotes, categories };
   }
 
   /**
    * Build category profiles (average vectors for each category)
+   * Corrections get 3x weight to prioritize user feedback
    */
   private buildCategoryProfiles(
     data: TrainingData[],
+    corrections: Set<string>,
     categories: Category[]
   ): CategoryProfile[] {
-    const profiles: Map<string, { vectors: number[][]; name: string }> =
-      new Map();
+    const profiles: Map<
+      string,
+      { vectors: number[][]; weights: number[]; name: string }
+    > = new Map();
 
     // Initialize profiles for all categories
     categories.forEach((cat) => {
-      profiles.set(cat.id, { vectors: [], name: cat.name });
+      profiles.set(cat.id, { vectors: [], weights: [], name: cat.name });
     });
 
     // Convert each transaction note to vector and group by category
@@ -121,36 +166,55 @@ class TransactionClassifier {
       const profile = profiles.get(sample.categoryId);
       if (profile) {
         profile.vectors.push(normalized);
+        // Corrections get 3x weight (stronger signal)
+        const weight = corrections.has(sample.note) ? 3.0 : 1.0;
+        profile.weights.push(weight);
       }
     });
 
-    // Calculate average vector for each category
+    // Calculate WEIGHTED average vector for each category
     const categoryProfiles: CategoryProfile[] = [];
 
     profiles.forEach((profile, categoryId) => {
       if (profile.vectors.length === 0) return;
 
       const vectorSize = profile.vectors[0].length;
-      const avgVector = new Array(vectorSize).fill(0);
+      const weightedVectors: number[][] = [];
+      let totalWeight = 0;
+      let correctionCount = 0;
 
-      // Sum all vectors
-      profile.vectors.forEach((vec) => {
+      // Apply weights to each vector BEFORE averaging
+      profile.vectors.forEach((vec, idx) => {
+        const weight = profile.weights[idx];
+        if (weight > 1.0) correctionCount++;
+
+        // Scale vector by weight
+        const weightedVec = vec.map((val) => val * weight);
+        weightedVectors.push(weightedVec);
+        totalWeight += weight;
+      });
+
+      // Calculate simple average of weighted vectors
+      const avgVector = new Array(vectorSize).fill(0);
+      weightedVectors.forEach((vec) => {
         vec.forEach((val, idx) => {
           avgVector[idx] += val;
         });
       });
 
-      // Divide by count to get average
-      const count = profile.vectors.length;
+      // Divide by total weight to get proper weighted average
       avgVector.forEach((val, idx) => {
-        avgVector[idx] = val / count;
+        avgVector[idx] = val / totalWeight;
       });
+
+      // Normalize the final averaged vector to unit length
+      const normalized = normalizeVector(avgVector);
 
       categoryProfiles.push({
         categoryId,
         categoryName: profile.name,
-        vector: normalizeVector(avgVector),
-        sampleCount: count,
+        vector: normalized,
+        sampleCount: profile.vectors.length, // Original count (not weighted)
       });
     });
 
@@ -179,13 +243,12 @@ class TransactionClassifier {
     try {
       // Clear old model data before retraining
       if (forceRetrain) {
-        console.log("🗑️  Clearing old model before retrain...");
         this.vocabulary.clear();
         this.categoryProfiles = [];
       }
 
       // Fetch training data
-      const { data, categories } = await this.fetchTrainingData();
+      const { data, corrections, categories } = await this.fetchTrainingData();
 
       if (data.length < MIN_TRAINING_SAMPLES) {
         console.warn(
@@ -194,26 +257,29 @@ class TransactionClassifier {
         // Vẫn tiếp tục train với số lượng ít
       }
 
-      console.log(
-        `Training with ${data.length} samples from ${categories.length} categories`
+      // Build vocabulary with minFrequency = 1 to learn from single corrections
+      // This allows the model to immediately recognize new words after just one correction
+      const notes = data.map((d) => d.note);
+      this.vocabulary = buildVocabulary(notes, 1);
+
+      // Build category profiles with weighted corrections
+      this.categoryProfiles = this.buildCategoryProfiles(
+        data,
+        corrections,
+        categories
       );
 
-      // Build vocabulary
-      const notes = data.map((d) => d.note);
-      this.vocabulary = buildVocabulary(notes, 2);
-
-      console.log(`Vocabulary size: ${this.vocabulary.size}`);
-
-      // Build category profiles
-      this.categoryProfiles = this.buildCategoryProfiles(data, categories);
-
-      console.log(`Built ${this.categoryProfiles.length} category profiles`);
+      // Log per-category sample counts
+      const samplesByCategory = new Map<string, number>();
+      data.forEach((d) => {
+        const count = samplesByCategory.get(d.categoryId) || 0;
+        samplesByCategory.set(d.categoryId, count + 1);
+      });
 
       // Save the model
       await this.saveModel();
 
       this.isModelReady = true;
-      this.isTraining = false;
 
       // Calculate approximate accuracy using cross-validation on sample
       let correct = 0;
@@ -238,12 +304,14 @@ class TransactionClassifier {
         )}% accuracy`,
       };
     } catch (error) {
-      this.isTraining = false;
-      console.error("Error training model:", error);
+      console.warn("Error training model:", error);
       return {
         success: false,
         message: `Training failed: ${error}`,
       };
+    } finally {
+      // Always reset training flag, even if an error occurred
+      this.isTraining = false;
     }
   }
 
@@ -260,10 +328,9 @@ class TransactionClassifier {
     }
 
     try {
-      console.log(`🔍 Predicting for: "${note}"`);
-      console.log(
-        `📊 Current model: ${this.vocabulary.size} words, ${this.categoryProfiles.length} categories`
-      );
+      // Debug: Show which words from note are in vocabulary
+      const words = note.toLowerCase().split(/\s+/);
+      const knownWords = words.filter((w) => this.vocabulary.has(w));
 
       // Convert note to vector
       const vector = textToVector(note, this.vocabulary);
@@ -273,29 +340,49 @@ class TransactionClassifier {
       let maxSimilarity = 0;
       let bestCategory: CategoryProfile | null = null;
 
+      // Calculate similarity for ALL categories and show top candidates
+      const scores: {
+        name: string;
+        score: number;
+        samples: number;
+        rawSim: number;
+      }[] = [];
+
       for (const profile of this.categoryProfiles) {
         const similarity = cosineSimilarity(normalized, profile.vector);
 
-        // Weight by sample count (categories with more samples get slight boost)
-        const weightedSimilarity =
-          similarity * (1 + Math.log(profile.sampleCount) * 0.1);
+        // Use similarity directly (0-1 range), apply minimal sample boost ONLY for tie-breaking
+        // Prevent multiplying > 1.0 which breaks similarity semantics
+        let finalScore = similarity;
 
-        if (weightedSimilarity > maxSimilarity) {
-          maxSimilarity = weightedSimilarity;
+        // Only boost if similarity is high (> 0.5) and sampleCount provides evidence
+        // This prevents high sample counts from dominating low similarity
+        if (similarity > 0.5) {
+          const sampleBoost = Math.min(
+            0.1,
+            Math.log(profile.sampleCount + 1) * 0.01
+          );
+          finalScore = Math.min(1.0, similarity + sampleBoost); // CAP AT 1.0!
+        }
+
+        scores.push({
+          name: profile.categoryName,
+          score: finalScore,
+          samples: profile.sampleCount,
+          rawSim: similarity,
+        });
+
+        if (finalScore > maxSimilarity) {
+          maxSimilarity = finalScore;
           bestCategory = profile;
         }
       }
 
-      if (!bestCategory || maxSimilarity < 0.1) {
-        console.log("❌ No confident prediction (max similarity < 0.1)");
+      // Lower threshold (0.05) to allow predictions even with sparse training data
+      // This is important for learning from single corrections
+      if (!bestCategory || maxSimilarity < 0.05) {
         return null;
       }
-
-      console.log(
-        `✅ Predicted: ${bestCategory.categoryName} (confidence: ${(
-          maxSimilarity * 100
-        ).toFixed(1)}%)`
-      );
 
       // Get category details
       await openDb();
@@ -306,7 +393,7 @@ class TransactionClassifier {
 
       return {
         categoryId: bestCategory.categoryId,
-        confidence: maxSimilarity,
+        confidence: Math.min(1.0, maxSimilarity), // Cap at 1.0 (100%)
         categoryName: category?.name || bestCategory.categoryName,
         categoryIcon: category?.icon || undefined,
       };
@@ -317,7 +404,136 @@ class TransactionClassifier {
   }
 
   /**
+   * Predict top 3 categories with confidence scores (multi-label)
+   * Used for showing user alternative suggestions
+   */
+  async predictCategoryWithAlternatives(
+    note: string
+  ): Promise<{ primary: PredictionResult; alternatives: PredictionResult[] }> {
+    if (!this.isModelReady) {
+      console.log("Model not ready. Training...");
+      const result = await this.trainModel();
+      if (!result.success) {
+        return {
+          primary: {
+            categoryId: "",
+            confidence: 0,
+            categoryName: "Unknown",
+          },
+          alternatives: [],
+        };
+      }
+    }
+
+    try {
+      console.log(`🔍 Predicting alternatives for: "${note}"`);
+
+      // Convert note to vector
+      const vector = textToVector(note, this.vocabulary);
+      const normalized = normalizeVector(vector);
+
+      // Calculate similarity with each category profile
+      const similarities: Array<{
+        profile: CategoryProfile;
+        similarity: number;
+      }> = [];
+
+      for (const profile of this.categoryProfiles) {
+        const similarity = cosineSimilarity(normalized, profile.vector);
+
+        // Apply same logic as predictCategory: add-on boost instead of multiply
+        let finalScore = similarity;
+        if (similarity > 0.5) {
+          const sampleBoost = Math.min(
+            0.1,
+            Math.log(profile.sampleCount + 1) * 0.01
+          );
+          finalScore = similarity + sampleBoost;
+        }
+
+        similarities.push({
+          profile,
+          similarity: finalScore,
+        });
+      }
+
+      // Sort by similarity descending
+      similarities.sort((a, b) => b.similarity - a.similarity);
+
+      if (similarities.length === 0) {
+        return {
+          primary: {
+            categoryId: "",
+            confidence: 0,
+            categoryName: "Unknown",
+          },
+          alternatives: [],
+        };
+      }
+
+      // Get category details from DB
+      await openDb();
+      const categories = await db.getAllAsync<Category>(
+        "SELECT * FROM categories"
+      );
+      const categoryMap = new Map(categories.map((c) => [c.id, c]));
+
+      // Convert to confidence scores (0-100%)
+      const topPredictions = similarities
+        .slice(0, 3)
+        .filter((s) => s.similarity > 0.05)
+        .map((s) => {
+          const category = categoryMap.get(s.profile.categoryId);
+          return {
+            categoryId: s.profile.categoryId,
+            confidence: Math.min(Math.round(s.similarity * 100), 100),
+            categoryName: category?.name || s.profile.categoryName,
+            categoryIcon: category?.icon || undefined,
+          };
+        });
+
+      if (topPredictions.length === 0) {
+        return {
+          primary: {
+            categoryId: "",
+            confidence: 0,
+            categoryName: "Unknown",
+          },
+          alternatives: [],
+        };
+      }
+
+      const primary = topPredictions[0];
+      const alternatives = topPredictions.slice(1);
+
+      console.log(
+        `✅ Primary: ${primary.categoryName} (${primary.confidence}%)`
+      );
+      if (alternatives.length > 0) {
+        console.log(
+          `🔄 Alternatives: ${alternatives
+            .map((a) => `${a.categoryName} (${a.confidence}%)`)
+            .join(", ")}`
+        );
+      }
+
+      return { primary, alternatives };
+    } catch (error) {
+      console.error("Error predicting alternatives:", error);
+      return {
+        primary: {
+          categoryId: "",
+          confidence: 0,
+          categoryName: "Unknown",
+        },
+        alternatives: [],
+      };
+    }
+  }
+
+  /**
    * Incremental learning - retrain with new transaction
+   * Train continuously after every transaction for immediate learning
    */
   async learnFromNewTransaction(
     note: string,
@@ -326,14 +542,18 @@ class TransactionClassifier {
     // Get current transaction count
     await openDb();
     const result = await db.getFirstAsync<{ count: number }>(
-      'SELECT COUNT(*) as count FROM transactions WHERE type = "expense" AND note IS NOT NULL'
+      'SELECT COUNT(*) as count FROM transactions WHERE (type = "expense" OR type = "income") AND note IS NOT NULL'
     );
 
-    // Retrain every 10 new transactions
-    if (result && result.count % 10 === 0) {
-      console.log("Triggering model retrain after 10 new transactions");
-      await this.trainModel(true);
-    }
+    const count = result?.count || 0;
+
+    // CONTINUOUS LEARNING: Train after every transaction
+    console.log(
+      `🎓 Continuous learning: Training model after transaction #${count}`
+    );
+
+    await this.trainModel(true);
+    console.log(`✅ Model trained successfully with ${count} transactions`);
   }
 
   /**
@@ -341,24 +561,7 @@ class TransactionClassifier {
    * Called when user edits a transaction to fix wrong category
    */
   async learnFromCorrection(note: string, categoryId: string): Promise<void> {
-    console.log(`🔄 User corrected: "${note}" → category ${categoryId}`);
-    console.log("⏳ Retraining AI immediately with new data...");
-
-    // Force retrain immediately and WAIT for completion
-    const result = await this.trainModel(true);
-
-    if (result.success) {
-      console.log(
-        `✅ AI retrained successfully! Accuracy: ${
-          result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
-        }%`
-      );
-      console.log(
-        `📊 Vocabulary size: ${this.vocabulary.size}, Categories: ${this.categoryProfiles.length}`
-      );
-    } else {
-      console.error("❌ AI retrain failed:", result.message);
-    }
+    await this.trainModel(true);
   }
 
   /**
@@ -377,10 +580,8 @@ class TransactionClassifier {
         MODEL_STORAGE_KEY,
         JSON.stringify(this.categoryProfiles)
       );
-
-      console.log("Model saved successfully");
     } catch (error) {
-      console.error("Error saving model:", error);
+      console.warn("Error saving model:", error);
     }
   }
 
@@ -403,10 +604,9 @@ class TransactionClassifier {
 
       if (this.vocabulary.size > 0 && this.categoryProfiles.length > 0) {
         this.isModelReady = true;
-        console.log("Model loaded successfully");
       }
     } catch (error) {
-      console.error("Error loading model:", error);
+      console.warn("Error loading model:", error);
       this.isModelReady = false;
     }
   }

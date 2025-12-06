@@ -19,7 +19,7 @@ import { sendToHf } from "@/services/hfChatbot";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
-import { parseTransactionText } from "@/utils/textPreprocessing";
+import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import Constants from "expo-constants";
@@ -55,7 +55,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-
+import { tfTransactionParser } from "../services/tensorflowTransactionParser";
 // Minimal placeholders (keeps file compiling if config values/helpers missing)
 const HUGGINGFACE_API_KEY =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_HUGGINGFACE_API_KEY ||
@@ -87,8 +87,6 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
   const today = new Date();
   const combined = (aiResponse + " " + originalNote).toLowerCase();
 
-  console.log("🔍 Parsing date from:", originalNote);
-
   // Priority 1: Check for specific date formats
 
   // Format 1: DD/MM/YYYY or DD-MM-YYYY (full date with year)
@@ -100,7 +98,6 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
     const month = parseInt(ddmmyyyyMatch[2]) - 1; // Month is 0-indexed
     const year = parseInt(ddmmyyyyMatch[3]);
     const parsedDate = new Date(year, month, day);
-    console.log(`✅ Found date format DD/MM/YYYY: ${day}/${month + 1}/${year}`);
     return parsedDate;
   }
 
@@ -126,11 +123,6 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
     }
 
     const finalDate = new Date(year, month, day);
-    console.log(
-      `✅ Found date format DD/MM (no year): ${day}/${month + 1} → ${day}/${
-        month + 1
-      }/${year}`
-    );
     return finalDate;
   }
 
@@ -143,20 +135,17 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
     const month = parseInt(yyyymmddMatch[2]) - 1;
     const day = parseInt(yyyymmddMatch[3]);
     const parsedDate = new Date(year, month, day);
-    console.log(`✅ Found date format YYYY-MM-DD: ${year}-${month + 1}-${day}`);
     return parsedDate;
   }
 
   // Priority 2: Vietnamese relative date expressions
   if (originalNote.toLowerCase().includes("hôm qua")) {
-    console.log('✅ Found "hôm qua"');
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     return yesterday;
   }
 
   if (originalNote.toLowerCase().includes("hôm nay")) {
-    console.log('✅ Found "hôm nay"');
     return today;
   }
 
@@ -164,21 +153,18 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
   const vnDaysMatch = originalNote.match(/(\d+)\s*ngày\s*trước/i);
   if (vnDaysMatch) {
     const daysAgo = parseInt(vnDaysMatch[1]);
-    console.log(`✅ Found "${daysAgo} ngày trước"`);
     const date = new Date(today);
     date.setDate(date.getDate() - daysAgo);
     return date;
   }
 
   if (originalNote.toLowerCase().includes("tuần trước")) {
-    console.log('✅ Found "tuần trước"');
     const lastWeek = new Date(today);
     lastWeek.setDate(lastWeek.getDate() - 7);
     return lastWeek;
   }
 
   if (originalNote.toLowerCase().includes("tháng trước")) {
-    console.log('✅ Found "tháng trước"');
     const lastMonth = new Date(today);
     lastMonth.setMonth(lastMonth.getMonth() - 1);
     return lastMonth;
@@ -186,7 +172,6 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
 
   // Priority 3: Check AI response for keywords
   if (combined.includes("yesterday")) {
-    console.log('✅ AI suggested "yesterday"');
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     return yesterday;
@@ -196,13 +181,11 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
   const daysAgoMatch = combined.match(/(\d+)_days?_ago/);
   if (daysAgoMatch) {
     const daysAgo = parseInt(daysAgoMatch[1]);
-    console.log(`✅ AI suggested "${daysAgo} days ago"`);
     const date = new Date(today);
     date.setDate(date.getDate() - daysAgo);
     return date;
   }
 
-  console.log("⚠️ No date found, using today");
   return today;
 }
 
@@ -227,10 +210,6 @@ async function getEmotionalReplyDirect(args: {
   const listCategoriesUser = await listCategories();
 
   // Parse date from original text (before cleaning) for accurate date extraction
-  console.log("🔍 getEmotionalReplyDirect inputs:");
-  console.log("  - note:", note);
-  console.log("  - originalText:", originalText);
-
   if (!originalText) {
     console.warn(
       "⚠️ WARNING: originalText is undefined! Date parsing may fail!"
@@ -241,15 +220,8 @@ async function getEmotionalReplyDirect(args: {
   }
 
   const textForDateParsing = originalText || note;
-  console.log("  - textForDateParsing:", textForDateParsing);
 
   const extractedDate: Date = parseDateFromAI("", textForDateParsing);
-  console.log(
-    "📅 Parsed date from:",
-    textForDateParsing,
-    "→",
-    extractedDate.toLocaleDateString("vi-VN")
-  );
 
   const isToday = extractedDate.toDateString() === new Date().toDateString();
   const isFuture = extractedDate > new Date();
@@ -301,7 +273,6 @@ YÊU CẦU: Tạo câu tương tự (1-2 câu, emoji cuối), CHỈ TRẢ CÂU P
 
   try {
     if (HUGGINGFACE_API_KEY) {
-      console.log("🤖 Calling AI for response...");
       const reply = await sendToHf(
         prompt,
         HUGGINGFACE_MODEL,
@@ -311,8 +282,6 @@ YÊU CẦU: Tạo câu tương tự (1-2 câu, emoji cuối), CHỈ TRẢ CÂU P
           temperature: 0.8,
         }
       );
-
-      console.log("✅ AI replied:", reply?.substring(0, 100));
 
       if (reply && reply.trim()) {
         return {
@@ -396,8 +365,6 @@ async function processReceiptImage(imageUri: string): Promise<{
   merchantName?: string;
 }> {
   try {
-    console.log("📷 Processing receipt with OCR.space:", imageUri);
-
     // Optimize image size before uploading (using ImagePicker quality only)
     // const optimizedUri = await optimizeImageForOCR(imageUri);
     const optimizedUri = imageUri; // Use original image with quality=0.6 from ImagePicker
@@ -421,8 +388,6 @@ async function processReceiptImage(imageUri: string): Promise<{
 
     const result = await response.json();
 
-    console.log("📝 OCR Result:", JSON.stringify(result, null, 2));
-
     if (!result.IsErroredOnProcessing && result.ParsedResults?.[0]) {
       const ocrText = result.ParsedResults[0].ParsedText || "";
 
@@ -436,8 +401,6 @@ async function processReceiptImage(imageUri: string): Promise<{
 
       // Extract final total amount from OCR text (ưu tiên miễn phí, rule-based)
       const extractAmount = (text: string): number | null => {
-        console.log("🔍 Extracting amount from text:", text);
-
         if (!text || !text.trim()) return null;
 
         // --- Chuẩn hoá & tách dòng ---
@@ -652,12 +615,6 @@ async function processReceiptImage(imageUri: string): Promise<{
 
               const v = wordsToNumberVN(phrase);
               if (v && v >= 1000) {
-                console.log(
-                  "✅ Detected amount by VN words (bằng chữ):",
-                  v,
-                  " | line:",
-                  line
-                );
                 return v;
               }
             }
@@ -687,12 +644,6 @@ async function processReceiptImage(imageUri: string): Promise<{
             if (!m) continue;
             const v = wordsToNumberVN(m[0]);
             if (v && v >= 1000) {
-              console.log(
-                "✅ Detected amount by VN words (no label):",
-                v,
-                " | line:",
-                line
-              );
               return v;
             }
           }
@@ -816,13 +767,11 @@ async function processReceiptImage(imageUri: string): Promise<{
         });
 
         if (!candidates.length) {
-          console.log("❌ No numeric amount candidate found");
           return null;
         }
 
         candidates.sort((a, b) => b.score - a.score);
         const best = candidates[0];
-        console.log("✅ Best numeric candidate:", best);
         return best.amount;
       };
 
@@ -860,405 +809,118 @@ async function processReceiptImage(imageUri: string): Promise<{
   }
 }
 
-/* ---------------- Helpers: VN money + GPT fallback ---------------- */
-// ✨ UNIFIED AI PARSER - Single API call to parse everything
 const parseTransactionWithAI = async (
-  text: string
+  text: string,
+  userCategories: Category[]
 ): Promise<{
+  action:
+    | "CREATE_TRANSACTION"
+    | "CHAT"
+    | "VIEW_STATS"
+    | "EDIT_TRANSACTION"
+    | "DELETE_TRANSACTION";
   amount: number | null;
   note: string;
+  categoryId: string;
   categoryName: string;
   io: "IN" | "OUT";
   date: Date;
   message: string;
+  confidence?: number;
+  alternatives?: Array<{
+    categoryId: string;
+    categoryName: string;
+    confidence: number;
+  }>;
 } | null> => {
   try {
-    if (!HUGGINGFACE_API_KEY || HUGGINGFACE_API_KEY.length < 10) {
-      console.log("❌ No API key");
-      return null;
-    }
-
-    const today = new Date();
-    const todayStr = today.toLocaleDateString("vi-VN");
-
-    const prompt = `Bạn là AI phân tích giao dịch tài chính của người Việt. Phân tích văn bản và trả về JSON CHÍNH XÁC.
-
-VĂN BẢN: "${text}"
-
-PHÂN TÍCH VÀ TRẢ VỀ JSON:
-{
-  "amount": <số tiền VNĐ, số nguyên>,
-  "note": "<mô tả ngắn gọn>",
-  "categoryName": "<tên danh mục>",
-  "io": "<IN hoặc OUT>",
-  "date": "<YYYY-MM-DD>",
-  "message": "<câu xác nhận thân thiện>"
-}
-
-QUY TẮC PHÂN TÍCH:
-
-1. SỐ TIỀN:
-- "4tr8" = 4800000 (4 triệu 8 trăm nghìn)
-- "847k948" = 847948 (847 nghìn 948)
-- "1tr238k" = 1238000
-- "2tr5" = 2500000 (2 triệu 5 trăm nghìn)
-- "50k" = 50000
-- Luôn trả về số nguyên VNĐ
-
-2. NGÀY (format: YYYY-MM-DD):
-- "hôm nay" / không có ngày → "2025-12-01"
-- "hôm qua" → "2025-11-30"
-- "25/11/2025" → "2025-11-25"
-- "30/11/2025" → "2025-11-30"
-- "2 ngày trước" → "2025-11-29"
-- "tuần trước" → "2025-11-24"
-QUAN TRỌNG: Luôn tính toán và trả về ngày chính xác theo format YYYY-MM-DD
-
-3. DANH MỤC (chọn phù hợp nhất):
-- Du lịch: du lịch, đi chơi, khách sạn, vé máy bay
-- Ăn uống: ăn, uống, cafe, nhà hàng, cơm, bún, phở
-- Di chuyển: xăng, grab, taxi, xe, vé xe
-- Mua sắm: mua, shopping, shopee, lazada, quần áo
-- Giải trí: phim, game, vui chơi
-- Nhà cửa: tiền nhà, thuê nhà, điện, nước
-- Thu nhập: lương, thưởng, nhận tiền
-
-4. LOẠI (io):
-- "OUT" (chi tiêu): mua, chi, mất, trả, nạp
-- "IN" (thu nhập): nhận, thu, lương, thưởng
-
-5. MÔ TẢ (note): Giữ nội dung chính, bỏ số tiền và ngày
-
-6. MESSAGE: Câu xác nhận ngắn gọn, thân thiện, có emoji
-
-VÍ DỤ:
-
-Input: "Du lịch đà lạt 4tr8 ngày 25/11/2025"
-Output:
-{
-  "amount": 4800000,
-  "note": "Du lịch đà lạt",
-  "categoryName": "Du lịch",
-  "io": "OUT",
-  "date": "2025-11-25",
-  "message": "Đã ghi chi 4.800.000đ cho chuyến du lịch Đà Lạt ngày 25/11/2025. Chúc bạn có chuyến đi vui vẻ! 🎒"
-}
-
-Input: "hôm qua ăn trưa 45k"
-Output:
-{
-  "amount": 45000,
-  "note": "ăn trưa",
-  "categoryName": "Ăn uống",
-  "io": "OUT",
-  "date": "2025-11-30",
-  "message": "Đã ghi hôm qua chi 45.000đ ăn trưa. Ngon miệng! 🍜"
-}
-
-Input: "mua xăng 500k ngày 28/11/2025"
-Output:
-{
-  "amount": 500000,
-  "note": "mua xăng",
-  "categoryName": "Di chuyển",
-  "io": "OUT",
-  "date": "2025-11-28",
-  "message": "Đã ghi chi 500.000đ mua xăng ngày 28/11/2025. ⛽"
-}
-
-CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH:`;
-
-    const response = await sendToHf(
-      prompt,
-      HUGGINGFACE_MODEL,
-      HUGGINGFACE_API_KEY,
-      {
-        max_new_tokens: 200,
-        temperature: 0.3,
-      }
+    // Parse transaction locally with TensorFlow (for amount and date only!)
+    const result = await tfTransactionParser.parseTransaction(
+      text,
+      userCategories
     );
 
-    if (!response || !response.trim()) {
-      console.log("❌ Empty AI response");
+    if (!result) {
       return null;
     }
 
-    // Try to extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.log("❌ No JSON found in response:", response.substring(0, 100));
-      return null;
-    }
+    // 🔥 CRITICAL FIX: Use ML Classifier for category, NOT TensorFlow!
+    // TensorFlow gives low confidence (10%), use our trained ML model instead
+    console.log(
+      `🧠 Using ML Classifier to predict category for: "${result.note}"`
+    );
+    const mlPrediction = await transactionClassifier.predictCategory(
+      result.note
+    );
 
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      console.log("❌ JSON parse error:", parseError);
-      console.log("❌ Invalid JSON string:", jsonMatch[0].substring(0, 200));
-      return null;
-    }
+    let categoryId = result.categoryId; // Fallback to TensorFlow's prediction
+    let categoryName = result.categoryName;
+    let confidence = result.primary?.confidence || 0;
+    let alternatives = result.alternatives || [];
+    let message = result.message; // Start with TensorFlow's message
 
-    // Validate and convert
-    if (!parsed.amount || !parsed.note || !parsed.io) {
-      console.log("❌ Invalid JSON structure:", parsed);
-      return null;
-    }
-
-    // Parse date - ALWAYS parse from original text first (most reliable)
-    let parsedDate = today;
-
-    console.log("📅 Parsing date from original text:", text);
-
-    // PRIORITY 1: Parse date directly from original text using regex
-    const textDateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (textDateMatch) {
-      const day = parseInt(textDateMatch[1]);
-      const month = parseInt(textDateMatch[2]) - 1; // 0-indexed
-      const year = parseInt(textDateMatch[3]);
-      parsedDate = new Date(year, month, day);
+    if (mlPrediction && mlPrediction.confidence > 0.1) {
+      // ML has a good prediction - use it instead!
       console.log(
-        `✅ Text date: ${day}/${month + 1}/${year} →`,
-        parsedDate.toLocaleDateString("vi-VN")
+        `✅ ML prediction: ${mlPrediction.categoryName} (${(
+          mlPrediction.confidence * 100
+        ).toFixed(1)}%)`
+      );
+      categoryId = mlPrediction.categoryId;
+      categoryName = mlPrediction.categoryName;
+      confidence = mlPrediction.confidence;
+      // Clear alternatives since we're using ML prediction
+      alternatives = [];
+
+      // 🔥 REGENERATE MESSAGE with ML category!
+      const mlCategory = userCategories.find((c) => c.id === categoryId);
+      if (result.action === "CREATE_TRANSACTION" && result.amount) {
+        const formattedAmount = result.amount.toLocaleString("vi-VN");
+        const dateStr = result.date.toLocaleDateString("vi-VN");
+        const emoji = mlCategory?.icon || "✅";
+        const transactionType = mlCategory?.type === "income" ? "thu" : "chi";
+        const confidenceStr =
+          confidence < 0.75
+            ? ` (${(confidence * 100).toFixed(0)}% chắc chắn)`
+            : " ✓";
+
+        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}. ${emoji}`;
+        console.log(`📝 Regenerated message with ML category: ${message}`);
+      }
+    } else if (mlPrediction) {
+      console.log(
+        `⚠️ ML confidence too low (${(mlPrediction.confidence * 100).toFixed(
+          1
+        )}%), using TensorFlow fallback`
       );
     } else {
-      // PRIORITY 2: Try AI parsed date if no date in text
-      console.log("📅 No date in text, trying AI date:", parsed.date);
-      if (parsed.date) {
-        const dateMatch = parsed.date.match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (dateMatch) {
-          const year = parseInt(dateMatch[1]);
-          const month = parseInt(dateMatch[2]) - 1;
-          const day = parseInt(dateMatch[3]);
-          parsedDate = new Date(year, month, day);
-          console.log(
-            `✅ AI date: ${year}-${month + 1}-${day} →`,
-            parsedDate.toLocaleDateString("vi-VN")
-          );
-        }
-      }
-
-      // PRIORITY 3: Parse Vietnamese relative dates from text
-      const lowerText = text.toLowerCase();
-      if (lowerText.includes("hôm qua")) {
-        parsedDate = new Date(today);
-        parsedDate.setDate(parsedDate.getDate() - 1);
-        console.log("✅ hôm qua →", parsedDate.toLocaleDateString("vi-VN"));
-      } else if (lowerText.includes("tuần trước")) {
-        parsedDate = new Date(today);
-        parsedDate.setDate(parsedDate.getDate() - 7);
-        console.log("✅ tuần trước →", parsedDate.toLocaleDateString("vi-VN"));
-      } else {
-        const daysAgoMatch = lowerText.match(/(\d+)\s*ngày\s*trước/);
-        if (daysAgoMatch) {
-          const daysAgo = parseInt(daysAgoMatch[1]);
-          parsedDate = new Date(today);
-          parsedDate.setDate(parsedDate.getDate() - daysAgo);
-          console.log(
-            `✅ ${daysAgo} ngày trước →`,
-            parsedDate.toLocaleDateString("vi-VN")
-          );
-        }
-      }
+      console.log(`❌ ML prediction failed, using TensorFlow fallback`);
     }
 
-    console.log("📅 Final date:", parsedDate.toLocaleDateString("vi-VN"));
-
+    // Include confidence and alternatives from the parser
     return {
-      amount: parseInt(parsed.amount),
-      note: parsed.note.trim(),
-      categoryName: parsed.categoryName || "Khác",
-      io: parsed.io === "IN" ? "IN" : "OUT",
-      date: parsedDate,
-      message: parsed.message || "Đã ghi nhận giao dịch.",
+      ...result,
+      categoryId,
+      categoryName,
+      confidence,
+      message, // Use regenerated message
+      alternatives: alternatives.map((alt) => ({
+        categoryId: alt.categoryId,
+        categoryName: alt.categoryName,
+        confidence: alt.confidence,
+      })),
     };
   } catch (error) {
-    console.log(
-      "❌ AI parsing error:",
-      error instanceof Error ? error.message : String(error)
-    );
+    console.error("❌ TensorFlow parser error:", error);
     return null;
   }
 };
 
-const parseAmountVN = async (text: string): Promise<number | null> => {
-  if (!text || typeof text !== "string") return null;
-
-  // PRIORITY 1: Always try AI first for complex cases
-  console.log("🤖 Calling AI for amount extraction...");
-  const aiAmount = await getAmountFromHF(text);
-  if (aiAmount !== null && aiAmount > 0) {
-    console.log("✅ AI extracted amount:", aiAmount);
-    return aiAmount;
-  }
-
-  // PRIORITY 2: Regex fallback if AI fails
-  console.log("⚠️ AI failed, trying regex...");
-  const cleaned = text.replace(/[^\d.,ktrmđvnd]/gi, " ").trim();
-
-  // Try regex first - Enhanced to handle complex formats like "847k948đ"
-  let regexAmount: number | null = null;
-
-  // Enhanced Pattern: Parse complex formats like "847k948" or "1tr238k"
-  // Match patterns: <number><unit><number><unit>...
-  const complexPattern = text.match(
-    /(\d+)(k|tr|tỷ|ty|t|triệu|nghìn)(\d+)?(k|đ|vnd)?/gi
-  );
-  if (complexPattern && complexPattern.length > 0) {
-    console.log("Complex pattern matches:", complexPattern);
-    // Take the longest/most specific match
-    const bestMatch = complexPattern.sort((a, b) => b.length - a.length)[0];
-
-    // Parse: "847k948đ" -> 847000 + 948 = 847948
-    const parseComplex = (str: string): number | null => {
-      str = str.toLowerCase();
-      let total = 0;
-
-      // Match: number followed by optional unit, repeatedly
-      const parts = str.match(/(\d+)(k|tr|triệu|trieu|tỷ|ty|t|nghìn|ng)?/gi);
-      if (!parts) return null;
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const m = part.match(/(\d+)(k|tr|triệu|trieu|tỷ|ty|t|nghìn|ng)?/i);
-        if (!m) continue;
-
-        const num = parseInt(m[1]);
-        const unit = m[2]?.toLowerCase();
-
-        if (unit === "tr" || unit === "triệu" || unit === "trieu") {
-          total += num * 1000000;
-        } else if (unit === "tỷ" || unit === "ty" || unit === "t") {
-          total += num * 1000000000;
-        } else if (unit === "k" || unit === "nghìn" || unit === "ng") {
-          total += num * 1000;
-        } else {
-          // No unit - if this comes after a unit, treat as smaller denomination
-          if (total > 0) {
-            // After a unit, determine the scale based on previous unit
-            // After 'tr' or 'triệu': treat as hundred thousands (e.g., "4tr8" = 4,800,000)
-            // After 'k': treat as ones (e.g., "847k948" = 847,948)
-            const prevUnit =
-              i > 0 ? parts[i - 1].match(/[a-z]+/i)?.[0]?.toLowerCase() : null;
-            if (prevUnit && (prevUnit === "tr" || prevUnit.includes("tri"))) {
-              // After tr: 8 = 800,000 (hundred thousands)
-              total += num * 100000;
-            } else {
-              // After k or other: just add the number
-              total += num;
-            }
-          } else {
-            total = num;
-          }
-        }
-      }
-
-      return total > 0 ? total : null;
-    };
-
-    const parsed = parseComplex(bestMatch);
-    if (parsed) {
-      console.log("Regex parsed complex amount:", parsed, "from", bestMatch);
-      regexAmount = parsed;
-    }
-  }
-
-  // Fallback: Original simple pattern (if complex parsing failed)
-  if (!regexAmount) {
-    // Pattern 2: Numbers with units (25k, 100tr, 1 triệu, etc.) - match all and sum
-    const pattern2 = text.match(
-      /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/gi
-    );
-    if (pattern2) {
-      console.log("Pattern2 matches:", pattern2);
-      let total = 0;
-      for (const match of pattern2) {
-        const subMatch = match.match(
-          /(\d+(?:[.,]\d+)?)(k|nghìn|ng|tr|triệu|trieu|m|tỷ|ty|t|vnd|đ)?/i
-        );
-        if (subMatch && subMatch[2]) {
-          // Only sum if has unit
-          const num = parseFloat(subMatch[1].replace(",", "."));
-          const unit = subMatch[2]?.toLowerCase();
-          let factor = 1;
-          if (unit === "k" || unit === "nghìn" || unit === "ng") factor = 1000;
-          else if (
-            unit === "tr" ||
-            unit === "triệu" ||
-            unit === "trieu" ||
-            unit === "m"
-          )
-            factor = 1000000;
-          else if (unit === "tỷ" || unit === "ty" || unit === "t")
-            factor = 1000000000;
-          else if (unit === "vnd" || unit === "đ") factor = 1;
-          total += num * factor;
-          console.log(
-            `Match: ${match} -> num: ${num}, unit: ${unit}, factor: ${factor}, add: ${
-              num * factor
-            }`
-          );
-        }
-      }
-      console.log("Regex Total:", total);
-      if (total > 0) regexAmount = Math.round(total);
-    }
-  }
-
-  // Other patterns...
-  if (!regexAmount) {
-    // Pattern 0: Vietnamese number format with dots (1.238.000)
-    const pattern0 = cleaned.match(/(\d+(?:\.\d{3})*)/g);
-    if (pattern0) {
-      for (const numStr of pattern0) {
-        const num = parseFloat(numStr.replace(/\./g, ""));
-        if (!isNaN(num) && num > 0) {
-          regexAmount = Math.round(num);
-          break;
-        }
-      }
-    }
-  }
-
-  if (!regexAmount) {
-    // Pattern 1: 123,456 or 123.456 (Vietnamese thousand separator)
-    const pattern1 = cleaned.match(/(\d{1,3}([,\.]\d{3})+)/g);
-    if (pattern1) {
-      const num = parseFloat(pattern1[0].replace(/[,.]/g, ""));
-      if (!isNaN(num) && num > 0) regexAmount = Math.round(num);
-    }
-  }
-
-  if (!regexAmount) {
-    // Pattern 3: Any sequence of digits (fallback)
-    const pattern3 = cleaned.match(/\d+/g);
-    if (pattern3) {
-      // Take the longest number
-      const longest = pattern3.sort((a, b) => b.length - a.length)[0];
-      const num = parseInt(longest);
-      if (!isNaN(num) && num > 0) regexAmount = num;
-    }
-  }
-
-  // Fallback to regex if HF fails
-  console.log("Regex amount:", regexAmount);
-  return regexAmount;
-};
-
-// Hugging Face fallback for amount extraction
 const getAmountFromHF = async (text: string): Promise<number | null> => {
   try {
     if (!HUGGINGFACE_API_KEY || HUGGINGFACE_API_KEY.length < 10) {
-      console.log(
-        "❌ No Hugging Face API key, skipping AI extraction. Key:",
-        HUGGINGFACE_API_KEY ? "invalid" : "missing"
-      );
       return null;
     }
-    console.log(
-      "✅ Using HF API key:",
-      HUGGINGFACE_API_KEY.substring(0, 8) + "..."
-    );
 
     const prompt = `Trích xuất số tiền CHÍNH XÁC từ văn bản tiếng Việt. Trả về format: <số><đơn vị>
 
@@ -1285,8 +947,6 @@ Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
     );
 
     if (response && response.trim()) {
-      console.log("✅ AI parsed:", response.trim());
-
       // Parse Vietnamese amount format using the same logic as textPreprocessing.ts
       const cleaned = response.trim().toLowerCase();
 
@@ -1296,9 +956,6 @@ Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
         const millions = parseInt(complexTrK[1], 10);
         const thousands = parseInt(complexTrK[2], 10);
         const result = millions * 1000000 + thousands * 100000;
-        console.log(
-          `✅ Parsed ${complexTrK[0]}: ${millions}tr${thousands} = ${result}`
-        );
         return result;
       }
 
@@ -1307,9 +964,6 @@ Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
         const thousands = parseInt(complexK[1], 10);
         const hundreds = parseInt(complexK[2], 10);
         const result = thousands * 1000 + hundreds;
-        console.log(
-          `✅ Parsed ${complexK[0]}: ${thousands}k${hundreds} = ${result}`
-        );
         return result;
       }
 
@@ -1332,20 +986,14 @@ Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
         }
 
         const result = Math.round(n * factor);
-        console.log(
-          `✅ Parsed ${simpleMatch[0]}: ${n} × ${factor} = ${result}`
-        );
         return result;
       }
 
       // Fallback: plain number
       const plainNum = parseInt(cleaned.replace(/\D/g, ""), 10);
       if (!isNaN(plainNum) && plainNum > 0) {
-        console.log(`✅ Parsed plain number: ${plainNum}`);
         return plainNum;
       }
-
-      console.log("⚠️ AI response invalid:", response.trim());
     }
   } catch (error) {
     console.error("❌ AI extraction error:", error);
@@ -1643,10 +1291,10 @@ async function createTransaction(draft: {
   allowZeroAmount?: boolean; // Allow creating transaction with 0 amount (for image receipts)
 }) {
   if (!draft.allowZeroAmount && (!draft.amount || draft.amount <= 0)) {
-    throw new Error("Số tiền chưa hợp lệ.");
+    throw new Error("Invalid amount: " + draft.amount);
   }
   if (!draft.categoryId) {
-    throw new Error("Chưa có danh mục để tạo giao dịch.");
+    throw new Error("Missing categoryId for transaction creation.");
   }
 
   // Validate date: prevent future dates
@@ -1656,7 +1304,7 @@ async function createTransaction(draft: {
 
   if (transactionDate > today) {
     throw new Error(
-      "❌ Không thể tạo giao dịch cho ngày tương lai. Vui lòng chọn ngày hôm nay hoặc quá khứ."
+      "Không thể tạo giao dịch cho ngày tương lai. Vui lòng chọn ngày hôm nay hoặc quá khứ."
     );
   }
 
@@ -1665,12 +1313,6 @@ async function createTransaction(draft: {
   const acc =
     accounts.find((a: any) => a.include_in_total === 1) || accounts[0] || null;
   if (!acc?.id) throw new Error("Chưa có tài khoản để ghi giao dịch.");
-  console.log(
-    "💾 Creating transaction with date:",
-    transactionDate.toISOString(),
-    "→",
-    transactionDate.toLocaleDateString("vi-VN")
-  );
 
   const common = {
     accountId: acc.id as string,
@@ -1870,7 +1512,6 @@ export default function Chatbox() {
   });
 
   useSpeechRecognitionEvent("error", (event: any) => {
-    console.log("Speech error:", event);
     setError(event?.message || "Lỗi nhận diện giọng nói");
     // ensure all recording resources are stopped
     cancelRecording();
@@ -1922,27 +1563,16 @@ export default function Chatbox() {
           setRecordDuration(sec);
           lastRecordDurationRef.current = sec;
         }
-      }, 200);
+      }, 500); // Reduced frequency to avoid lag
 
-      // start meter recording (for waveform) and speech recognition
-      try {
-        await audioMeter.start();
-      } catch (e) {
-        console.warn("audioMeter.start failed", e);
-        // don't proceed if we can't start metering
-        setIsRecording(false);
-        if (recordTimerRef.current) {
-          clearInterval(recordTimerRef.current);
-          recordTimerRef.current = null;
-        }
-        recordStartRef.current = null;
-        return;
-      }
+      // Start speech recognition with optimized settings for Vietnamese
       try {
         await ExpoSpeechRecognitionModule.start({
           lang: "vi-VN",
           interimResults: true,
           continuous: true,
+          maxAlternatives: 1, // Focus on best result only
+          requiresOnDeviceRecognition: false, // Use cloud for better Vietnamese accuracy
         });
 
         // Wait briefly for the recognition "start" event to arrive. If the
@@ -1965,9 +1595,6 @@ export default function Chatbox() {
           try {
             await ExpoSpeechRecognitionModule.stop();
           } catch {}
-          try {
-            await audioMeter.stop();
-          } catch {}
           setIsRecording(false);
           if (recordTimerRef.current) {
             clearInterval(recordTimerRef.current);
@@ -1983,10 +1610,7 @@ export default function Chatbox() {
         }
       } catch (e) {
         console.warn("SpeechRecognition start failed", e);
-        // stop meter and reset
-        try {
-          await audioMeter.stop();
-        } catch {}
+        // reset recording state
         setIsRecording(false);
         if (recordTimerRef.current) {
           clearInterval(recordTimerRef.current);
@@ -2010,13 +1634,7 @@ export default function Chatbox() {
     try {
       await ExpoSpeechRecognitionModule.stop();
     } catch (e) {
-      console.log("stop error", e);
-    }
-
-    try {
-      await audioMeter.stop();
-    } catch (e) {
-      // ignore
+      // Ignore stop errors
     }
 
     setIsRecording(false);
@@ -2032,8 +1650,6 @@ export default function Chatbox() {
       lastRecordDurationRef.current = sec;
     }
     recordStartRef.current = null;
-
-    console.log("⌛ Thời lượng bản ghi (giây):", lastRecordDurationRef.current);
   };
 
   // Cancel recording without processing/submit — used for X/cancel or when app backgrounds
@@ -2058,10 +1674,6 @@ export default function Chatbox() {
       try {
         await ExpoSpeechRecognitionModule.stop();
       } catch {}
-    } catch {}
-
-    try {
-      await audioMeter.stop();
     } catch {}
 
     setIsRecording(false);
@@ -2089,28 +1701,27 @@ export default function Chatbox() {
 
     // Auto-train AI silently in background if needed
     transactionClassifier.trainModel(false).catch((err: any) => {
-      console.log("Background AI training failed:", err);
+      // Ignore background training errors
     });
   }, []);
   useEffect(() => {
     load();
   }, [load]);
 
+  // 🎓 AUTO-TRAIN ML MODEL with existing transaction history when opening chatbox
   useEffect(() => {
     (async () => {
       try {
-        const mod = require("assets/models/lr-vn-shopping.json");
-        console.log("Loaded LR model:", mod);
-        setModel(mod as unknown as LRModel);
-      } catch (e) {
-        console.warn(
-          "⚠️ Không tìm thấy mô hình LR; dùng heuristic fallback.",
-          e
-        );
-        setModel(null);
+        const result = await transactionClassifier.trainModel(true);
+        if (result.success) {
+        } else {
+          console.log("⚠️ Model training failed:", result.message);
+        }
+      } catch (error) {
+        console.log("❌ Error training model on startup:", error);
       }
     })();
-  }, []);
+  }, []); // Run once on mount
 
   // Build simple category priors from user's history (last 90 days), separated by IN/OUT
   useEffect(() => {
@@ -2306,40 +1917,52 @@ export default function Chatbox() {
     // If no filtered items, use all items as fallback
     const relevantItems = filteredItems.length > 0 ? filteredItems : items;
 
-    // Try AI prediction first
+    // PRIORITY 1: Try on-device ML model (learned from user's history)
     try {
-      const aiPrediction = await transactionClassifier.predictCategory(text);
+      const mlPrediction = await transactionClassifier.predictCategory(text);
 
-      if (aiPrediction && aiPrediction.confidence > 0.2) {
-        // AI has a prediction, combine with heuristic scores
-        const aiCategory = relevantItems.find(
-          (c) => c.id === aiPrediction.categoryId
+      // LOWERED threshold from 0.15 to 0.10 to give ML more chances
+      if (mlPrediction && mlPrediction.confidence > 0.1) {
+        // ML model has learned from user's history - PRIORITIZE THIS
+        const mlCategory = relevantItems.find(
+          (c) => c.id === mlPrediction.categoryId
         );
 
-        if (aiCategory) {
-          // Calculate scores combining AI + heuristic for ALL categories
+        if (mlCategory) {
+          console.log(
+            `🎓 ML Model (learned from history): ${mlCategory.name} (${(
+              mlPrediction.confidence * 100
+            ).toFixed(1)}%)`
+          );
+
+          // Calculate scores for ALL categories, giving HIGH weight to ML prediction
           const allScores = relevantItems.map((c) => {
             const heuristicBase = heuristicScore(text, c, io);
             const priorMap = io === "IN" ? priors.IN : priors.OUT;
             const prior = priorMap[c.id] || 0;
-            const heuristicFinal = 0.9 * heuristicBase + 0.1 * prior;
 
-            if (c.id === aiCategory.id) {
-              // For AI-predicted category: blend AI confidence with heuristic
-              // Give more weight to AI (70%) but still consider heuristic (30%)
+            if (c.id === mlCategory.id) {
+              // For ML-predicted category: Use full heuristic + prior
+              const heuristicFinal = 0.8 * heuristicBase + 0.2 * prior;
+              // PRIORITIZE ML (90% weight)
+              // This ensures user's history patterns are strongly respected
               const blendedScore =
-                0.7 * aiPrediction.confidence + 0.3 * heuristicFinal;
+                0.9 * mlPrediction.confidence + 0.1 * heuristicFinal;
               return {
                 categoryId: c.id,
                 name: c.name,
-                score: blendedScore,
+                score: Math.min(1.0, blendedScore * 1.3), // Boost by 30%
+                isFromML: true, // Mark that this is from ML model
+                mlConfidence: mlPrediction.confidence, // Store original ML confidence
               };
             } else {
-              // For other categories, use heuristic only
+              // For other categories: IGNORE priors, only use base heuristic
+              // This prevents categories with high historical usage from winning
               return {
                 categoryId: c.id,
                 name: c.name,
-                score: heuristicFinal,
+                score: heuristicBase * 0.3, // Use ONLY base heuristic, no priors!
+                isFromML: false,
               };
             }
           });
@@ -2350,20 +1973,32 @@ export default function Chatbox() {
             .slice(0, 6);
 
           console.log(
-            `AI Prediction: ${aiCategory.name} (${(
-              aiPrediction.confidence * 100
-            ).toFixed(1)}%), Top suggestion: ${ranked[0].name} (${(
+            `✅ Top suggestion from ML: ${ranked[0].name} (${(
               ranked[0].score * 100
             ).toFixed(1)}%)`
           );
+          console.log("📊 All category scores:");
+          ranked.forEach((r, i) => {
+            console.log(
+              `   ${i + 1}. ${r.name}: ${(r.score * 100).toFixed(1)}% ${
+                r.isFromML ? "[ML]" : "[Heuristic]"
+              }`
+            );
+          });
           return { io, ranked };
         }
+      } else if (mlPrediction) {
+        console.log(
+          `⚠️ ML confidence too low: ${(mlPrediction.confidence * 100).toFixed(
+            1
+          )}%`
+        );
       }
     } catch (error) {
-      console.log("AI prediction failed, falling back to heuristic:", error);
+      console.log("ML prediction failed, falling back to heuristic:", error);
     }
 
-    // Fallback to existing ML or heuristic
+    // PRIORITY 2: Fallback to existing static ML or heuristic
     // 1) Nếu có ML: lấy top labels → map sang danh mục user → rerank
     if (model) {
       const mlRank = lrPredict(text, model); // [{label, p} ...]
@@ -2439,135 +2074,11 @@ export default function Chatbox() {
 
     setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
-    // Dismiss any previous suggestions when user sends a text message
     setPendingPick(null);
-    setMessages((m) => [...m, { role: "typing" }]);
     scrollToEnd();
 
-    // Parse amount and clean note from text
-    // IMPORTANT: Skip parseTransactionText's amount, use AI-powered parseAmountVN instead
-    const parsed = parseTransactionText(text);
-    const cleanNote = parsed.note || text;
-
-    // Use full text for amount parsing (AI can handle complex formats better)
-    console.log("💰 Parsing amount from:", text);
-    const amount = await parseAmountVN(text);
-    console.log("💰 Final amount:", amount);
-
-    const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
-    const best = ranked[0];
-
-    const ai = await getEmotionalReplyDirect({
-      io,
-      categoryName: best?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
-      amount,
-      note: cleanNote,
-      originalText: text, // ← FIX: Pass original text for date parsing!
-    });
-
-    // Quyết định danh mục cuối:
-    const finalCategoryId = ai.categoryId || best?.categoryId;
-    const finalCategoryName =
-      items.find((c) => c.id === finalCategoryId)?.name ||
-      best?.name ||
-      "Chưa rõ";
-
-    // Nếu chưa có amount → nhắn nhắc người dùng bổ sung và dừng
-    if (!ai.amount || ai.amount <= 0) {
-      setMessages((m) => [
-        ...m.slice(0, -1), // remove typing
-        { role: "bot", text: t("askAmount") },
-      ]);
-      scrollToEnd();
-      return;
-    }
-
-    // Nếu chưa có categoryId HOẶC điểm tự tin thấp → bật gợi ý chọn danh mục
-    const confidence = best?.score ?? 0;
-    const lowConfidence = confidence < 0.3; // Only ask user if very unsure
-
-    // Log initial prediction
-    try {
-      pendingLogId.current = await logPrediction({
-        text: cleanNote,
-        amount: ai.amount ?? null,
-        io,
-        predictedCategoryId: best?.categoryId || null,
-        confidence,
-      });
-    } catch {}
-    if (!finalCategoryId || lowConfidence) {
-      setMessages((m) => [
-        ...m.slice(0, -1), // remove typing
-        {
-          role: "bot",
-          text: "Tôi không chắc danh mục nào phù hợp. Bạn chọn nhé:",
-        },
-      ]);
-      setPendingPick({
-        text: cleanNote,
-        amount: ai.amount,
-        io: ai.io,
-        choices: ranked.slice(0, 4), // Show top 4 suggestions
-        date: ai.date, // Store date for later use
-      } as any);
-      scrollToEnd();
-      return; // đợi user chọn trước khi tạo
-    }
-
-    // Đủ dữ kiện → tạo giao dịch
-    try {
-      console.log("📅 Creating transaction with date:", ai.date);
-      const txn = await createTransaction({
-        amount: ai.amount,
-        io: ai.io,
-        categoryId: finalCategoryId,
-        note: ai.note,
-        date: ai.date,
-      });
-
-      const transactionDate = ai.date || new Date();
-      console.log("📅 Transaction created with date:", transactionDate);
-      const when = transactionDate.toLocaleDateString();
-      const selectedCategory = items.find((c) => c.id === finalCategoryId);
-      setMessages((m) => [
-        ...m.slice(0, -1), // remove typing
-        {
-          role: "card",
-          transactionId: txn.id,
-          accountId: txn.accountId,
-          amount: txn.amount ?? null,
-          io: ai.io,
-          categoryId: finalCategoryId,
-          categoryName: finalCategoryName,
-          categoryIcon: selectedCategory?.icon || "wallet",
-          categoryColor: selectedCategory?.color || "#6366F1",
-          note: ai.note,
-          when,
-        },
-      ]);
-      // If user did not correct (direct accept), log correction equal to prediction
-      try {
-        if (pendingLogId.current && finalCategoryId) {
-          await logCorrection({
-            id: pendingLogId.current,
-            chosenCategoryId: finalCategoryId,
-          });
-          pendingLogId.current = null;
-        }
-      } catch {}
-      scrollToEnd();
-    } catch (e: any) {
-      setMessages((m) => [
-        ...m.slice(0, -1), // remove typing
-        {
-          role: "bot",
-          text:
-            "Tạo giao dịch thất bại. " +
-            (e?.message ? `(${e.message})` : "Vui lòng thử lại."),
-        },
-      ]);
-    }
+    // Use the unified AI parser (same as voice input) - supports action types
+    await processTextInput(text);
   };
 
   // ----- Gợi ý khi chưa đủ tự tin -----
@@ -2633,21 +2144,74 @@ export default function Chatbox() {
         },
       ]);
 
-      // Log correction (user choice overriding prediction)
+      // 🎓 LEARNING PIPELINE: Log prediction → correction → retrain
       try {
-        if (pendingLogId.current) {
-          await logCorrection({
-            id: pendingLogId.current,
-            chosenCategoryId: c.categoryId,
+        // 1. Get the top suggested category (what model predicted)
+        const topSuggestion = pendingPick.choices?.[0];
+
+        // 2. Only log if user chose a DIFFERENT category than what was predicted
+        if (topSuggestion && topSuggestion.categoryId !== c.categoryId) {
+          console.log(
+            `📊 Correction detected: "${pendingPick.text}" was predicted as "${topSuggestion.name}" but user chose "${c.name}"`
+          );
+
+          // Log the prediction record
+          const sampleId = await logPrediction({
+            text: pendingPick.text,
+            amount: pendingPick.amount,
+            io: pendingPick.io,
+            predictedCategoryId: topSuggestion.categoryId,
+            confidence: topSuggestion.score || 0.5,
           });
-          pendingLogId.current = null;
+          console.log(`✅ Logged prediction: ${sampleId}`);
+
+          // Log the correction
+          if (sampleId) {
+            await logCorrection({
+              id: sampleId,
+              chosenCategoryId: c.categoryId,
+            });
+            console.log(`✅ Logged correction for sample ${sampleId}`);
+          }
+
+          // Now retrain with the correction in the database
+          await transactionClassifier.learnFromCorrection(
+            pendingPick.text,
+            c.categoryId
+          );
+          console.log("✅ Model retrained with correction!");
+        } else if (topSuggestion && topSuggestion.categoryId === c.categoryId) {
+          console.log(
+            `✅ User agreed with prediction: "${pendingPick.text}" → "${c.name}"`
+          );
+          // Still log as a positive example (user confirmed the prediction was correct)
+          await logPrediction({
+            text: pendingPick.text,
+            amount: pendingPick.amount,
+            io: pendingPick.io,
+            predictedCategoryId: c.categoryId,
+            confidence: topSuggestion.score || 0.8,
+          });
+        } else {
+          console.log(
+            `ℹ️ No suggestions available, user selected: "${c.name}"`
+          );
+          // Log as prediction anyway
+          await logPrediction({
+            text: pendingPick.text,
+            amount: pendingPick.amount,
+            io: pendingPick.io,
+            predictedCategoryId: c.categoryId,
+            confidence: 0.5,
+          });
         }
-      } catch {}
+      } catch (err) {
+        console.warn("⚠️ Learning pipeline failed:", err);
+      }
 
       setPendingPick(null);
       scrollToEnd();
     } catch (e: any) {
-      console.log("Create transaction failed in chooseCategory:", e);
       // Show informative message to user instead of uncaught rejection
       setMessages((m) => [
         ...m,
@@ -2746,8 +2310,6 @@ export default function Chatbox() {
         },
       ]);
 
-      console.log("📷 Receipt image selected:", imageUri);
-
       // OCR with Tesseract - Auto extract and create transaction
       const ocrResult = await processReceiptImage(imageUri);
 
@@ -2845,19 +2407,26 @@ export default function Chatbox() {
       });
       scrollToEnd();
 
-      // ✨ SINGLE AI CALL - Parse everything at once (AI will parse date intelligently)
-      console.log("🚀 Calling unified AI parser for:", userText);
-      const aiResult = await parseTransactionWithAI(userText);
-
-      console.log("🔍 AI Result:", aiResult ? "SUCCESS" : "FAILED");
+      // ✨ STRATEGY: AI-First approach for best accuracy
+      // AI (Groq) handles complex cases better than regex:
+      // - Complex amounts: "5tr873k387d"
+      // - Context understanding: "Du lịch" → Travel category
+      // - Date parsing: "ngày 23/11"
+      // - Category matching from user's list
+      const aiResult = await parseTransactionWithAI(userText, items);
 
       if (!aiResult) {
-        // AI failed completely - use fallback
-        console.log("❌ AI parsing failed, using fallback");
-        console.log("⚠️ FALLBACK: This should parse date from original text!");
+        // ⚠️ FALLBACK: Regex-based parsing (only for simple cases)
+
+        // Parse amount directly from original text
+        const amountFromOriginal = parseAmountVN(userText);
+
+        // Clean text for category prediction
         const parsed = parseTransactionText(userText);
         const cleanNote = parsed.note || userText;
-        const amt = parsed.amount || (await parseAmountVN(userText));
+        const amt = amountFromOriginal || parsed.amount;
+
+        // Use ML to predict category
         const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
 
         if (!ranked || ranked.length === 0) {
@@ -2869,10 +2438,6 @@ export default function Chatbox() {
         }
 
         const topPred = ranked[0];
-        console.log(
-          "🔄 Using fallback autoCreateTransaction with originalText:",
-          userText
-        );
         await autoCreateTransaction(
           cleanNote,
           amt,
@@ -2884,19 +2449,141 @@ export default function Chatbox() {
       }
 
       // Use AI parsed result
-      console.log("✅ AI parsed:", JSON.stringify(aiResult, null, 2));
 
-      // Find matching category from user's categories
-      const matchedCategory = items.find(
-        (c) =>
-          c.name.toLowerCase().includes(aiResult.categoryName.toLowerCase()) ||
-          aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
-      );
+      // 🎯 Handle different action types
+      if (aiResult.action === "CHAT") {
+        // User is asking a question - AI should provide intelligent response
+        // For now, show AI's message with suggestion to use specific features
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          {
+            role: "bot",
+            text: `${aiResult.message}\n\n💡 Tip: Bạn có thể:\n• Tạo giao dịch: "mua trà sữa 60k"\n• Xem báo cáo ở tab Thống kê 📊\n• Quản lý ngân sách ở tab Ngân sách 💰`,
+          },
+        ]);
+        scrollToEnd();
+        return;
+      }
 
-      if (matchedCategory) {
+      if (aiResult.action === "VIEW_STATS") {
+        // User wants to see statistics - direct them to Charts tab
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          {
+            role: "bot",
+            text: `📊 ${aiResult.message}\n\nĐể xem thống kê chi tiết, vui lòng vào tab "Biểu đồ" ở thanh điều hướng bên dưới. 📈`,
+          },
+        ]);
+        scrollToEnd();
+        return;
+      }
+
+      if (aiResult.action === "EDIT_TRANSACTION") {
+        // User wants to edit transaction - show last transaction with edit option
+        const lastCard = messages.findLast((m) => m.role === "card");
+        if (lastCard && lastCard.role === "card") {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `✏️ ${aiResult.message}\n\nBạn có thể nhấn nút "Sửa" ở giao dịch bên dưới để chỉnh sửa.`,
+            },
+          ]);
+        } else {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `❌ Không tìm thấy giao dịch nào để sửa.\n\nVui lòng tạo giao dịch mới hoặc xem danh sách giao dịch ở tab "Giao dịch".`,
+            },
+          ]);
+        }
+        scrollToEnd();
+        return;
+      }
+
+      if (aiResult.action === "DELETE_TRANSACTION") {
+        // User wants to delete transaction - show last transaction with delete option
+        const lastCard = messages.findLast((m) => m.role === "card");
+        if (lastCard && lastCard.role === "card") {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `🗑️ ${aiResult.message}\n\nBạn có thể nhấn nút "Xóa" ở giao dịch bên dưới để xóa.`,
+            },
+          ]);
+        } else {
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `❌ Không tìm thấy giao dịch nào để xóa.\n\nVui lòng xem danh sách giao dịch ở tab "Giao dịch".`,
+            },
+          ]);
+        }
+        scrollToEnd();
+        return;
+      }
+
+      // Default: CREATE_TRANSACTION
+      // PRIORITY 1: Use categoryId from AI if available
+      let matchedCategory = aiResult.categoryId
+        ? items.find((c) => c.id === aiResult.categoryId)
+        : null;
+
+      // PRIORITY 2: Fallback to name matching if categoryId not found
+      if (!matchedCategory) {
+        matchedCategory = items.find(
+          (c) =>
+            c.name
+              .toLowerCase()
+              .includes(aiResult.categoryName.toLowerCase()) ||
+            aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
+        );
+      }
+
+      // Check confidence - if low, show alternatives for user to confirm
+      const confidenceThreshold = aiResult.confidence ?? 75;
+      const hasLowConfidence = confidenceThreshold < 75;
+      const hasAlternatives =
+        aiResult.alternatives && aiResult.alternatives.length > 0;
+
+      if (matchedCategory && (!hasLowConfidence || !hasAlternatives)) {
+        // High confidence or no alternatives - auto-create
         await autoCreateTransactionDirect(aiResult, matchedCategory.id);
+      } else if (matchedCategory && hasLowConfidence && hasAlternatives) {
+        // Low confidence with alternatives - show suggestion UI
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          {
+            role: "bot",
+            text: `⚠️ Không chắc chắn ${confidenceThreshold}%. Bạn muốn phân loại vào:`,
+          },
+        ]);
+
+        // Build choice list from primary + alternatives
+        const choices = [
+          {
+            categoryId: matchedCategory.id,
+            name: matchedCategory.name,
+            score: (confidenceThreshold / 100) * 0.95,
+          },
+          ...(aiResult.alternatives || []).map((alt) => ({
+            categoryId: alt.categoryId,
+            name: alt.categoryName,
+            score: alt.confidence / 100,
+          })),
+        ];
+
+        setPendingPick({
+          text: aiResult.note,
+          amount: aiResult.amount,
+          io: aiResult.io,
+          choices: choices.slice(0, 3), // Top 3 suggestions
+        });
       } else {
-        // Show category suggestions if no exact match
+        // No match - use fallback classification
         const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
         if (ranked && ranked.length > 0 && ranked[0].score >= 0.6) {
           await autoCreateTransactionDirect(aiResult, ranked[0].categoryId);
@@ -2918,6 +2605,12 @@ export default function Chatbox() {
   // ----- Auto create transaction (NEW - from AI parsed result) -----
   const autoCreateTransactionDirect = async (
     aiResult: {
+      action:
+        | "CREATE_TRANSACTION"
+        | "CHAT"
+        | "VIEW_STATS"
+        | "EDIT_TRANSACTION"
+        | "DELETE_TRANSACTION";
       amount: number | null;
       note: string;
       categoryName: string;
@@ -2930,8 +2623,6 @@ export default function Chatbox() {
     try {
       const selectedCategory = items.find((c) => c.id === categoryId);
 
-      console.log("💾 Creating transaction from AI result:", aiResult);
-
       // Create transaction with AI parsed data
       const txn = await createTransaction({
         amount: aiResult.amount,
@@ -2941,7 +2632,15 @@ export default function Chatbox() {
         date: aiResult.date,
       });
 
-      console.log("✅ Transaction created:", txn.id);
+      // IMMEDIATE learning for better pattern recognition
+      try {
+        await transactionClassifier.learnFromNewTransaction(
+          aiResult.note,
+          categoryId
+        );
+      } catch (err) {
+        console.log("⚠️ Auto-learning failed:", err);
+      }
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
 
@@ -2993,14 +2692,6 @@ export default function Chatbox() {
       const selectedCategory = items.find((c) => c.id === categoryId);
       const categoryName = selectedCategory?.name || "Unknown";
 
-      console.log("🔄 autoCreateTransaction called:");
-      console.log("  - text:", text);
-      console.log("  - originalText:", originalText);
-      console.log(
-        "  - Will pass to getEmotionalReplyDirect:",
-        originalText || text
-      );
-
       const aiResponse = await getEmotionalReplyDirect({
         io,
         categoryName,
@@ -3008,8 +2699,6 @@ export default function Chatbox() {
         note: text,
         originalText: originalText || text, // Use original text for date parsing
       });
-
-      console.log("📅 Creating transaction with date:", aiResponse.date);
 
       // Create transaction with extracted date
       const txn = await createTransaction({
@@ -3019,8 +2708,6 @@ export default function Chatbox() {
         note: text,
         date: aiResponse.date, // Use extracted date
       });
-
-      console.log("✅ Transaction created:", txn.id, "date:", txn.date);
 
       const when = aiResponse.date
         ? aiResponse.date.toLocaleDateString("vi-VN")
@@ -3091,6 +2778,10 @@ export default function Chatbox() {
     }
 
     try {
+      // Check if category changed (user corrected AI prediction)
+      const oldCategoryId = editingTx.categoryId;
+      const categoryChanged = oldCategoryId !== editCategoryId;
+
       await updateTransaction({
         id: editingTx.transactionId,
         accountId: editingTx.accountId,
@@ -3100,6 +2791,51 @@ export default function Chatbox() {
         note: editNote,
         when: editingTx.when,
       });
+
+      // 🎓 CORRECTION LEARNING: If user changed category, retrain AI immediately
+      if (categoryChanged && editNote) {
+        console.log(
+          "🔄 User corrected category:",
+          editNote,
+          oldCategoryId,
+          "→",
+          editCategoryId
+        );
+
+        // Create training sample for this correction
+        try {
+          const sampleId = await logPrediction({
+            text: editNote,
+            amount: newAmount,
+            io: editingTx.io,
+            predictedCategoryId: oldCategoryId, // Original wrong prediction
+            confidence: 0.5, // Unknown confidence (0-1 range)
+          });
+
+          // Log the correction (user chose different category)
+          await logCorrection({
+            id: sampleId,
+            chosenCategoryId: editCategoryId,
+          });
+          console.log(
+            `✅ Logged correction: "${editNote}" → ${editCategoryId}`
+          );
+          console.log(`📊 Sample ID: ${sampleId} saved to ml_training_samples`);
+        } catch (err) {
+          console.warn("⚠️ Failed to log correction:", err);
+        }
+
+        // Retrain model immediately with new correction
+        try {
+          await transactionClassifier.learnFromCorrection(
+            editNote,
+            editCategoryId
+          );
+          console.log("✅ Model retrained with correction!");
+        } catch (err) {
+          console.warn("⚠️ Model retraining failed:", err);
+        }
+      }
 
       // Update message in chat - bao gồm cả io type
       setMessages((msgs) =>
@@ -3703,7 +3439,11 @@ export default function Chatbox() {
                         fontSize: 12,
                       }}
                     >
-                      {Math.round(c.score * 100)}%
+                      {(c as any).isFromML
+                        ? `🎓 ${Math.round(
+                            ((c as any).mlConfidence || c.score) * 100
+                          )}%`
+                        : `${Math.round(c.score * 100)}%`}
                     </Text>
                   </View>
                 </Pressable>
@@ -4017,7 +3757,6 @@ export default function Chatbox() {
         </Modal>
 
         {/* Input Bar (ẩn khi đang thu âm) */}
-        {/* Input */}
         <Animated.View
           style={[
             styles.inputBar,
@@ -4214,7 +3953,6 @@ export default function Chatbox() {
                   <VoiceWaveform
                     isRecording={isRecording}
                     color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
-                    meterAnimated={audioMeter.meter}
                   />
                 </View>
 

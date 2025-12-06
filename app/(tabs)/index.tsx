@@ -1023,8 +1023,8 @@ export default function DashboardScreen() {
                   const displayName = user
                     ? user.name ?? user.username
                     : "Người dùng (demo)";
-                  return displayName.length > 15
-                    ? displayName.substring(0, 15) + "..."
+                  return displayName.length > 12
+                    ? displayName.substring(0, 12) + "..."
                     : displayName;
                 })()}
               </Text>

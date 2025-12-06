@@ -29,7 +29,9 @@ export default function Setting() {
 
   React.useEffect(() => {
     const unsub = syncState.subscribe((s) => setSync(s));
-    return unsub;
+    return () => {
+      unsub();
+    };
   }, []);
 
   return (

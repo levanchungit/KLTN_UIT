@@ -24,7 +24,6 @@ import {
   FlatList,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -448,22 +447,6 @@ export default function ChatboxIntro() {
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        // Load simple LR model (JSON). If missing, fallback heuristics still work.
-        const mod = require("../../assets/models/lr-vn-shopping.json");
-        setModel(mod as unknown as LRModel);
-      } catch (e) {
-        console.warn(
-          "⚠️ Không tìm thấy mô hình LR; dùng heuristic fallback.",
-          e
-        );
-        setModel(null);
-      }
-    })();
   }, []);
 
   // Build simple category priors from user's history (last 90 days), separated by IN/OUT

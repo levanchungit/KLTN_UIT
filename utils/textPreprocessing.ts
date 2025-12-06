@@ -36,9 +36,11 @@ const VIETNAMESE_STOPWORDS = [
   "ngoài",
 ];
 
-// Money pattern for extraction
+// Money pattern for extraction - more precise to avoid over-matching
+// Valid formats: "500k", "1 triệu 2", "4tr8", "750.000 đồng", "5tr873"
+// Invalid (too complex): "5tr873k387d" - let AI handle these
 const MONEY_PATTERN =
-  /\d+[.,]?\d*\s*(k|nghìn|ngan|tr|triệu|trieu|tỷ|ty|đ|d|vnd|vnđ)/gi;
+  /\d+(?:[.,]\d{3})*\s*(?:k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|đồng|dong|đ|d|vnd|vnđ)(?:\s*\d{1,3})?(?!\d)/gi;
 
 // Patterns to remove from text before classification
 const NOISE_PATTERNS = [
@@ -101,55 +103,133 @@ export function parseTransactionText(text: string): {
 
 /**
  * Parse Vietnamese money amount
+ * Exported for use in chatbox and other components
  */
-function parseAmountVN(text: string): number | null {
+export function parseAmountVN(text: string): number | null {
   if (!text || typeof text !== "string") return null;
 
   const cleaned = text.toLowerCase().trim();
+  console.log(`🔍 parseAmountVN input: "${text}" → cleaned: "${cleaned}"`);
 
-  // Pattern for Vietnamese money formats:
-  // 500k, 4tr8, 1tr238k, 847k948, etc.
-  const complexMatch = cleaned.match(/(\d+)tr(\d+)k?/i);
-  if (complexMatch) {
-    const millions = parseInt(complexMatch[1], 10);
-    const thousands = parseInt(complexMatch[2], 10);
-    // 4tr8 = 4,800,000
-    return millions * 1000000 + thousands * 100000;
+  // PRIORITY 1: Handle formatted numbers with thousand separators (e.g., "750.000", "1,500,000")
+  // This must come BEFORE unit-based parsing to avoid confusion
+  const formattedMatch = cleaned.match(
+    /(\d{1,3}(?:[.,]\d{3})+)(?:\s*(?:đồng|dong|đ|d|vnd|vnđ))?/i
+  );
+  if (formattedMatch) {
+    const numStr = formattedMatch[1].replace(/[.,]/g, ""); // Remove all separators
+    const n = parseInt(numStr, 10);
+    if (!isNaN(n) && n >= 1000) {
+      // Only apply if it's a reasonable amount with separators
+      console.log(`✅ Parsed formatted number: ${formattedMatch[1]} → ${n}`);
+      return n;
+    }
   }
 
+  // PRIORITY 2: Vietnamese shorthand formats
+
+  // Format A: "5tr873" = 5,873,000 (5 million 873 thousand)
+  // NOT "5 triệu 873" with space (that's handled separately)
+  const trKFormat = cleaned.match(/(\d+)tr(\d+)(?!k)/i);
+  if (trKFormat) {
+    const millions = parseInt(trKFormat[1], 10);
+    const thousands = parseInt(trKFormat[2], 10);
+    // "5tr873" = 5,873,000 (direct concatenation: 5 million + 873 thousand)
+    const result = millions * 1000000 + thousands * 1000;
+    console.log(`✅ Parsed tr+number: ${trKFormat[0]} → ${result}`);
+    return result;
+  }
+
+  // Format B: "1 triệu 2" with SPACE = 1,200,000 (1 million + 2 hundred thousand)
+  const spacedTrieuMatch = cleaned.match(
+    /(\d+)\s+(triệu|trieu|m)\s+(\d+)(?!\d)/i
+  );
+  if (spacedTrieuMatch) {
+    const millions = parseInt(spacedTrieuMatch[1], 10);
+    const extra = parseInt(spacedTrieuMatch[3], 10);
+    // With space: "1 triệu 2" = 1,200,000 (1 million + 200k)
+    const result = millions * 1000000 + extra * 100000;
+    console.log(`✅ Parsed spaced 'triệu': ${spacedTrieuMatch[0]} → ${result}`);
+    return result;
+  }
+
+  // Format C: "4tr8k" = 4,800,000 (4 million 8 hundred thousand)
+  const trWithK = cleaned.match(/(\d+)tr(\d+)k/i);
+  if (trWithK) {
+    const millions = parseInt(trWithK[1], 10);
+    const hundreds = parseInt(trWithK[2], 10);
+    // "4tr8k" = 4,800,000
+    const result = millions * 1000000 + hundreds * 100000;
+    console.log(`✅ Parsed tr+k format: ${trWithK[0]} → ${result}`);
+    return result;
+  }
+
+  // Format D: "847k948" = 847,948
   const complexMatch2 = cleaned.match(/(\d+)k(\d+)/i);
   if (complexMatch2) {
     const thousands = parseInt(complexMatch2[1], 10);
-    const hundreds = parseInt(complexMatch2[2], 10);
+    const ones = parseInt(complexMatch2[2], 10);
     // 847k948 = 847,948
-    return thousands * 1000 + hundreds;
+    const result = thousands * 1000 + ones;
+    console.log(`✅ Parsed k+number format: ${complexMatch2[0]} → ${result}`);
+    return result;
   }
 
-  // Simple pattern: number + unit
-  const simpleMatch = cleaned.match(
-    /(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b)?/i
+  // PRIORITY 3: Numbers with units (75k, 500k, 2tr, 750000đ)
+  // Match: number + unit (k/tr/đ/etc)
+  const unitMatch = cleaned.match(
+    /(\d+(?:[.,]\d+)?)\s*([kdđ]|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|dong|đồng|vnd|vnđ)/i
   );
 
-  if (!simpleMatch) return null;
+  if (unitMatch) {
+    const numStr = unitMatch[1].replace(",", ".");
+    const n = parseFloat(numStr);
 
-  const numStr = simpleMatch[1].replace(",", ".");
-  const n = parseFloat(numStr);
+    if (isNaN(n)) {
+      console.log(`❌ Failed to parse number: ${unitMatch[1]}`);
+      return null;
+    }
 
-  if (isNaN(n)) return null;
+    const unit = (unitMatch[2] || "").toLowerCase();
+    console.log(`🔍 Found unit match: number=${n}, unit="${unit}"`);
 
-  const unit = (simpleMatch[2] || "").toLowerCase();
+    // Determine multiplier based on unit
+    let factor = 1;
+    if (unit === "k" || unit.startsWith("ng")) {
+      factor = 1000; // k, nghìn, ngàn
+    } else if (unit.startsWith("tr") || unit === "m") {
+      factor = 1000000; // tr, triệu, m (million)
+    } else if (unit.startsWith("tỷ") || unit.startsWith("ty") || unit === "b") {
+      factor = 1000000000; // tỷ, billion
+    } else if (
+      unit === "đ" ||
+      unit === "d" ||
+      unit === "dong" ||
+      unit === "đồng" ||
+      unit === "vnd" ||
+      unit === "vnđ"
+    ) {
+      factor = 1; // đồng = VND (no conversion needed)
+    }
 
-  // Determine multiplier based on unit
-  let factor = 1;
-  if (unit.startsWith("k") || unit.startsWith("ng")) {
-    factor = 1000; // k, nghìn, ngàn
-  } else if (unit.startsWith("tr") || unit === "m") {
-    factor = 1000000; // tr, triệu, m (million)
-  } else if (unit.startsWith("tỷ") || unit.startsWith("ty") || unit === "b") {
-    factor = 1000000000; // tỷ, billion
+    const result = Math.round(n * factor);
+    console.log(`✅ Parsed with unit: ${n} × ${factor} = ${result}`);
+    return result;
   }
 
-  return Math.round(n * factor);
+  // PRIORITY 4: Plain numbers without units (last resort)
+  const plainMatch = cleaned.match(/^(\d+(?:[.,]\d+)?)$/);
+  if (plainMatch) {
+    const numStr = plainMatch[1].replace(/[.,]/g, "");
+    const n = parseInt(numStr, 10);
+    if (!isNaN(n)) {
+      console.log(`⚠️ Plain number without unit: ${n}`);
+      return n;
+    }
+  }
+
+  console.log(`❌ No amount pattern matched for: "${cleaned}"`);
+  return null;
 }
 
 /**
