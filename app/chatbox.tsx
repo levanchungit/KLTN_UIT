@@ -420,10 +420,78 @@ async function processReceiptImage(imageUri: string): Promise<{
       return Math.max(...nums, 0);
     };
 
-    // Extract merchant name from first line
-    const extractMerchant = (text: string): string => {
-      const lines = text.split("\n").filter((l) => l.trim().length > 3);
-      return lines[0]?.trim() || "Hóa đơn";
+    // Extract merchant name - Tìm tên công ty/cơ sở từ blocks
+    const extractMerchant = (blocks: any[]): string => {
+      // Priority 1: Tìm block ở phần top section (top < 150) có company keyword
+      // Đây là vùng tiêu đề/header chứa tên công ty chính thức
+      const companyKeywords =
+        /công ty|cơ sở|xí nghiệp|shop|cửa hàng|nhà hàng|khách sạn|bệnh viện|trường|trung tâm/i;
+
+      const topHeaderBlocks = blocks.filter(
+        (b: any) => b.frame?.top !== undefined && b.frame.top < 150
+      );
+
+      const topCompanyBlocks = topHeaderBlocks.filter((b: any) =>
+        companyKeywords.test(b.text)
+      );
+
+      if (topCompanyBlocks.length > 0) {
+        // Lấy block có text dài nhất, ưu tiên block ở top nhất
+        const bestBlock = topCompanyBlocks.sort((a: any, b: any) => {
+          // Priority 1: Sort by position (ở trên cùng)
+          if (a.frame.top !== b.frame.top) {
+            return a.frame.top - b.frame.top;
+          }
+          // Priority 2: Sort by length (text dài hơn = tên đầy đủ hơn)
+          return (b.text?.length || 0) - (a.text?.length || 0);
+        })[0];
+        const name = bestBlock.text?.trim() || "Hóa đơn";
+        if (name.length > 5 && !/thanh toán|payment|thông tin/i.test(name))
+          return name;
+      }
+
+      // Priority 2: Tìm trong header rộng hơn (top < 400), loại "thông tin thanh toán"
+      const headerBlocks = blocks.filter(
+        (b: any) => b.frame?.top !== undefined && b.frame.top < 400
+      );
+
+      const headerCompanyBlocks = headerBlocks.filter(
+        (b: any) =>
+          companyKeywords.test(b.text) &&
+          !/thanh toán|payment|thông tin/i.test(b.text)
+      );
+
+      if (headerCompanyBlocks.length > 0) {
+        const bestBlock = headerCompanyBlocks.sort((a: any, b: any) => {
+          if (a.frame.top !== b.frame.top) {
+            return a.frame.top - b.frame.top;
+          }
+          return (b.text?.length || 0) - (a.text?.length || 0);
+        })[0];
+        const name = bestBlock.text?.trim() || "Hóa đơn";
+        if (name.length > 5) return name;
+      }
+
+      // Priority 3: Tìm company blocks ở toàn bộ tài liệu, loại signature area
+      const allCompanyBlocks = blocks.filter(
+        (b: any) =>
+          companyKeywords.test(b.text) &&
+          !/thanh toán|payment|thông tin|ký bởi|dược ký|ngày ký/i.test(b.text)
+      );
+
+      if (allCompanyBlocks.length > 0) {
+        const bestBlock = allCompanyBlocks.sort((a: any, b: any) => {
+          // Ưu tiên block ở trên cùng
+          if (a.frame?.top && b.frame?.top && a.frame.top !== b.frame.top) {
+            return a.frame.top - b.frame.top;
+          }
+          return (b.text?.length || 0) - (a.text?.length || 0);
+        })[0];
+        const name = bestBlock.text?.trim() || "Hóa đơn";
+        if (name.length > 5) return name;
+      }
+
+      return "Hóa đơn";
     };
 
     // Tính chiều cao ảnh
@@ -663,7 +731,7 @@ async function processReceiptImage(imageUri: string): Promise<{
       amount = findByKeywords();
     }
 
-    const merchantName = extractMerchant(ocrText);
+    const merchantName = extractMerchant(blocks);
 
     console.log(`🎯 Final Amount: ${amount}`);
     console.log(`🏪 Merchant: ${merchantName}`);
