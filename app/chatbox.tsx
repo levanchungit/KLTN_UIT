@@ -501,7 +501,9 @@ async function processReceiptImage(imageUri: string): Promise<{
 
         // Tìm các blocks gần label này (cùng hàng, bên phải, hoặc dưới gần)
         const nearbyBlocks = blocks.filter((b: any) => {
-          const topDiff = Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0));
+          const topDiff = Math.abs(
+            (b.frame?.top || 0) - (labelBlock.frame?.top || 0)
+          );
           const leftDiff = (b.frame?.left || 0) - (labelBlock.frame?.left || 0);
 
           // Block bên phải cùng hàng hoặc phía dưới gần
@@ -522,7 +524,9 @@ async function processReceiptImage(imageUri: string): Promise<{
             (a: any) =>
               a.value > 0 &&
               a.value < 100000000 && // Không quá lớn (năm, ID)
-              !/2025|2024|2023|địa|địa chỉ|đường|quận|phố|hotline|https/i.test(a.text)
+              !/2025|2024|2023|địa|địa chỉ|đường|quận|phố|hotline|https/i.test(
+                a.text
+              )
           )
           .sort((a: any, b: any) => {
             // Ưu tiên block gần nhất (trên cùng), sau đó giá trị lớn nhất
@@ -546,7 +550,8 @@ async function processReceiptImage(imageUri: string): Promise<{
       );
 
       if (finalZone.length > 0) {
-        const excludeKeywords = /mst|mã\s*số\s*thuế|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
+        const excludeKeywords =
+          /mst|mã\s*số\s*thuế|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
         const validBlocks = finalZone.filter(
           (b: any) => !excludeKeywords.test(b.text)
         );
