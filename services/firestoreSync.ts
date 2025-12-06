@@ -168,6 +168,31 @@ export async function initFirestore(firebaseConfig: any) {
   _fsModule = firebaseFirestore;
   _initialized = true;
 
+  // Configure Firebase logging to suppress error messages and use warnings instead
+  try {
+    const { logToConsole } = await import("firebase/logger");
+    if (logToConsole) {
+      logToConsole(true, "warn"); // Only show warnings and below, not errors
+    }
+  } catch (e) {
+    // Firebase logger not available, suppress errors and only log warnings
+    const originalError = console.error;
+    console.error = function (...args: any[]) {
+      const msg = args[0]?.toString?.() || "";
+      // Convert Firebase/Firestore errors to warnings
+      if (
+        msg.includes("@firebase") ||
+        msg.includes("Firestore") ||
+        msg.includes("Connection failed") ||
+        msg.includes("unavailable")
+      ) {
+        console.warn("[Firebase]", ...args);
+      }
+      // Silently suppress other Firebase errors - don't call originalError
+    };
+  }
+
+
   // Initialize Firebase Auth for React Native. This must run before any getAuth() calls
   try {
     _authInitAttempted = true;

@@ -549,6 +549,37 @@ async function processReceiptImage(imageUri: string): Promise<{
       return 0;
     };
 
+    // STRATEGY 0 (HIGHEST PRIORITY): Tìm số tiền từ "Số tiền bằng chữ" (Amount in words)
+    const findByAmountInWords = (): number => {
+      // Tìm block có "số tiền bằng chữ" hoặc "amount in words"
+      const amountInWordsKeywords =
+        /số\s*tiền\s*bằng\s*chữ|amount\s*in\s*words/i;
+
+      const amountBlocks = blocks.filter((b: any) =>
+        amountInWordsKeywords.test(b.text)
+      );
+
+      if (amountBlocks.length > 0) {
+        // Lấy block đầu tiên (thường là block chứa text chữ và số)
+        const blockWithAmount = amountBlocks[0];
+
+        if (blockWithAmount && blockWithAmount.text) {
+          const amount = extractNumber(blockWithAmount.text);
+          if (amount > 0 && amount < 100000000) {
+            console.log(
+              `✅ Strategy 0 (Amount in Words): ${amount} from "${blockWithAmount.text.substring(
+                0,
+                80
+              )}..."`
+            );
+            return amount;
+          }
+        }
+      }
+
+      return 0;
+    };
+
     // STRATEGY 0 (NEW - PRIORITY): Tìm "Tổng tiền thanh toán" và lấy số bên cạnh
     const findFinalTotal = (): number => {
       // Tìm block có "Tổng tiền thanh toán" keyword (đây là dấu hiệu tổng tiền)
@@ -717,7 +748,11 @@ async function processReceiptImage(imageUri: string): Promise<{
     };
 
     // Thực thi các strategies theo thứ tự ưu tiên
-    let amount = findFinalTotal(); // Strategy 0 - Ưu tiên "Tổng thanh toán" cuối
+    let amount = findByAmountInWords(); // Strategy 0 - Ưu tiên "Số tiền bằng chữ"
+
+    if (!amount || amount === 0) {
+      amount = findFinalTotal(); // Strategy 1 - "Tổng tiền thanh toán"
+    }
 
     if (!amount || amount === 0) {
       amount = findTotalByHorizontalPair();
