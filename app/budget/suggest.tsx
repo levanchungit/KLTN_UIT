@@ -1,16 +1,13 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
+import { generateSmartBudget, type LifestyleInput } from "@/lib/budgetAi";
 import { createBudget } from "@/repos/budgetRepo";
-import {
-  generateBudgetSuggestion,
-  type CategoryAllocation,
-} from "@/repos/budgetSuggestion";
-import { suggestFullBudget } from "@/utils/budgetAi";
+import type { CategoryAllocation } from "@/repos/budgetSuggestion";
 import { fixIconName } from "@/utils/iconMapper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -62,17 +59,8 @@ export default function BudgetSuggestScreen() {
   const [wants, setWants] = useState<GroupData | null>(null);
   const [savings, setSavings] = useState<GroupData | null>(null);
 
-  // AI suggestion tổng quan (ratio + giải thích + fixedExpenses)
-  const aiSuggestion = useMemo(() => {
-    if (!income) return null;
-    const nIncome = Number(String(income).replace(/[^0-9]/g, ""));
-    if (!nIncome) return null;
-
-    return suggestFullBudget({
-      incomeAfterTax: nIncome,
-      lifestyleDesc: lifestyleDesc || "",
-    });
-  }, [income, lifestyleDesc]);
+  // AI suggestion không cần thiết nữa vì generateSmartBudget() đã xử lý
+  const aiSuggestion = null;
 
   useEffect(() => {
     loadSuggestion();
@@ -92,9 +80,13 @@ export default function BudgetSuggestScreen() {
       const enrichItems = (items: any[]) =>
         items.map((item) => ({
           ...item,
+          // Use icon/color từ SmartBudget nếu có, nếu không thì fallback sang categoryMap
           icon:
-            categoryMap.get(item.categoryId)?.icon || "mc:help-circle-outline",
-          color: categoryMap.get(item.categoryId)?.color || "#7EC5E8",
+            item.icon ||
+            categoryMap.get(item.categoryId)?.icon ||
+            "mc:help-circle-outline",
+          color:
+            item.color || categoryMap.get(item.categoryId)?.color || "#7EC5E8",
         }));
 
       // === CASE EDIT: dùng allocations đã lưu ===
@@ -158,83 +150,67 @@ export default function BudgetSuggestScreen() {
         }
       }
 
-      // === CASE TẠO MỚI: dùng generateBudgetSuggestion + AI ratio ===
+      // === CASE TẠO MỚI: dùng Smart Budget AI ===
 
-      // 1. Gợi ý theo lịch sử giao dịch / logic cũ → để lấy category list
-      const suggestion = await generateBudgetSuggestion({
-        totalIncome: incomeNum,
+      // 1. Gọi generateSmartBudget để parse lối sống + tạo category template
+      const lifestyleInput: LifestyleInput = {
+        income: incomeNum,
+        description: lifestyleDesc || "",
         period: (period as any) || "monthly",
-        lifestyleDesc: lifestyleDesc || "",
-      });
-
-      // 2. Lấy target theo AI (đã xét lối sống, fixedExpenses, flags)
-      const ai = suggestFullBudget({
-        incomeAfterTax: incomeNum,
-        lifestyleDesc: lifestyleDesc || "",
-      });
-
-      const targetNeedsTotal = ai.groupSummary.needs.target;
-      const targetWantsTotal = ai.groupSummary.wants.target;
-      const targetSavingsTotal = ai.groupSummary.savings.target;
-
-      // 3. Scale 1 group cho khớp target AI
-      const scaleGroup = (
-        items: CategoryAllocation[],
-        targetTotal: number
-      ): { items: CategoryAllocation[]; total: number } => {
-        if (items.length === 0) return { items: [], total: 0 };
-
-        const currentTotal = items.reduce((s, a) => s + a.allocatedAmount, 0);
-
-        // Nếu hiện tại đều 0 → chia đều
-        if (currentTotal === 0) {
-          const base = Math.floor(targetTotal / items.length);
-          let remain = targetTotal - base * items.length;
-          const newItems = items.map((item, idx) => {
-            const extra = idx < remain ? 1 : 0;
-            return {
-              ...item,
-              allocatedAmount: base + extra,
-            };
-          });
-          return { items: newItems, total: targetTotal };
-        }
-
-        const factor = targetTotal / currentTotal;
-
-        let newItems = items.map((item) => ({
-          ...item,
-          allocatedAmount: Math.round(item.allocatedAmount * factor),
-        }));
-
-        // Fix sai số do round
-        let newTotal = newItems.reduce((s, a) => s + a.allocatedAmount, 0);
-        let diff = targetTotal - newTotal;
-
-        if (diff !== 0) {
-          let idxMax = 0;
-          let maxVal = newItems[0].allocatedAmount;
-          newItems.forEach((it, idx) => {
-            if (it.allocatedAmount > maxVal) {
-              maxVal = it.allocatedAmount;
-              idxMax = idx;
-            }
-          });
-          newItems[idxMax] = {
-            ...newItems[idxMax],
-            allocatedAmount: newItems[idxMax].allocatedAmount + diff,
-          };
-          newTotal = newItems.reduce((s, a) => s + a.allocatedAmount, 0);
-        }
-
-        return { items: newItems, total: newTotal };
       };
 
-      const scaledNeeds = scaleGroup(suggestion.needs, targetNeedsTotal);
-      const scaledWants = scaleGroup(suggestion.wants, targetWantsTotal);
-      const scaledSavings = scaleGroup(suggestion.savings, targetSavingsTotal);
+      const smartBudgetResult = await generateSmartBudget(lifestyleInput);
 
-      // 4. Đặt tên ngân sách như cũ
+      // 2. Convert categories từ SmartBudgetResult sang CategoryAllocation format
+      // Keep icon and color from SmartBudgetResult
+      const suggestion = {
+        needs: smartBudgetResult.categories
+          .filter((c) => c.groupType === "needs")
+          .map((c) => ({
+            categoryId: c.categoryId,
+            categoryName: c.categoryName,
+            groupType: c.groupType,
+            allocatedAmount: c.allocatedAmount,
+            icon: c.categoryIcon,
+            color: c.categoryColor,
+          })),
+        wants: smartBudgetResult.categories
+          .filter((c) => c.groupType === "wants")
+          .map((c) => ({
+            categoryId: c.categoryId,
+            categoryName: c.categoryName,
+            groupType: c.groupType,
+            allocatedAmount: c.allocatedAmount,
+            icon: c.categoryIcon,
+            color: c.categoryColor,
+          })),
+        savings: smartBudgetResult.categories
+          .filter((c) => c.groupType === "savings")
+          .map((c) => ({
+            categoryId: c.categoryId,
+            categoryName: c.categoryName,
+            groupType: c.groupType,
+            allocatedAmount: c.allocatedAmount,
+            icon: c.categoryIcon,
+            color: c.categoryColor,
+          })),
+      };
+
+      // 3. Không cần scale vì Smart Budget đã phân bổ đúng theo 50/30/20
+      const scaledNeeds = {
+        items: suggestion.needs,
+        total: suggestion.needs.reduce((s, a) => s + a.allocatedAmount, 0),
+      };
+      const scaledWants = {
+        items: suggestion.wants,
+        total: suggestion.wants.reduce((s, a) => s + a.allocatedAmount, 0),
+      };
+      const scaledSavings = {
+        items: suggestion.savings,
+        total: suggestion.savings.reduce((s, a) => s + a.allocatedAmount, 0),
+      };
+
+      // 4. Đặt tên ngân sách
       const periodType = (period as any) || "monthly";
       const now = new Date();
       let defaultName = "";
@@ -455,7 +431,7 @@ export default function BudgetSuggestScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                marginBottom: 8,
+                marginBottom: 12,
               }}
             >
               <MaterialCommunityIcons
@@ -469,72 +445,87 @@ export default function BudgetSuggestScreen() {
                   { marginLeft: 8, marginBottom: 0, fontWeight: "600" },
                 ]}
               >
-                {aiSuggestion
-                  ? "Kế hoạch ngân sách do AI gợi ý"
-                  : "Kế hoạch ngân sách thông minh"}
+                Kế hoạch ngân sách thông minh
               </Text>
             </View>
 
-            {aiSuggestion ? (
-              <>
-                <Text style={styles.infoText}>
-                  Thu nhập:{" "}
-                  {aiSuggestion.incomeAfterTax.toLocaleString("vi-VN")}đ/
-                  {period === "monthly"
-                    ? "tháng"
-                    : period === "weekly"
-                    ? "tuần"
-                    : "ngày"}
-                </Text>
-                <Text style={styles.infoText}>
-                  Gợi ý phân bổ: {(aiSuggestion.ratio.needs * 100).toFixed(0)}%
-                  nhu cầu · {(aiSuggestion.ratio.wants * 100).toFixed(0)}% mong
-                  muốn · {(aiSuggestion.ratio.savings * 100).toFixed(0)}% tiết
-                  kiệm
-                </Text>
-                <Text style={[styles.infoText, { marginTop: 6 }]}>
-                  {aiSuggestion.explanation}
-                </Text>
-
-                {aiSuggestion.fixedExpenses.length > 0 && (
-                  <View style={{ marginTop: 8 }}>
-                    <Text
-                      style={[
-                        styles.infoText,
-                        { fontWeight: "600", marginBottom: 4 },
-                      ]}
-                    >
-                      Một số khoản chi cố định đã phát hiện:
-                    </Text>
-                    {aiSuggestion.fixedExpenses.slice(0, 3).map((e, idx) => (
-                      <Text key={idx} style={styles.infoText}>
-                        • {e.rawText} ({e.amount.toLocaleString("vi-VN")}đ ·{" "}
-                        {e.groupType === "needs"
-                          ? "Nhu cầu"
-                          : e.groupType === "wants"
-                          ? "Mong muốn"
-                          : "Tiết kiệm"}
-                        )
-                      </Text>
-                    ))}
-                    {aiSuggestion.fixedExpenses.length > 3 && (
-                      <Text style={styles.infoText}>• ...</Text>
-                    )}
-                  </View>
+            <Text
+              style={[
+                styles.infoText,
+                {
+                  fontSize: 13,
+                  lineHeight: 20,
+                  color: colors.text,
+                },
+              ]}
+            >
+              Áp dụng quy tắc 50/30/20 cho thu nhập{" "}
+              <Text style={{ fontWeight: "600" }}>
+                {Number(income || 100000000).toLocaleString("vi-VN")}đ
+              </Text>
+              /
+              {period === "monthly"
+                ? "tháng"
+                : period === "weekly"
+                ? "tuần"
+                : "ngày"}
+              :{"\n"}• Nhu cầu (50%):{" "}
+              <Text style={{ fontWeight: "600" }}>
+                {Math.round(Number(income || 100000000) * 0.5).toLocaleString(
+                  "vi-VN"
                 )}
-              </>
-            ) : (
-              <Text style={styles.infoText}>
-                Phân bổ {totalIncome.toLocaleString("vi-VN")}đ/
-                {period === "monthly"
-                  ? "tháng"
-                  : period === "weekly"
-                  ? "tuần"
-                  : "ngày"}{" "}
-                thành 50% nhu cầu, 30% mong muốn, 20% tiết kiệm. Bạn có thể
-                chỉnh sửa trực tiếp.
+                đ
+              </Text>
+              {"\n"}• Mong muốn (30%):{" "}
+              <Text style={{ fontWeight: "600" }}>
+                {Math.round(Number(income || 100000000) * 0.3).toLocaleString(
+                  "vi-VN"
+                )}
+                đ
+              </Text>
+              {"\n"}• Tiết kiệm (20%):{" "}
+              <Text style={{ fontWeight: "600" }}>
+                {Math.round(Number(income || 100000000) * 0.2).toLocaleString(
+                  "vi-VN"
+                )}
+                đ
+              </Text>
+            </Text>
+
+            {lifestyleDesc && lifestyleDesc.trim() && (
+              <Text
+                style={[
+                  styles.infoText,
+                  {
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    color: colors.subText,
+                    lineHeight: 18,
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                💡 Tôi đã phân tích chi tiết bạn cung cấp ({lifestyleDesc}) và
+                phân bổ phần còn lại sao cho đạt đủ tỉ lệ 50/30/20.
               </Text>
             )}
+
+            <Text
+              style={[
+                styles.infoText,
+                {
+                  fontSize: 12,
+                  fontStyle: "italic",
+                  color: colors.subText,
+                  lineHeight: 18,
+                  marginTop: 8,
+                },
+              ]}
+            >
+              💡 Gợi ý: Các chi phí thiết yếu như điện nước, xăng, bảo hiểm nên
+              để trong "Chi phí thiết yếu khác". Du lịch nên đặt trong Mong muốn
+              để bảo toàn quỹ tiết kiệm.
+            </Text>
           </View>
 
           {/* Budget Name Input */}
@@ -615,25 +606,43 @@ export default function BudgetSuggestScreen() {
             </View>
           )}
 
-          <Pressable
-            style={[
-              styles.confirmButton,
-              saving && styles.confirmButtonDisabled,
-            ]}
-            onPress={handleConfirm}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="check" size={20} color="#fff" />
-                <Text style={styles.confirmButtonText}>
-                  {isEditMode ? "Cập nhật" : "Xác nhận"}
+          <View style={{ gap: 12 }}>
+            <Pressable
+              style={[
+                styles.confirmButton,
+                saving && styles.confirmButtonDisabled,
+              ]}
+              onPress={handleConfirm}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="check" size={20} color="#fff" />
+                  <Text style={styles.confirmButtonText}>
+                    {isEditMode ? "Cập nhật" : "Xác nhận"}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            {!isEditMode && (
+              <Pressable
+                style={[
+                  styles.retryButton,
+                  loading && styles.confirmButtonDisabled,
+                ]}
+                onPress={() => router.back()}
+                disabled={loading}
+              >
+                <MaterialCommunityIcons name="refresh" size={20} color="#666" />
+                <Text style={styles.retryButtonText}>
+                  Không hài lòng? Hãy thử lại
                 </Text>
-              </>
+              </Pressable>
             )}
-          </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -762,7 +771,11 @@ function EditableCategoryRow({
           marginRight: 10,
         }}
       >
-        <MaterialCommunityIcons name={finalIconName} size={20} color="#fff" />
+        <MaterialCommunityIcons
+          name={finalIconName as any}
+          size={20}
+          color="#fff"
+        />
       </View>
       <Text
         style={{ fontSize: 15, color: colors.text, flex: 1, fontWeight: "500" }}
@@ -942,7 +955,6 @@ const makeStyles = (
       opacity: 0.5,
     },
     retryButton: {
-      flex: 1,
       height: 48,
       borderRadius: 24,
       backgroundColor: c.card,

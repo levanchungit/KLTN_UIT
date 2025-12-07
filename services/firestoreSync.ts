@@ -192,7 +192,6 @@ export async function initFirestore(firebaseConfig: any) {
     };
   }
 
-
   // Initialize Firebase Auth for React Native. This must run before any getAuth() calls
   try {
     _authInitAttempted = true;

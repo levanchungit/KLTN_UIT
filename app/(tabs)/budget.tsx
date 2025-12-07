@@ -1,5 +1,6 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { type SmartBudgetResult } from "@/lib/budgetAi";
 import {
   computeBudgetProgress,
   deleteBudget,
@@ -38,7 +39,7 @@ type BudgetItem = {
 };
 
 export default function BudgetScreen() {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const { t } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -54,6 +55,22 @@ export default function BudgetScreen() {
   const [filterPeriod, setFilterPeriod] = useState<
     "all" | "daily" | "weekly" | "monthly"
   >("all");
+
+  // Smart Budget States
+  const [showSmartBudget, setShowSmartBudget] = useState(false);
+  const [smartBudgetStep, setSmartBudgetStep] = useState<
+    "input" | "generating" | "review"
+  >("input");
+  const [smartBudgetIncome, setSmartBudgetIncome] = useState("");
+  const [smartBudgetPeriod, setSmartBudgetPeriod] = useState<
+    "daily" | "weekly" | "monthly"
+  >("monthly");
+  const [smartBudgetLifestyle, setSmartBudgetLifestyle] = useState("");
+  const [smartBudgetDependents, setSmartBudgetDependents] = useState("0");
+  const [smartBudgetHasDebt, setSmartBudgetHasDebt] = useState(false);
+  const [smartBudgetGoal, setSmartBudgetGoal] = useState("");
+  const [smartBudgetResult, setSmartBudgetResult] =
+    useState<SmartBudgetResult | null>(null);
 
   const loadBudget = useCallback(async () => {
     try {
@@ -763,5 +780,200 @@ const makeStyles = (c: {
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.3,
       shadowRadius: 12,
+    },
+    // Smart Budget Styles
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.divider,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: c.text,
+    },
+    modalContent: {
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      paddingBottom: 120,
+    },
+    modalActions: {
+      flexDirection: "row",
+      gap: 12,
+      padding: 16,
+      borderTopWidth: 1,
+      backgroundColor: c.card,
+    },
+    centerContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    smartBudgetHeader: {
+      alignItems: "center",
+      marginBottom: 24,
+      paddingHorizontal: 16,
+    },
+    smartBudgetTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: c.text,
+      marginTop: 12,
+      textAlign: "center",
+    },
+    smartBudgetSubtitle: {
+      fontSize: 14,
+      color: c.subText,
+      marginTop: 8,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+    formSection: {
+      marginBottom: 20,
+      paddingHorizontal: 0,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: c.text,
+      marginBottom: 8,
+    },
+    hint: {
+      fontSize: 12,
+      color: c.subText,
+      marginBottom: 8,
+      fontStyle: "italic",
+    },
+    inputContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: c.divider,
+      borderRadius: 8,
+      backgroundColor: c.card,
+    },
+    input: {
+      fontSize: 14,
+      color: c.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    textArea: {
+      fontSize: 14,
+      color: c.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderRadius: 8,
+      minHeight: 100,
+      textAlignVertical: "top",
+    },
+    periodRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    periodButton: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderWidth: 2,
+      borderRadius: 8,
+      alignItems: "center",
+      backgroundColor: c.card,
+    },
+    periodButtonActive: {
+      backgroundColor: "#16A34A",
+      borderColor: "#16A34A",
+    },
+    periodButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: c.text,
+    },
+    periodButtonTextActive: {
+      color: "#fff",
+    },
+    optionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 8,
+      marginBottom: 8,
+    },
+    smallInput: {
+      width: 60,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderRadius: 6,
+      fontSize: 13,
+      textAlign: "center",
+      backgroundColor: c.background,
+    },
+    checkbox: {
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      borderWidth: 2,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    buttonSecondary: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderRadius: 8,
+      backgroundColor: c.card,
+    },
+    buttonPrimary: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 8,
+    },
+    ratioCard: {
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 16,
+    },
+    ratioItem: {
+      marginBottom: 16,
+    },
+    ratioValue: {
+      fontSize: 18,
+      fontWeight: "700",
+      marginTop: 4,
+    },
+    categoryRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderRadius: 8,
+      marginBottom: 8,
+    },
+    insightBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderRadius: 8,
+      marginBottom: 8,
     },
   });
