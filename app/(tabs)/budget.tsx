@@ -1,6 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import { type SmartBudgetResult } from "@/lib/budgetAi";
 import {
   computeBudgetProgress,
   deleteBudget,
@@ -8,6 +7,7 @@ import {
   listBudgets,
   type Budget,
 } from "@/repos/budgetRepo";
+import { type SmartBudgetResult } from "@/services/budgetAi";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";

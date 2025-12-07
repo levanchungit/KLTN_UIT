@@ -1,5 +1,24 @@
-import { db } from "@/db";
+import { getAdaptiveHistoricalData } from "@/services/adaptiveHistoryService";
+import {
+  budgetPredictor,
+  HistoricalAnalyzer,
+  textEncoder,
+  tfliteModel,
+} from "@/services/budgetAIService";
 import { getCurrentUserId } from "@/utils/auth";
+
+// Giữ type cho tương thích
+export type RawFeatures = {
+  textEmbedding: Float32Array;
+  income: number;
+  age?: number;
+  location?: string;
+  occupation?: string;
+  dependents?: number;
+  historicalPatterns?: any;
+  month: number;
+  isHolidaySeason?: boolean;
+};
 
 // ============ Types ============
 
@@ -46,7 +65,16 @@ export type SmartBudgetResult = {
   categories: CategoryScoring[];
   insights: string[];
   alternatives: BudgetRatio[];
+  mlModelUsed?: boolean;
+  modelConfidence?: number;
+  modelVersion?: string;
   confidence: number; // 0-1
+  metadata?: {
+    source: "tflite-model" | "ml-hybrid" | "historical" | "rule-based";
+    historicalAccuracy?: number;
+    riskScore?: number;
+    deviation?: number;
+  };
 };
 
 // ============ Helpers for sample-style deterministic allocation ============
@@ -752,125 +780,355 @@ export function generateInsights(
 
 // ============ Learn from User History ============
 
-export async function learnFromUserHistory(
-  months: number = 3
-): Promise<{ actualRatio: BudgetRatio; patterns: Record<string, any> }> {
-  try {
-    const userId = await getCurrentUserId();
-    if (!userId)
-      return {
-        actualRatio: { needs: 0.5, wants: 0.3, savings: 0.2 },
-        patterns: {},
-      };
-
-    const endSec = Math.floor(Date.now() / 1000);
-    const startSec = endSec - months * 30 * 86400;
-
-    // Get breakdown with group type info from budget allocations
-    const rows = await (db as any).getAllAsync(
-      `SELECT ba.group_type, SUM(t.amount) as total
-       FROM transactions t
-       JOIN budget_allocations ba ON t.category_id = ba.category_id
-       WHERE t.user_id = ? AND t.type = 'expense' AND t.occurred_at >= ? AND t.occurred_at <= ?
-       GROUP BY ba.group_type`,
-      [Number(userId || 0), startSec, endSec]
-    );
-
-    const groupTotals = {
-      needs: 0,
-      wants: 0,
-      savings: 0,
-    };
-
-    for (const row of rows as Array<{ group_type: string; total: number }>) {
-      if (!row.group_type) continue;
-      const groupType = row.group_type as keyof typeof groupTotals;
-      if (groupType in groupTotals) {
-        groupTotals[groupType] += row.total || 0;
-      }
-    }
-
-    const total = Object.values(groupTotals).reduce((s, v) => s + v, 0);
-
-    const actualRatio =
-      total > 0
-        ? {
-            needs: groupTotals.needs / total,
-            wants: groupTotals.wants / total,
-            savings: groupTotals.savings / total,
-          }
-        : { needs: 0.5, wants: 0.3, savings: 0.2 };
-
-    return {
-      actualRatio,
-      patterns: {
-        monthsAnalyzed: months,
-        totalSpent: total,
-        averageMonthly: total / months,
-      },
-    };
-  } catch (error) {
-    console.warn("Error learning from history:", error);
-    return {
-      actualRatio: { needs: 0.5, wants: 0.3, savings: 0.2 },
-      patterns: {},
-    };
-  }
-}
-
-// ============ Main Function ============
-
 /**
  * Generate smart budget using Hybrid Intelligence System
  */
 export async function generateSmartBudget(
-  input: LifestyleInput
+  input: LifestyleInput & { userId?: string }
 ): Promise<SmartBudgetResult> {
+  const startTime = Date.now();
+
   try {
-    // 1. Parse lifestyle
-    const signals = parseLifestyleSignals(input.description);
+    // === PHASE 1: HISTORICAL ANALYSIS ===
+    let historicalData: any = null;
+    let useML = false;
+    const userId = input.userId || (await getCurrentUserId());
 
-    // 2. Get decision tree ratio
-    const baseRatio = decisionTreeRatio(input.income, signals);
+    if (userId) {
+      try {
+        // Use ADAPTIVE detection instead of hardcoding 3 months
+        historicalData = await getAdaptiveHistoricalData(userId);
+        if (historicalData && historicalData.patterns.length > 0) {
+          console.log("[SmartBudget] ✅ Historical data loaded:", {
+            patterns: historicalData.patterns.length,
+            avgIncome: historicalData.avgIncome,
+            savingsRate: `${(historicalData.savingsRate * 100).toFixed(1)}%`,
+          });
+        } else {
+          console.log("[SmartBudget] ℹ️ No historical patterns found");
+        }
+      } catch (err) {
+        console.warn("[SmartBudget] Adaptive analysis failed:", err);
+      }
+    }
 
-    // 3. Learn from user history (for insights only, not for final ratio)
-    const userHistory = await learnFromUserHistory(3);
+    // === PHASE 2: ML PREDICTION (always try, even without history) ===
+    let mlPrediction: any = null;
+    let mlModelUsed = false;
+    let modelConfidence = 0;
+    let modelVersion = "none";
 
-    // Use base ratio directly - don't blend with history
-    // The decision tree already accounts for individual circumstances
-    const normalizedRatio = baseRatio;
+    // TRY ML EVEN IF NO HISTORY - use heuristic predictor
+    if (input.description && input.description.trim().length > 5) {
+      try {
+        // Step 1: Try TFLite model (if historical data available)
+        if (historicalData && historicalData.patterns.length >= 3) {
+          await tfliteModel.initialize();
 
-    // 5. Deterministic allocation like sample app (ignores history to avoid drift)
+          const textEmbedding = await textEncoder.encode(input.description);
+
+          const tfliteOutput = await tfliteModel.predict({
+            textEmbedding,
+            income: input.income,
+            month: new Date().getMonth() + 1,
+            historicalPatterns: {
+              avgMonthlySpend: historicalData.patterns.reduce(
+                (sum: number, p: any) => sum + p.avgMonthlySpend,
+                0
+              ),
+              savingsRate: historicalData.savingsRate,
+              volatility: historicalData.volatility,
+              topCategories: historicalData.patterns
+                .sort((a: any, b: any) => b.avgMonthlySpend - a.avgMonthlySpend)
+                .slice(0, 5)
+                .map((p: any) => ({
+                  id: p.categoryId,
+                  ratio:
+                    p.avgMonthlySpend /
+                    historicalData.patterns.reduce(
+                      (sum: number, x: any) => sum + x.avgMonthlySpend,
+                      0
+                    ),
+                })),
+            },
+          });
+
+          if (tfliteOutput.riskConfidence > 0.65) {
+            mlModelUsed = true;
+            modelConfidence = tfliteOutput.riskConfidence;
+            const metadata = tfliteModel.getMetadata();
+            modelVersion = metadata?.version || "unknown";
+
+            mlPrediction = {
+              ratioAdjustments: tfliteOutput.ratios,
+              confidence: tfliteOutput.riskConfidence,
+              riskScore: tfliteOutput.riskScore,
+              insights: [
+                `🤖 Mô hình AI dự đoán (độ tin cậy: ${(
+                  tfliteOutput.riskConfidence * 100
+                ).toFixed(0)}%)`,
+                `📊 Phân bổ được đề xuất dựa trên ${historicalData.patterns.length} danh mục lịch sử`,
+              ],
+            };
+            useML = true;
+
+            console.log(
+              "[SmartBudget] Using TFLite model, confidence:",
+              modelConfidence
+            );
+          } else {
+            console.log(
+              "[SmartBudget] TFLite confidence too low:",
+              tfliteOutput.riskConfidence
+            );
+          }
+        }
+
+        // Step 2: Fallback to heuristic predictor (always available)
+        if (!useML) {
+          await budgetPredictor.initialize();
+
+          mlPrediction = await budgetPredictor.predict({
+            income: input.income,
+            lifestyleText: input.description,
+            historicalPatterns: historicalData?.patterns || [],
+            currentMonth: new Date().getMonth() + 1,
+          });
+
+          // Heuristic ML is ALWAYS confident - lower threshold
+          if (mlPrediction && mlPrediction.riskScore < 0.9) {
+            useML = true;
+            console.log("[SmartBudget] ✅ Using heuristic ML predictor:", {
+              riskScore: mlPrediction.riskScore.toFixed(2),
+              confidence: (1 - mlPrediction.riskScore).toFixed(2),
+              insights: mlPrediction.insights.length,
+              source: "heuristic-ml",
+            });
+          } else {
+            console.log(
+              "[SmartBudget] ⚠️ Heuristic ML risk too high:",
+              mlPrediction.riskScore
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[SmartBudget] ML prediction failed:", err);
+      }
+    }
+
+    // === PHASE 3: DETERMINE RATIOS ===
+    let ratio: BudgetRatio;
+    let insights: string[] = [];
+    let source: "ml-hybrid" | "historical" | "rule-based" = "rule-based";
+
+    if (useML && mlPrediction) {
+      // Use ML-predicted ratios
+      ratio = mlPrediction.ratioAdjustments;
+      insights = mlPrediction.insights;
+      source = "ml-hybrid";
+
+      console.log("[SmartBudget] Using ML ratios:", ratio);
+    } else if (historicalData && historicalData.patterns.length >= 2) {
+      // Use historical-based adjustments
+      const signals = parseLifestyleSignals(input.description);
+      const baseRatio = decisionTreeRatio(input.income, signals);
+
+      // Adjust based on historical savings rate
+      if (historicalData.savingsRate < 0.1) {
+        baseRatio.savings += 0.05;
+        baseRatio.wants -= 0.05;
+        insights.push(
+          `⚠️ Tỷ lệ tiết kiệm trước đây chỉ ${(
+            historicalData.savingsRate * 100
+          ).toFixed(0)}%, đã tăng lên ${(baseRatio.savings * 100).toFixed(0)}%`
+        );
+      }
+
+      // Adjust based on income change
+      if (historicalData.avgIncome > 0) {
+        const incomeRatio = input.income / historicalData.avgIncome;
+        if (incomeRatio > 1.15) {
+          baseRatio.savings += 0.03;
+          baseRatio.wants -= 0.03;
+          insights.push(
+            `💰 Thu nhập tăng ${((incomeRatio - 1) * 100).toFixed(
+              0
+            )}%, tăng tỷ lệ tiết kiệm`
+          );
+        } else if (incomeRatio < 0.9) {
+          baseRatio.needs += 0.03;
+          baseRatio.wants -= 0.03;
+          insights.push(
+            `📉 Thu nhập giảm ${((1 - incomeRatio) * 100).toFixed(
+              0
+            )}%, ưu tiên chi phí cần thiết`
+          );
+        }
+      }
+
+      // Normalize
+      const sum = baseRatio.needs + baseRatio.wants + baseRatio.savings;
+      ratio = {
+        needs: baseRatio.needs / sum,
+        wants: baseRatio.wants / sum,
+        savings: baseRatio.savings / sum,
+      };
+
+      source = "historical";
+      console.log("[SmartBudget] Using historical-adjusted ratios:", ratio);
+    } else {
+      // Fallback to rule-based
+      const signals = parseLifestyleSignals(input.description);
+      ratio = decisionTreeRatio(input.income, signals);
+      source = "rule-based";
+
+      console.log("[SmartBudget] Using rule-based ratios:", ratio);
+    }
+
+    // === PHASE 4: BUILD ALLOCATIONS ===
     const allocated = await buildTemplateAllocations(
       input.income,
-      normalizedRatio,
+      ratio,
       input.description
     );
 
-    // 8. Generate insights
-    const insights = generateInsights(
+    // === PHASE 5: CALCULATE DEVIATION ===
+    let deviation = 0;
+    if (historicalData && historicalData.patterns.length > 0) {
+      const analyzer = new HistoricalAnalyzer();
+      const proposedAllocations = allocated.map((a) => ({
+        categoryId: a.categoryId,
+        amount: a.allocatedAmount,
+      }));
+      deviation = analyzer.calculateDeviation(
+        proposedAllocations,
+        historicalData.patterns
+      );
+
+      if (deviation > 0.3) {
+        insights.push(
+          `📊 Ngân sách này khác ${(deviation * 100).toFixed(
+            0
+          )}% so với thói quen - hãy theo dõi sát`
+        );
+      }
+    }
+
+    // === PHASE 6: ADD GENERAL INSIGHTS ===
+    const generalInsights = generateInsights(
       allocated,
-      normalizedRatio,
-      signals,
+      ratio,
+      parseLifestyleSignals(input.description),
       input.income
     );
 
-    // 9. Calculate confidence
-    const confidence = userHistory.patterns.totalSpent > 0 ? 0.9 : 0.7;
+    // History-focused insights to replace generic 50/30/20 wording
+    const historyInsights: string[] = [];
+    if (historicalData && historicalData.patterns.length > 0) {
+      const topCat = historicalData.patterns[0];
+      historyInsights.push(
+        `📊 Chi nhiều nhất: ${
+          topCat.categoryName
+        } ~${topCat.avgMonthlySpend.toLocaleString("vi-VN")}đ/tháng (${
+          topCat.trendDirection === "increasing"
+            ? "đang tăng"
+            : topCat.trendDirection === "decreasing"
+            ? "đang giảm"
+            : "ổn định"
+        })`
+      );
 
-    // 10. Generate alternatives
+      if (historicalData.savingsRate !== undefined) {
+        historyInsights.push(
+          `💾 Tiết kiệm gần đây ~${(historicalData.savingsRate * 100).toFixed(
+            0
+          )}% thu nhập`
+        );
+      }
+
+      if (
+        historicalData.volatility !== undefined &&
+        historicalData.volatility > 0.5
+      ) {
+        historyInsights.push(
+          "⚠️ Chi tiêu biến động cao, nên đặt hạn mức cho các khoản tùy ý"
+        );
+      }
+    }
+
+    const baseInsights = [
+      useML
+        ? "🤖 Gợi ý được tạo bởi AI dựa trên lịch sử chi tiêu của bạn"
+        : historicalData
+        ? "📊 Gợi ý dựa trên lịch sử chi tiêu"
+        : "📋 Gợi ý dựa trên bộ quy tắc mặc định",
+      ...insights,
+      ...generalInsights.filter(
+        (i) => !insights.some((existing) => existing.includes(i.slice(0, 20)))
+      ),
+    ];
+
+    // Remove boilerplate 50/30/20 lines and dedupe
+    insights = [...historyInsights, ...baseInsights].filter(
+      (line, idx, arr) => {
+        const key = line.toLowerCase();
+        if (key.includes("50/30/20")) return false;
+        if (key.includes("quy tắc 50")) return false;
+        if (key.includes("tỉ lệ 50")) return false;
+
+        // Loại bỏ trùng lặp insight về tiết kiệm %
+        if (key.includes("tiết kiệm") && key.match(/\d+%/)) {
+          // Chỉ giữ insight đầu tiên về tiết kiệm %
+          const firstSavingsIndex = arr.findIndex((l) => {
+            const lkey = l.toLowerCase();
+            return lkey.includes("tiết kiệm") && lkey.match(/\d+%/);
+          });
+          if (idx !== firstSavingsIndex) return false;
+        }
+
+        return arr.findIndex((l) => l.toLowerCase() === key) === idx;
+      }
+    );
+
+    // === PHASE 7: CALCULATE CONFIDENCE ===
+    let confidence = 0.7;
+    if (useML && mlPrediction) {
+      confidence = Math.max(0.6, 1 - mlPrediction.riskScore);
+    } else if (historicalData && historicalData.patterns.length >= 5) {
+      confidence = 0.85;
+    } else if (historicalData && historicalData.patterns.length >= 2) {
+      confidence = 0.75;
+    }
+
+    // === PHASE 8: ALTERNATIVES ===
     const alternatives: BudgetRatio[] = [
       { needs: 0.5, wants: 0.3, savings: 0.2 }, // Classic 50/30/20
       { needs: 0.55, wants: 0.25, savings: 0.2 }, // Conservative
       { needs: 0.45, wants: 0.35, savings: 0.2 }, // Balanced
     ];
 
+    const elapsedMs = Date.now() - startTime;
+    console.log(
+      `[SmartBudget] Generated in ${elapsedMs}ms (source: ${source}, ML: ${mlModelUsed})`
+    );
+
     return {
-      ratio: normalizedRatio,
+      ratio,
       categories: allocated,
       insights,
       alternatives,
+      mlModelUsed,
+      modelConfidence,
+      modelVersion,
       confidence,
+      metadata: {
+        source: mlModelUsed ? "tflite-model" : source,
+        historicalAccuracy: historicalData
+          ? historicalData.savingsRate
+          : undefined,
+        riskScore: mlPrediction?.riskScore,
+        deviation,
+      },
     };
   } catch (error) {
     console.warn("Error generating smart budget:", error);

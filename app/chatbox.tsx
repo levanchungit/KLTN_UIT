@@ -1,6 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { db } from "@/db";
-import useAudioMeter from "@/hooks/useAudioMeter";
 import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
 import {
@@ -18,6 +17,7 @@ import {
 import { sendToHf } from "@/services/hfChatbot";
 import { phobertExtractor } from "@/services/phobertAmountExtractor";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import useAudioMeter from "@/services/useAudioMeter";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";

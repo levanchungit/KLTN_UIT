@@ -1,9 +1,9 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
-import { generateSmartBudget, type LifestyleInput } from "@/lib/budgetAi";
 import { createBudget } from "@/repos/budgetRepo";
 import type { CategoryAllocation } from "@/repos/budgetSuggestion";
+import { generateSmartBudget, type LifestyleInput } from "@/services/budgetAi";
 import { fixIconName } from "@/utils/iconMapper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -58,6 +58,72 @@ export default function BudgetSuggestScreen() {
   const [needs, setNeeds] = useState<GroupData | null>(null);
   const [wants, setWants] = useState<GroupData | null>(null);
   const [savings, setSavings] = useState<GroupData | null>(null);
+  const [aiInsights, setAiInsights] = useState<string[]>([]);
+  const [aiMetadata, setAiMetadata] = useState<any>(null);
+  const [mlModelUsed, setMlModelUsed] = useState(false);
+  const [modelConfidence, setModelConfidence] = useState(0);
+  const [modelVersion, setModelVersion] = useState("none");
+
+  // Derived insights to keep the summary aligned with actual allocations + user description
+  const derivedInsights = React.useMemo(() => {
+    if (!needs || !wants || !savings) return [] as string[];
+
+    const topNeeds = needs.items
+      .slice()
+      .sort((a, b) => b.allocatedAmount - a.allocatedAmount)[0];
+    const topWants = wants.items
+      .slice()
+      .sort((a, b) => b.allocatedAmount - a.allocatedAmount)[0];
+
+    const insights: string[] = [];
+
+    if (topNeeds) {
+      insights.push(
+        `Ưu tiên nhu cầu: ${
+          topNeeds.categoryName
+        } (~${topNeeds.allocatedAmount.toLocaleString("vi-VN")}đ)`
+      );
+    }
+
+    if (topWants) {
+      insights.push(
+        `Ưu tiên mong muốn: ${
+          topWants.categoryName
+        } (~${topWants.allocatedAmount.toLocaleString("vi-VN")}đ)`
+      );
+    }
+
+    return insights;
+  }, [needs, wants, savings, lifestyleDesc, aiMetadata?.riskScore]);
+
+  const combinedInsights = React.useMemo(() => {
+    const combined = [...derivedInsights, ...aiInsights];
+    const seen = new Set<string>();
+    return combined.filter((line) => {
+      const key = line.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [derivedInsights, aiInsights]);
+
+  // Keep insights concise: drop risk/ratio lines (đã có badge và header) and limit count
+  const displayInsights = React.useMemo(() => {
+    const filtered = combinedInsights.filter((line) => {
+      const lower = line.toLowerCase();
+      if (lower.includes("rủi ro")) return false; // risk is shown via badge
+      if (lower.includes("50/30/20")) return false; // ratio already in header
+      if (lifestyleDesc && lower.includes(lifestyleDesc.toLowerCase()))
+        return false; // avoid repeating the same description line
+      if (lower.includes("gợi ý được tạo bởi ai")) return false;
+      if (lower.includes("gợi ý dựa trên mô tả lối sống")) return false;
+      if (lower.includes("50% nhu cầu") || lower.includes("30% mong muốn"))
+        return false; // drop explicit ratio sentence
+      return true;
+    });
+
+    return filtered.slice(0, 6); // allow more diverse tips
+  }, [combinedInsights, lifestyleDesc]);
 
   // AI suggestion không cần thiết nữa vì generateSmartBudget() đã xử lý
   const aiSuggestion = null;
@@ -94,11 +160,12 @@ export default function BudgetSuggestScreen() {
         const { getBudgetById, listBudgetAllocations } = await import(
           "@/repos/budgetRepo"
         );
-        const budget = await getBudgetById(budgetId);
-        const allocations = await listBudgetAllocations(budgetId);
+        const safeBudgetId = String(budgetId);
+        const budget = await getBudgetById(safeBudgetId);
+        const allocations = await listBudgetAllocations(safeBudgetId);
 
         if (budget && allocations) {
-          setBudgetName(budget.name);
+          setBudgetName(budget?.name || "");
 
           const needsItems = allocations.filter(
             (a) => a.group_type === "needs"
@@ -109,7 +176,6 @@ export default function BudgetSuggestScreen() {
           const savingsItems = allocations.filter(
             (a) => a.group_type === "savings"
           );
-
           setNeeds({
             title: "Nhu cầu",
             total: needsItems.reduce((s, a) => s + a.allocated_amount, 0),
@@ -152,14 +218,22 @@ export default function BudgetSuggestScreen() {
 
       // === CASE TẠO MỚI: dùng Smart Budget AI ===
 
-      // 1. Gọi generateSmartBudget để parse lối sống + tạo category template
-      const lifestyleInput: LifestyleInput = {
+      // 1. Gọi generateSmartBudget với userId để parse lối sống + lịch sử
+      const lifestyleInput: LifestyleInput & { userId?: string } = {
         income: incomeNum,
         description: lifestyleDesc || "",
         period: (period as any) || "monthly",
+        userId: user?.id, // Truyền userId để analyze historical data
       };
 
       const smartBudgetResult = await generateSmartBudget(lifestyleInput);
+
+      // Store AI insights, metadata, and ML model info
+      setAiInsights(smartBudgetResult.insights || []);
+      setAiMetadata(smartBudgetResult.metadata || null);
+      setMlModelUsed(smartBudgetResult.mlModelUsed || false);
+      setModelConfidence(smartBudgetResult.modelConfidence || 0);
+      setModelVersion(smartBudgetResult.modelVersion || "none");
 
       // 2. Convert categories từ SmartBudgetResult sang CategoryAllocation format
       // Keep icon and color from SmartBudgetResult
@@ -215,8 +289,9 @@ export default function BudgetSuggestScreen() {
       const now = new Date();
       let defaultName = "";
 
-      if (customBudgetName && customBudgetName.trim()) {
-        defaultName = customBudgetName.trim();
+      const customNameSafe = customBudgetName || "";
+      if (customNameSafe.trim()) {
+        defaultName = customNameSafe.trim();
       } else if (periodType === "monthly") {
         const monthName = now.toLocaleDateString("vi-VN", {
           month: "long",
@@ -435,9 +510,25 @@ export default function BudgetSuggestScreen() {
               }}
             >
               <MaterialCommunityIcons
-                name="robot-happy-outline"
+                name={
+                  aiMetadata?.source === "tflite-model"
+                    ? "cpu-64-bit"
+                    : aiMetadata?.source === "ml-hybrid"
+                    ? "robot-happy-outline"
+                    : aiMetadata?.source === "historical"
+                    ? "chart-line"
+                    : "lightbulb-outline"
+                }
                 size={20}
-                color="#16A34A"
+                color={
+                  aiMetadata?.source === "tflite-model"
+                    ? "#10B981"
+                    : aiMetadata?.source === "ml-hybrid"
+                    ? "#16A34A"
+                    : aiMetadata?.source === "historical"
+                    ? "#3B82F6"
+                    : "#F59E0B"
+                }
               />
               <Text
                 style={[
@@ -447,6 +538,69 @@ export default function BudgetSuggestScreen() {
               >
                 Kế hoạch ngân sách thông minh
               </Text>
+              {aiMetadata?.source && (
+                <View
+                  style={{
+                    marginLeft: "auto",
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 12,
+                    backgroundColor:
+                      aiMetadata.source === "tflite-model"
+                        ? "#D1FAE5"
+                        : aiMetadata.source === "ml-hybrid"
+                        ? "#DCFCE7"
+                        : aiMetadata.source === "historical"
+                        ? "#DBEAFE"
+                        : "#FEF3C7",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: "600",
+                      color:
+                        aiMetadata.source === "tflite-model"
+                          ? "#10B981"
+                          : aiMetadata.source === "ml-hybrid"
+                          ? "#16A34A"
+                          : aiMetadata.source === "historical"
+                          ? "#3B82F6"
+                          : "#F59E0B",
+                    }}
+                  >
+                    {aiMetadata.source === "tflite-model"
+                      ? "TFLite"
+                      : aiMetadata.source === "ml-hybrid"
+                      ? "AI"
+                      : aiMetadata.source === "historical"
+                      ? "Lịch sử"
+                      : "Chuẩn"}
+                  </Text>
+                </View>
+              )}
+              {/* ML Model version badge */}
+              {mlModelUsed && modelVersion !== "none" && (
+                <View
+                  style={{
+                    marginLeft: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 12,
+                    backgroundColor: "#E9D5FF",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: "600",
+                      color: "#9333EA",
+                    }}
+                  >
+                    v{modelVersion}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <Text
@@ -459,7 +613,7 @@ export default function BudgetSuggestScreen() {
                 },
               ]}
             >
-              Áp dụng quy tắc 50/30/20 cho thu nhập{" "}
+              Thu nhập:{" "}
               <Text style={{ fontWeight: "600" }}>
                 {Number(income || 100000000).toLocaleString("vi-VN")}đ
               </Text>
@@ -469,63 +623,181 @@ export default function BudgetSuggestScreen() {
                 : period === "weekly"
                 ? "tuần"
                 : "ngày"}
-              :{"\n"}• Nhu cầu (50%):{" "}
-              <Text style={{ fontWeight: "600" }}>
-                {Math.round(Number(income || 100000000) * 0.5).toLocaleString(
-                  "vi-VN"
-                )}
-                đ
-              </Text>
-              {"\n"}• Mong muốn (30%):{" "}
-              <Text style={{ fontWeight: "600" }}>
-                {Math.round(Number(income || 100000000) * 0.3).toLocaleString(
-                  "vi-VN"
-                )}
-                đ
-              </Text>
-              {"\n"}• Tiết kiệm (20%):{" "}
-              <Text style={{ fontWeight: "600" }}>
-                {Math.round(Number(income || 100000000) * 0.2).toLocaleString(
-                  "vi-VN"
-                )}
-                đ
-              </Text>
             </Text>
 
-            {lifestyleDesc && lifestyleDesc.trim() && (
+            {lifestyleDesc && lifestyleDesc.trim().length > 0 && (
               <Text
                 style={[
                   styles.infoText,
                   {
-                    fontSize: 12,
-                    fontStyle: "italic",
-                    color: colors.subText,
-                    lineHeight: 18,
-                    marginTop: 12,
+                    fontSize: 13,
+                    lineHeight: 20,
+                    color: colors.text,
+                    marginTop: 4,
                   },
                 ]}
               >
-                💡 Tôi đã phân tích chi tiết bạn cung cấp ({lifestyleDesc}) và
-                phân bổ phần còn lại sao cho đạt đủ tỉ lệ 50/30/20.
+                Mô tả lối sống: "{lifestyleDesc.trim()}"
               </Text>
             )}
 
-            <Text
-              style={[
-                styles.infoText,
-                {
-                  fontSize: 12,
-                  fontStyle: "italic",
-                  color: colors.subText,
-                  lineHeight: 18,
-                  marginTop: 8,
-                },
-              ]}
-            >
-              💡 Gợi ý: Các chi phí thiết yếu như điện nước, xăng, bảo hiểm nên
-              để trong "Chi phí thiết yếu khác". Du lịch nên đặt trong Mong muốn
-              để bảo toàn quỹ tiết kiệm.
-            </Text>
+            {/* AI + Derived Insights (deduped & trimmed) */}
+            {displayInsights.length > 0 && (
+              <View
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.divider,
+                }}
+              >
+                {displayInsights.map((insight, idx) => (
+                  <Text
+                    key={idx}
+                    style={[
+                      styles.infoText,
+                      {
+                        fontSize: 12,
+                        lineHeight: 18,
+                        color: colors.subText,
+                        marginTop: idx > 0 ? 6 : 0,
+                      },
+                    ]}
+                  >
+                    {insight}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {/* Metadata indicators */}
+            {aiMetadata && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginTop: 12,
+                }}
+              >
+                {/* ML Model Confidence Badge */}
+                {mlModelUsed && modelConfidence > 0 && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 8,
+                      backgroundColor: "#E0E7FF",
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="brain"
+                      size={14}
+                      color="#4F46E5"
+                    />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        marginLeft: 4,
+                        color: "#4F46E5",
+                        fontWeight: "600",
+                      }}
+                    >
+                      ML: {(modelConfidence * 100).toFixed(0)}%
+                    </Text>
+                  </View>
+                )}
+
+                {aiMetadata.riskScore !== undefined && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 8,
+                      backgroundColor:
+                        aiMetadata.riskScore > 0.7
+                          ? "#FEE2E2"
+                          : aiMetadata.riskScore > 0.4
+                          ? "#FEF3C7"
+                          : "#DCFCE7",
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={
+                        aiMetadata.riskScore > 0.7
+                          ? "alert-circle"
+                          : aiMetadata.riskScore > 0.4
+                          ? "information"
+                          : "check-circle"
+                      }
+                      size={14}
+                      color={
+                        aiMetadata.riskScore > 0.7
+                          ? "#DC2626"
+                          : aiMetadata.riskScore > 0.4
+                          ? "#F59E0B"
+                          : "#16A34A"
+                      }
+                    />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        marginLeft: 4,
+                        color:
+                          aiMetadata.riskScore > 0.7
+                            ? "#DC2626"
+                            : aiMetadata.riskScore > 0.4
+                            ? "#F59E0B"
+                            : "#16A34A",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Rủi ro:{" "}
+                      {aiMetadata.riskScore > 0.7
+                        ? "Cao"
+                        : aiMetadata.riskScore > 0.4
+                        ? "Trung bình"
+                        : "Thấp"}
+                    </Text>
+                  </View>
+                )}
+
+                {aiMetadata.deviation !== undefined &&
+                  aiMetadata.deviation > 0.2 && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                        backgroundColor: "#FEF3C7",
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="chart-timeline-variant"
+                        size={14}
+                        color="#F59E0B"
+                      />
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          marginLeft: 4,
+                          color: "#F59E0B",
+                          fontWeight: "600",
+                        }}
+                      >
+                        Khác {Math.round(aiMetadata.deviation * 100)}% so với
+                        trước
+                      </Text>
+                    </View>
+                  )}
+              </View>
+            )}
           </View>
 
           {/* Budget Name Input */}
