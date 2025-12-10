@@ -344,6 +344,9 @@ export default function Transactions() {
   const shiftAnchor = (direction: number) => {
     const newStart = new Date(filterStartDate);
     const newEnd = new Date(filterEndDate);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
     if (filterType === "day") {
       newStart.setDate(newStart.getDate() + direction);
       newEnd.setDate(newEnd.getDate() + direction);
@@ -357,6 +360,12 @@ export default function Transactions() {
       newStart.setFullYear(newStart.getFullYear() + direction);
       newEnd.setFullYear(newEnd.getFullYear() + direction);
     }
+
+    // Ngăn chặn chọn ngày trong tương lai
+    if (newEnd > today) {
+      return;
+    }
+
     setFilterStartDate(newStart);
     setFilterEndDate(newEnd);
     loadInitial();
@@ -398,9 +407,12 @@ export default function Transactions() {
     loadInitial();
   };
 
+  const today = startOfDay(new Date());
+  const filterEndDay = startOfDay(filterEndDate);
+  
   const atCurrentPeriod =
     filterStartDate <= new Date() && filterEndDate >= new Date();
-  const canGoNext = !atCurrentPeriod;
+  const canGoNext = filterEndDay < today;
 
   const getLabel = () => {
     const now = new Date();
@@ -965,7 +977,35 @@ export default function Transactions() {
                       openCalendarModal();
                     }, 100);
                   } else {
-                    setFilterType(filter);
+                    // Recalculate date range for the new filter type
+                    const today = new Date();
+                    let start: Date, end: Date;
+                    if (filter === "day") {
+                      start = startOfDay(today);
+                      end = new Date(start);
+                      end.setHours(23, 59, 59, 999);
+                    } else if (filter === "week") {
+                      const dayOfWeek = (today.getDay() + 6) % 7;
+                      start = startOfDay(today);
+                      start.setDate(start.getDate() - dayOfWeek);
+                      end = new Date(start);
+                      end.setDate(end.getDate() + 6);
+                      end.setHours(23, 59, 59, 999);
+                    } else if (filter === "month") {
+                      start = new Date(today.getFullYear(), today.getMonth(), 1);
+                      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                      end.setHours(23, 59, 59, 999);
+                    } else if (filter === "year") {
+                      start = new Date(today.getFullYear(), 0, 1);
+                      end = new Date(today.getFullYear(), 11, 31);
+                      end.setHours(23, 59, 59, 999);
+                    } else {
+                      start = today;
+                      end = today;
+                    }
+                    setFilterType(filter as FilterType);
+                    setFilterStartDate(start);
+                    setFilterEndDate(end);
                     setShowFilterModal(false);
                     loadInitial(); // Reload with filter
                   }
