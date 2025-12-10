@@ -508,16 +508,22 @@ async function processReceiptImage(imageUri: string): Promise<{
 
       const totalKeywords =
         /total|tổng|sum|cộng|thanh\s*toán|phải\s*trả|grand|amount|due|balance/i;
+      const taxKeywords = /thuế|vat|gtgt|%|chịu\s*thuế/i;
+
+      let bestAmount = 0;
+      const MIN_TOTAL = 0; // tránh nhặt nhầm các số rất nhỏ
 
       for (const labelBlock of totalZone) {
         if (!totalKeywords.test(labelBlock.text)) continue;
+        if (taxKeywords.test(labelBlock.text)) continue; // bỏ các dòng thuế
 
         // Tìm block chứa số ở cùng hàng (Y tương đương) và bên phải
         // Tăng tolerance Y lên 50px vì có thể không hoàn toàn cùng hàng
         const sameRowBlocks = totalZone.filter(
           (b: any) =>
             Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0)) < 50 && // Increased from 30 to 50
-            (b.frame?.left || 0) > (labelBlock.frame?.left || 0) - 50 // Cho phép overlap nhỏ
+            (b.frame?.left || 0) > (labelBlock.frame?.left || 0) - 50 && // Cho phép overlap nhỏ
+            !taxKeywords.test(b.text) // bỏ các block thuế/percent
         );
 
         // Sort by Y distance (gần hơn có priority cao hơn)
@@ -529,22 +535,21 @@ async function processReceiptImage(imageUri: string): Promise<{
 
         for (const amountBlock of sortedBlocks) {
           const amount = extractNumber(amountBlock.text);
-          if (amount > 0) {
-            console.log(
-              `✅ Strategy 1 (Horizontal Pair): ${amount} from "${labelBlock.text}" -> "${amountBlock.text}"`
-            );
-            return amount;
+          if (amount > MIN_TOTAL && amount > bestAmount) {
+            bestAmount = amount;
           }
         }
 
         // Fallback: Tìm số trong chính label block
         const amount = extractNumber(labelBlock.text);
-        if (amount > 0) {
-          console.log(
-            `✅ Strategy 1 (Same Block): ${amount} from "${labelBlock.text}"`
-          );
-          return amount;
+        if (amount > MIN_TOTAL && amount > bestAmount) {
+          bestAmount = amount;
         }
+      }
+
+      if (bestAmount > 0) {
+        console.log(`✅ Strategy 1 (Best Candidate): ${bestAmount}`);
+        return bestAmount;
       }
 
       return 0;
@@ -629,11 +634,11 @@ async function processReceiptImage(imageUri: string): Promise<{
               )
           )
           .sort((a: any, b: any) => {
-            // Ưu tiên block gần nhất (trên cùng), sau đó giá trị lớn nhất
+            // Ưu tiên giá trị lớn nhất trước, sau đó mới xét độ gần nhãn
+            if (a.value !== b.value) return b.value - a.value;
             const topDiffA = Math.abs(a.top - (labelBlock.frame?.top || 0));
             const topDiffB = Math.abs(b.top - (labelBlock.frame?.top || 0));
-            if (topDiffA !== topDiffB) return topDiffA - topDiffB;
-            return b.value - a.value;
+            return topDiffA - topDiffB;
           });
 
         if (validAmounts.length > 0) {
@@ -651,7 +656,7 @@ async function processReceiptImage(imageUri: string): Promise<{
 
       if (finalZone.length > 0) {
         const excludeKeywords =
-          /mst|mã\s*số\s*thuế|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
+          /mst|mã\s*số\s*thuế|thuế|chịu\s*thuế|vat|gtgt|%|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
         const validBlocks = finalZone.filter(
           (b: any) => !excludeKeywords.test(b.text)
         );
@@ -661,10 +666,12 @@ async function processReceiptImage(imageUri: string): Promise<{
             value: extractNumber(b.text),
             text: b.text,
             top: b.frame?.top || 0,
+            isTotal: /tổng|cộng|thanh\s*toán|sau\s*thuế/i.test(b.text) || false,
           }))
           .filter((a: any) => a.value > 0 && a.value < 100000000)
           .sort((a: any, b: any) => {
-            // Ưu tiên giá trị lớn nhất
+            // Ưu tiên dòng có từ khóa tổng/thanh toán/sau thuế, rồi đến giá trị lớn nhất
+            if (a.isTotal !== b.isTotal) return a.isTotal ? -1 : 1;
             return b.value - a.value;
           });
 
@@ -687,7 +694,7 @@ async function processReceiptImage(imageUri: string): Promise<{
 
       // Filter ra các keywords không liên quan đến tổng tiền
       const excludeKeywords =
-        /mst|mã\s*số\s*thuế|tax\s*code|phone|tel|sdt|hotline|thanh\s*toán/i;
+        /mst|mã\s*số\s*thuế|tax\s*code|thuế|chịu\s*thuế|vat|gtgt|%|phone|tel|sdt|hotline|thanh\s*toán/i;
       const validBlocks = bottomZone.filter(
         (b: any) => !excludeKeywords.test(b.text)
       );
