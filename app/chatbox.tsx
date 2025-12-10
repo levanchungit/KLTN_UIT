@@ -24,6 +24,7 @@ import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import TextRecognition from "@react-native-ml-kit/text-recognition";
 import { useFocusEffect } from "@react-navigation/native";
+// Waveform visualization will use a lightweight animated view instead of capturing audio
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
@@ -795,7 +796,6 @@ const parseTransactionWithAI = async (
 ): Promise<{
   action:
     | "CREATE_TRANSACTION"
-    | "CHAT"
     | "VIEW_STATS"
     | "EDIT_TRANSACTION"
     | "DELETE_TRANSACTION";
@@ -1398,13 +1398,26 @@ export default function Chatbox() {
   // when a final result is being processed, store its originating session
   const processingSessionRef = useRef<number | null>(null);
   const pendingFinalRef = useRef(false);
+  const lastInterimRef = useRef("");
+  const fallbackFinalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const clearFallbackTimer = () => {
+    if (fallbackFinalTimerRef.current) {
+      clearTimeout(fallbackFinalTimerRef.current);
+      fallbackFinalTimerRef.current = null;
+    }
+  };
 
   //VOICE
   useSpeechRecognitionEvent("start", () => {
+    clearFallbackTimer();
     setRecognizing(true);
     setIsRecording(true);
     setError(undefined);
     setSpokenText("");
+    lastInterimRef.current = "";
   });
 
   useSpeechRecognitionEvent("end", () => {
@@ -1432,10 +1445,13 @@ export default function Chatbox() {
     // interim (partial) => hiển thị lên thanh đang ghi
     if (!event.isFinal) {
       setSpokenText(text.trim());
+      lastInterimRef.current = text.trim();
       return;
     }
 
     // final => dừng ghi, xử lý như input text
+    clearFallbackTimer();
+    lastInterimRef.current = "";
     const finalText = text.trim();
     if (!finalText) return;
 
@@ -1483,6 +1499,8 @@ export default function Chatbox() {
   const lastRecordDurationRef = useRef(0);
   const startVoice = async () => {
     try {
+      clearFallbackTimer();
+      lastInterimRef.current = "";
       // Start a fresh session id for this recording. This helps ignore
       // any late speech events from previous sessions.
       sessionIdRef.current = (sessionIdRef.current || 0) + 1;
@@ -1509,6 +1527,11 @@ export default function Chatbox() {
         Alert.alert("Cần quyền microphone");
         return;
       }
+
+      // Ensure previous sessions are stopped cleanly before starting a new one
+      try {
+        await ExpoSpeechRecognitionModule.stop();
+      } catch {}
 
       // reset UI
       if (recordTimerRef.current) {
@@ -1542,7 +1565,7 @@ export default function Chatbox() {
         // Wait briefly for the recognition "start" event to arrive. If the
         // underlying module fails to emit events (some OEM ROMs / Android
         // combinations), abort the recording to avoid a stuck state.
-        const waitForStart = async (timeout = 6000) => {
+        const waitForStart = async (timeout = 10000) => {
           const start = Date.now();
           while (Date.now() - start < timeout) {
             if (recognizing) return true;
@@ -1553,24 +1576,10 @@ export default function Chatbox() {
           return false;
         };
 
-        const started = await waitForStart(6000);
+        const started = await waitForStart(10000);
         if (!started) {
-          console.warn("Speech recognition did not start in time, aborting");
-          try {
-            await ExpoSpeechRecognitionModule.stop();
-          } catch {}
-          setIsRecording(false);
-          if (recordTimerRef.current) {
-            clearInterval(recordTimerRef.current);
-            recordTimerRef.current = null;
-          }
-          recordStartRef.current = null;
-          // Removed blocking alert here to avoid intrusive UI on some devices.
-          // Set a non-blocking error state for optional UI feedback and log.
-          try {
-            setError("Không thể bắt đầu ghi âm. Vui lòng thử lại.");
-          } catch {}
-          return;
+          // Some devices don't emit start; continue silently instead of warning
+          setRecognizing(true);
         }
       } catch (e) {
         console.warn("SpeechRecognition start failed", e);
@@ -1597,6 +1606,8 @@ export default function Chatbox() {
   const stopVoice = async () => {
     try {
       await ExpoSpeechRecognitionModule.stop();
+      // Wait briefly for the final result event to be processed
+      await new Promise((r) => setTimeout(r, 300));
     } catch (e) {
       // Ignore stop errors
     }
@@ -1614,6 +1625,45 @@ export default function Chatbox() {
       lastRecordDurationRef.current = sec;
     }
     recordStartRef.current = null;
+
+    // Fallback: if final event doesn't arrive quickly, submit the last interim
+    clearFallbackTimer();
+    fallbackFinalTimerRef.current = setTimeout(() => {
+      fallbackFinalTimerRef.current = null;
+
+      if (pendingFinalRef.current || processingSessionRef.current != null)
+        return;
+
+      const candidate = (lastInterimRef.current || spokenText).trim();
+      if (!candidate) return;
+
+      const procSession = activeSessionRef.current ?? sessionIdRef.current;
+
+      pendingFinalRef.current = true;
+      processingSessionRef.current = procSession;
+      cancelledRef.current = true; // ignore late events from this session
+      activeSessionRef.current = null;
+      sessionIdRef.current = (sessionIdRef.current || 0) + 1;
+
+      setIsProcessingVoice(true);
+      setRecognizing(false);
+      setIsRecording(false);
+      setSpokenText("");
+      lastInterimRef.current = "";
+
+      setMessages((m) => [...m, { role: "user", text: candidate }]);
+      setPendingPick(null);
+
+      (async () => {
+        try {
+          await processTextInput(candidate);
+        } finally {
+          pendingFinalRef.current = false;
+          processingSessionRef.current = null;
+          setIsProcessingVoice(false);
+        }
+      })();
+    }, 1000);
   };
 
   // Cancel recording without processing/submit — used for X/cancel or when app backgrounds
@@ -1627,6 +1677,8 @@ export default function Chatbox() {
     // clear processing flags so background handlers won't process
     pendingFinalRef.current = false;
     processingSessionRef.current = null;
+    clearFallbackTimer();
+    lastInterimRef.current = "";
     // if a final result is pending (message already inserted but not processed), remove it
     if (pendingFinalRef.current) {
       try {
@@ -1637,6 +1689,8 @@ export default function Chatbox() {
     try {
       try {
         await ExpoSpeechRecognitionModule.stop();
+        // Wait briefly for any in-flight result events to arrive and be ignored
+        await new Promise((r) => setTimeout(r, 200));
       } catch {}
     } catch {}
 
@@ -2396,21 +2450,6 @@ export default function Chatbox() {
 
       // Use AI parsed result
 
-      // 🎯 Handle different action types
-      if (aiResult.action === "CHAT") {
-        // User is asking a question - AI should provide intelligent response
-        // For now, show AI's message with suggestion to use specific features
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
-            role: "bot",
-            text: `${aiResult.message}\n\n💡 Tip: Bạn có thể:\n• Tạo giao dịch: "mua trà sữa 60k"\n• Xem báo cáo ở tab Thống kê 📊\n• Quản lý ngân sách ở tab Ngân sách 💰`,
-          },
-        ]);
-        scrollToEnd();
-        return;
-      }
-
       if (aiResult.action === "VIEW_STATS") {
         // User wants to see statistics - direct them to Charts tab
         setMessages((m) => [
@@ -2553,7 +2592,6 @@ export default function Chatbox() {
     aiResult: {
       action:
         | "CREATE_TRANSACTION"
-        | "CHAT"
         | "VIEW_STATS"
         | "EDIT_TRANSACTION"
         | "DELETE_TRANSACTION";
@@ -2812,65 +2850,48 @@ export default function Chatbox() {
     }
   };
 
-  function VoiceWaveform({
+  function VoiceWaveformLite({
     isRecording,
     color = "#3B82F6",
-    meterAnimated,
   }: {
     isRecording: boolean;
     color?: string;
-    meterAnimated?: Animated.Value;
   }) {
-    const NUM_BARS = 30;
-    const meter = meterAnimated ?? useRef(new Animated.Value(0)).current;
-    const animationRef = useRef<any>(null);
-
-    // Mỗi bar có “đỉnh” riêng để nhìn cho tự nhiên
+    const NUM_BARS = 28;
+    const anim = useRef(new Animated.Value(0)).current;
     const peaks = useRef(
-      Array.from({ length: NUM_BARS }, () => 0.6 + Math.random() * 1.4)
+      Array.from({ length: NUM_BARS }, () => 0.6 + Math.random() * 1.2)
     ).current;
 
     useEffect(() => {
-      // If an external Animated.Value is provided, use it (it will be driven by the hook).
-      // Otherwise run a fallback loop animation while recording.
-      if (meterAnimated) {
-        animationRef.current?.stop();
-        animationRef.current = null;
-      } else {
-        if (isRecording) {
-          const anim = Animated.loop(
-            Animated.sequence([
-              Animated.timing(meter, {
-                toValue: 1,
-                duration: 700,
-                useNativeDriver: false,
-              }),
-              Animated.timing(meter, {
-                toValue: 0,
-                duration: 700,
-                useNativeDriver: false,
-              }),
-            ])
-          );
-          animationRef.current = anim;
-          anim.start();
-        } else {
-          animationRef.current?.stop();
-          animationRef.current = null;
-          meter.setValue(0);
-        }
+      if (!isRecording) {
+        anim.stopAnimation();
+        anim.setValue(0);
+        return;
       }
 
-      return () => {
-        animationRef.current?.stop();
-        animationRef.current = null;
-      };
-    }, [isRecording, meterAnimated, meter]);
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 900,
+            useNativeDriver: false,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 900,
+            useNativeDriver: false,
+          }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }, [anim, isRecording]);
 
     if (!isRecording && !spokenText) return null;
 
-    const MIN_H = 3;
-    const MAX_H = 18;
+    const MIN_H = 4;
+    const MAX_H = 28;
 
     return (
       <View
@@ -2878,35 +2899,47 @@ export default function Chatbox() {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          height: 28,
-          overflow: "hidden",
+          height: 44,
         }}
       >
         <View
           style={{
-            width: "70%",
+            width: "100%",
             flexDirection: "row",
             alignItems: "flex-end",
             justifyContent: "center",
-            height: 28,
+            gap: 2,
+            height: 44,
+            paddingHorizontal: 4,
+            borderRadius: 14,
+            backgroundColor: "rgba(255,255,255,0.06)",
+            overflow: "hidden",
           }}
         >
           {Array.from({ length: NUM_BARS }).map((_, i) => {
-            const h = meter.interpolate({
-              inputRange: [0, 1],
-              outputRange: [MIN_H, Math.max(MIN_H + 1, MAX_H * peaks[i])],
+            const symmetry = Math.sin((Math.PI * i) / (NUM_BARS - 1));
+            const base = 0.35 + 0.65 * symmetry;
+            const peak = Math.max(MIN_H + 1, MAX_H * base * peaks[i]);
+
+            const h = anim.interpolate({
+              inputRange: [0, 0.25, 0.5, 0.75, 1],
+              outputRange: [MIN_H, peak * 0.7, peak * 1.05, peak * 0.75, MIN_H],
             });
 
             return (
               <Animated.View
                 key={i}
                 style={{
-                  width: 2,
-                  marginHorizontal: 1,
-                  borderRadius: 2,
+                  flex: 1,
+                  borderRadius: 3,
                   backgroundColor: color,
                   height: h,
-                  alignSelf: "center",
+                  opacity: 0.55 + 0.45 * base,
+                  shadowColor: color,
+                  shadowOpacity: 0.16,
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowRadius: 4,
+                  elevation: 2,
                 }}
               />
             );
@@ -3015,21 +3048,31 @@ export default function Chatbox() {
         return;
       }
 
-      // Prevent the speech recognition event handler from also inserting/processing
-      // a final result that would duplicate what we're about to do.
+      // Prevent the speech recognition event handler or fallback timer from
+      // also inserting/processing a final result that would duplicate this send.
+      clearFallbackTimer();
+      pendingFinalRef.current = true;
+      processingSessionRef.current = sessionIdRef.current;
       cancelledRef.current = true;
+      activeSessionRef.current = null;
+      sessionIdRef.current = (sessionIdRef.current || 0) + 1;
+      lastInterimRef.current = "";
+
+      // Stop recording and wait for any pending result to be processed
+      await stopVoice();
 
       // Push into chat like sending text normally
       setMessages((m) => [...m, { role: "user", text }]);
       setSpokenText("");
 
-      await stopVoice();
       await processTextInput(text);
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
       // Clear the temporary cancel guard so future sessions work normally
       cancelledRef.current = false;
+      pendingFinalRef.current = false;
+      processingSessionRef.current = null;
     }
   };
 
@@ -3883,7 +3926,7 @@ export default function Chatbox() {
                 </View>
 
                 <View style={{ flex: 1, marginHorizontal: 8 }}>
-                  <VoiceWaveform
+                  <VoiceWaveformLite
                     isRecording={isRecording}
                     color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
                   />

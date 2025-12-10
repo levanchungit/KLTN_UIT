@@ -34,7 +34,6 @@ interface CategoryPrediction {
 interface ParsedTransaction {
   action:
     | "CREATE_TRANSACTION"
-    | "CHAT"
     | "VIEW_STATS"
     | "EDIT_TRANSACTION"
     | "DELETE_TRANSACTION";
@@ -228,16 +227,6 @@ class TensorFlowTransactionParser {
   private detectActionType(text: string): ParsedTransaction["action"] {
     const lowerText = text.toLowerCase();
 
-    // CHAT patterns (questions, no clear amount)
-    const chatPatterns = [
-      /tôi chi bao nhiêu/,
-      /tháng này.*bao nhiêu/,
-      /có nên/,
-      /\?$/,
-      /hỏi/,
-      /cho.*biết/,
-    ];
-
     // VIEW_STATS patterns
     const statsPatterns = [
       /xem thống kê/,
@@ -259,7 +248,6 @@ class TensorFlowTransactionParser {
     const deletePatterns = [/xóa.*giao dịch/, /hủy.*giao dịch/, /xóa.*cuối/];
 
     // Check patterns
-    if (chatPatterns.some((p) => p.test(lowerText))) return "CHAT";
     if (statsPatterns.some((p) => p.test(lowerText))) return "VIEW_STATS";
     if (editPatterns.some((p) => p.test(lowerText))) return "EDIT_TRANSACTION";
     if (deletePatterns.some((p) => p.test(lowerText)))
@@ -269,8 +257,8 @@ class TensorFlowTransactionParser {
     const hasAmount = /\d+[kKtrTR]|\d{3,}/.test(text);
     if (hasAmount) return "CREATE_TRANSACTION";
 
-    // Default: CHAT
-    return "CHAT";
+    // Default: CREATE_TRANSACTION
+    return "CREATE_TRANSACTION";
   }
 
   /**
@@ -476,10 +464,6 @@ class TensorFlowTransactionParser {
     date: Date,
     confidence?: number
   ): string {
-    if (action === "CHAT") {
-      return "Bạn muốn biết thông tin gì? Vui lòng xem ở các tab khác nhé! 📊";
-    }
-
     if (action === "VIEW_STATS") {
       return "Bạn muốn xem thống kê chi tiêu";
     }

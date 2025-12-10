@@ -104,7 +104,7 @@ export default function useAudioMeter(): UseAudioMeter {
             } catch {}
             const a = Animated.timing(meter, {
               toValue: next,
-              duration: 140,
+              duration: 200,
               useNativeDriver: false,
             });
             animRef.current = a;
@@ -119,13 +119,13 @@ export default function useAudioMeter(): UseAudioMeter {
         // db usually negative (e.g., -160..0). Normalize to 0..1
         const normalized = Math.max(0, Math.min(1, (db + 160) / 160));
         setLevel((l) => {
-          const next = Math.max(0, Math.min(1, l * 0.85 + normalized * 0.15));
+          const next = Math.max(0, Math.min(1, l * 0.9 + normalized * 0.1));
           try {
             animRef.current?.stop?.();
           } catch {}
           const a = Animated.timing(meter, {
             toValue: next,
-            duration: 120,
+            duration: 180,
             useNativeDriver: false,
           });
           animRef.current = a;
