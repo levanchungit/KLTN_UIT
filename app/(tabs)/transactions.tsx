@@ -409,7 +409,7 @@ export default function Transactions() {
 
   const today = startOfDay(new Date());
   const filterEndDay = startOfDay(filterEndDate);
-  
+
   const atCurrentPeriod =
     filterStartDate <= new Date() && filterEndDate >= new Date();
   const canGoNext = filterEndDay < today;
@@ -992,8 +992,16 @@ export default function Transactions() {
                       end.setDate(end.getDate() + 6);
                       end.setHours(23, 59, 59, 999);
                     } else if (filter === "month") {
-                      start = new Date(today.getFullYear(), today.getMonth(), 1);
-                      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                      start = new Date(
+                        today.getFullYear(),
+                        today.getMonth(),
+                        1
+                      );
+                      end = new Date(
+                        today.getFullYear(),
+                        today.getMonth() + 1,
+                        0
+                      );
                       end.setHours(23, 59, 59, 999);
                     } else if (filter === "year") {
                       start = new Date(today.getFullYear(), 0, 1);
