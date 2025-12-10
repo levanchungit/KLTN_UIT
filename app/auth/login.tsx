@@ -431,7 +431,7 @@ export default function LoginScreen() {
             size={80}
             color="#007AFF"
           />
-          <Text style={styles.title}>KLTN UIT</Text>
+          <Text style={styles.title}>HugoKeeper</Text>
           <Text style={styles.subtitle}>Quản lý tài chính cá nhân</Text>
         </View>
 

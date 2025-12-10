@@ -12,12 +12,12 @@ export default function Welcome() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.inner}>
         <Image
-          source={require("../../assets/images/welcome.png")}
+          source={require("../../assets/images/iconai.png")}
           style={styles.image}
           resizeMode="contain"
         />
 
-        <Text style={styles.title}>Chào mừng đến với KLTN UIT</Text>
+        <Text style={styles.title}>Chào mừng đến với HugoKeeper</Text>
         <Text style={styles.subtitle}>Ứng dụng quản lý tài chính cá nhân</Text>
 
         <View

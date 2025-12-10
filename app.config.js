@@ -2,8 +2,8 @@ require("dotenv").config();
 
 export default {
   expo: {
-    name: "KLTN_UIT",
-    slug: "KLTN_UIT",
+    name: "HugoKeeper",
+    slug: "HugoKeeper",
     version: "1.0.0",
     owner: "levanchung.it",
     orientation: "portrait",
