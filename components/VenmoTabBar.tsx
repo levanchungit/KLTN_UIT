@@ -1,14 +1,16 @@
 // components/VenmoTabBar.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useAppTour } from "@/context/appTourContext";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Dimensions, Text, TouchableOpacity, View } from "react-native";
 import { Modal, Portal } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import Tooltip from "react-native-walkthrough-tooltip";
 import AIBotIcon from "./AIBotIcon";
 
 const BAR_BG = "#ffffff";
@@ -24,7 +26,9 @@ export default function VenmoTabBar({
   const { width } = Dimensions.get("window");
   const { colors } = useTheme();
   const { t } = useI18n();
+  const { shouldShowTour, currentStep, nextStep } = useAppTour();
   const [showMenu, setShowMenu] = useState(false);
+  const aiBotRef = useRef<TouchableOpacity>(null);
 
   // Chỉ lấy 4 tab chính theo data của bạn
   const mainRouteNames = new Set([
@@ -257,38 +261,89 @@ export default function VenmoTabBar({
       </View>
 
       {/* Nút giữa - AI Chatbot Signature */}
-      <TouchableOpacity
-        onPress={() => setShowMenu(true)}
-        activeOpacity={0.85}
-        style={{
+      <Tooltip
+        isVisible={shouldShowTour && currentStep === 0}
+        content={
+          <View style={{ padding: 0 }}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "700",
+                color: "#111",
+                marginBottom: 8,
+              }}
+            >
+              🤖 Trợ lý AI
+            </Text>
+            <Text style={{ fontSize: 14, color: "#666", marginBottom: 12 }}>
+              Nhấn vào đây để mở menu AI. Bạn có thể chat với AI hoặc tạo giao
+              dịch thủ công.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                nextStep();
+                setShowMenu(true);
+              }}
+              style={{
+                backgroundColor: "#10B981",
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Tiếp tục</Text>
+            </TouchableOpacity>
+          </View>
+        }
+        placement="top"
+        onClose={() => nextStep()}
+        contentStyle={{
           position: "absolute",
-          left: width / 2 - BTN_R,
-          // Position so 50% of button is above bar edge, 50% below (cut in half)
-          bottom: BAR_H - BTN_R,
-          width: BTN_R * 2,
-          height: BTN_R * 2,
-          justifyContent: "center",
-          alignItems: "center",
-          shadowColor: "#4285F4",
-          shadowOpacity: 0.6,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 20,
+          bottom: 0,
+          backgroundColor: "#fff",
+          borderRadius: 12,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+          elevation: 5,
         }}
+        tooltipStyle={{ maxWidth: 280 }}
       >
-        {/* Glow background layer */}
-        <View
+        <TouchableOpacity
+          ref={aiBotRef}
+          onPress={() => setShowMenu(true)}
+          activeOpacity={0.85}
           style={{
             position: "absolute",
-            width: BTN_R * 2 + 10,
-            height: BTN_R * 2 + 10,
-            borderRadius: (BTN_R * 2 + 10) / 2,
-            backgroundColor: "#4285F4",
-            opacity: 0.15,
+            left: width / 2 - BTN_R,
+            bottom: BAR_H - BTN_R,
+            width: BTN_R * 2,
+            height: BTN_R * 2,
+            justifyContent: "center",
+            alignItems: "center",
+            shadowColor: "#4285F4",
+            shadowOpacity: 0.6,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 20,
           }}
-        />
-        <AIBotIcon size={52} />
-      </TouchableOpacity>
+        >
+          {/* Glow background layer */}
+          <View
+            style={{
+              position: "absolute",
+              width: BTN_R * 2 + 10,
+              height: BTN_R * 2 + 10,
+              borderRadius: (BTN_R * 2 + 10) / 2,
+              backgroundColor: "#4285F4",
+              opacity: 0.15,
+            }}
+          />
+          <AIBotIcon size={52} />
+        </TouchableOpacity>
+      </Tooltip>
 
       {/* Menu Modal */}
       <Portal>
@@ -305,43 +360,95 @@ export default function VenmoTabBar({
             maxWidth: "90%",
           }}
         >
-          <TouchableOpacity
-            onPress={() => {
-              setShowMenu(false);
-              router.push("/chatbox");
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              padding: 16,
+          <Tooltip
+            isVisible={shouldShowTour && currentStep === 1}
+            content={
+              <View style={{ padding: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "700",
+                    color: "#111",
+                    marginBottom: 8,
+                  }}
+                >
+                  💬 Chat với AI
+                </Text>
+                <Text style={{ fontSize: 14, color: "#666", marginBottom: 12 }}>
+                  Chọn "Chatbox AI" để trò chuyện với AI. AI sẽ giúp bạn tạo
+                  giao dịch bằng giọng nói hoặc văn bản.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    nextStep();
+                    setShowMenu(false);
+                    router.push("/chatbox");
+                  }}
+                  style={{
+                    backgroundColor: "#10B981",
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>
+                    Tiếp tục
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            }
+            placement="top"
+            onClose={() => nextStep()}
+            contentStyle={{
+              backgroundColor: "#fff",
               borderRadius: 12,
-              gap: 12,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              elevation: 5,
             }}
-            activeOpacity={0.7}
+            tooltipStyle={{ maxWidth: 280 }}
           >
-            <View
+            <TouchableOpacity
+              onPress={() => {
+                setShowMenu(false);
+                router.push("/chatbox");
+              }}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "#E0F2FE",
+                flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
+                padding: 16,
+                borderRadius: 12,
+                gap: 12,
               }}
+              activeOpacity={0.7}
             >
-              <Ionicons name="chatbubbles" size={20} color="#0284C7" />
-            </View>
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "600",
-                color: colors.text,
-                flex: 1,
-              }}
-            >
-              {t("chatboxAI")}
-            </Text>
-          </TouchableOpacity>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: "#E0F2FE",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="chatbubbles" size={20} color="#0284C7" />
+              </View>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "600",
+                  color: colors.text,
+                  flex: 1,
+                }}
+              >
+                {t("chatboxAI")}
+              </Text>
+            </TouchableOpacity>
+          </Tooltip>
 
           <View
             style={{

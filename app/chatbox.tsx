@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useAppTour } from "@/context/appTourContext";
 import { db } from "@/db";
 import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
@@ -24,6 +25,7 @@ import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import TextRecognition from "@react-native-ml-kit/text-recognition";
 import { useFocusEffect } from "@react-navigation/native";
+import Tooltip from "react-native-walkthrough-tooltip";
 // Waveform visualization will use a lightweight animated view instead of capturing audio
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
@@ -1716,6 +1718,9 @@ export default function Chatbox() {
   // ref to the text input so we can focus when opened via deep-link
   const inputRef = useRef<TextInput | null>(null);
 
+  // App Tour context for guided tour
+  const { shouldShowTour, currentStep, nextStep, skipTour } = useAppTour();
+
   // read route params early so focus logic can decide whether to focus
   const params = useLocalSearchParams();
 
@@ -2093,6 +2098,11 @@ export default function Chatbox() {
     setMessages((m) => [...m, { role: "user", text }]);
     setPendingPick(null);
     scrollToEnd();
+
+    // Advance to step 4 when user sends message on step 3
+    if (shouldShowTour && currentStep === 3) {
+      nextStep();
+    }
 
     // Use the unified AI parser (same as voice input) - supports action types
     await processTextInput(text);
@@ -2658,6 +2668,22 @@ export default function Chatbox() {
         },
       ]);
       scrollToEnd();
+
+      // Complete tour if on step 4 (transaction created successfully)
+      if (shouldShowTour && currentStep === 4) {
+        setTimeout(() => {
+          Alert.alert(
+            "🎉 Hoàn thành hướng dẫn!",
+            "Bạn đã hoàn thành tất cả các bước hướng dẫn cơ bản. Giờ bạn có thể tự do khám phá ứng dụng!",
+            [
+              {
+                text: "OK",
+                onPress: () => skipTour(),
+              },
+            ]
+          );
+        }, 1000);
+      }
     } catch (e: any) {
       console.warn("❌ Transaction creation failed:", e);
       setMessages((m) => [
@@ -2727,6 +2753,22 @@ export default function Chatbox() {
         },
       ]);
       scrollToEnd();
+
+      // Complete tour if on step 4 (transaction created successfully)
+      if (shouldShowTour && currentStep === 4) {
+        setTimeout(() => {
+          Alert.alert(
+            "🎉 Hoàn thành hướng dẫn!",
+            "Bạn đã hoàn thành tất cả các bước hướng dẫn cơ bản. Giờ bạn có thể tự do khám phá ứng dụng!",
+            [
+              {
+                text: "OK",
+                onPress: () => skipTour(),
+              },
+            ]
+          );
+        }, 1000);
+      }
     } catch (e: any) {
       console.warn("❌ Transaction creation failed:", e);
       setMessages((m) => [
@@ -3825,61 +3867,127 @@ export default function Chatbox() {
                 ],
               }}
             >
-              <TextInput
-                placeholder={t("inputPlaceholder")}
-                placeholderTextColor={colors.subText}
-                value={input}
-                onChangeText={setInput}
-                ref={(r) => {
-                  inputRef.current = r;
+              <Tooltip
+                isVisible={shouldShowTour && currentStep === 2}
+                content={
+                  <View style={{ padding: 8 }}>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: "#111",
+                        marginBottom: 8,
+                      }}
+                    >
+                      📝 Nhập giao dịch
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        color: "#666",
+                        marginBottom: 12,
+                      }}
+                    >
+                      Nhập nội dung giao dịch của bạn tại đây. Ví dụ: "Trà sữa
+                      60k" rồi nhấn nút gửi.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        nextStep();
+                        inputRef.current?.focus();
+                      }}
+                      style={{
+                        backgroundColor: "#10B981",
+                        paddingVertical: 8,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>
+                        Tiếp tục
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                }
+                placement="top"
+                onClose={() => nextStep()}
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  borderRadius: 12,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 8,
+                  elevation: 5,
                 }}
-                onFocus={() => {
-                  // Some keyboards/ROMs don't emit keyboardDidShow with sizes.
-                  // Ensure the input bar lifts when focused by using an estimated height.
-                  if (!keyboardHeight) {
-                    const est = Math.max(
-                      150,
-                      estimatedKeyboardHeight - (insets.bottom || 0)
-                    );
-                    setKeyboardHeight(est);
-                  }
-                  // Scroll to end so last messages remain visible. Use multiple
-                  // attempts to handle timing differences across keyboards/ROMs.
-                  try {
-                    requestAnimationFrame(() =>
-                      flatRef.current?.scrollToEnd({ animated: true })
-                    );
-                  } catch (e) {}
+              >
+                <TextInput
+                  placeholder={t("inputPlaceholder")}
+                  placeholderTextColor={colors.subText}
+                  value={input}
+                  onChangeText={(text) => {
+                    setInput(text);
+                    // Advance to step 3 when user types something
+                    if (
+                      shouldShowTour &&
+                      currentStep === 2 &&
+                      text.trim().length > 3
+                    ) {
+                      nextStep();
+                    }
+                  }}
+                  ref={(r) => {
+                    inputRef.current = r;
+                  }}
+                  onFocus={() => {
+                    // Some keyboards/ROMs don't emit keyboardDidShow with sizes.
+                    // Ensure the input bar lifts when focused by using an estimated height.
+                    if (!keyboardHeight) {
+                      const est = Math.max(
+                        150,
+                        estimatedKeyboardHeight - (insets.bottom || 0)
+                      );
+                      setKeyboardHeight(est);
+                    }
+                    // Scroll to end so last messages remain visible. Use multiple
+                    // attempts to handle timing differences across keyboards/ROMs.
+                    try {
+                      requestAnimationFrame(() =>
+                        flatRef.current?.scrollToEnd({ animated: true })
+                      );
+                    } catch (e) {}
 
-                  setTimeout(
-                    () => flatRef.current?.scrollToEnd({ animated: true }),
-                    120
-                  );
-                  setTimeout(
-                    () => flatRef.current?.scrollToEnd({ animated: true }),
-                    420
-                  );
-                  // Also attempt after interactions settle
-                  try {
-                    InteractionManager.runAfterInteractions(() => {
-                      flatRef.current?.scrollToEnd({ animated: true });
-                    });
-                  } catch (e) {}
-                }}
-                onBlur={() => {
-                  setKeyboardHeight(0);
-                }}
-                style={[
-                  styles.textInput,
-                  {
-                    borderColor: colors.divider,
-                    backgroundColor: colors.background,
-                    color: colors.text,
-                  },
-                ]}
-                returnKeyType="send"
-                onSubmitEditing={handleSend}
-              />
+                    setTimeout(
+                      () => flatRef.current?.scrollToEnd({ animated: true }),
+                      120
+                    );
+                    setTimeout(
+                      () => flatRef.current?.scrollToEnd({ animated: true }),
+                      420
+                    );
+                    // Also attempt after interactions settle
+                    try {
+                      InteractionManager.runAfterInteractions(() => {
+                        flatRef.current?.scrollToEnd({ animated: true });
+                      });
+                    } catch (e) {}
+                  }}
+                  onBlur={() => {
+                    setKeyboardHeight(0);
+                  }}
+                  style={[
+                    styles.textInput,
+                    {
+                      borderColor: colors.divider,
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                    },
+                  ]}
+                  returnKeyType="send"
+                  onSubmitEditing={handleSend}
+                />
+              </Tooltip>
             </Animated.View>
 
             {/* Recording bar (hiện khi đang ghi) */}
@@ -3992,15 +4100,70 @@ export default function Chatbox() {
 
           {/* Nút Send text - ẩn khi đang ghi âm */}
           {!isRecording && (
-            <Pressable
-              style={[
-                styles.sendBtn,
-                { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
-              ]}
-              onPress={handleSend}
+            <Tooltip
+              isVisible={shouldShowTour && currentStep === 3}
+              content={
+                <View style={{ padding: 8 }}>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: "#111",
+                      marginBottom: 8,
+                    }}
+                  >
+                    🚀 Gửi tin nhắn
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: "#666",
+                      marginBottom: 12,
+                    }}
+                  >
+                    Nhấn nút "Gửi" để AI xử lý giao dịch của bạn. AI sẽ tự động
+                    phân loại và tạo giao dịch mới.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      nextStep();
+                    }}
+                    style={{
+                      backgroundColor: "#10B981",
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                      Hiểu rồi
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              }
+              placement="top"
+              onClose={() => nextStep()}
+              contentStyle={{
+                backgroundColor: "#fff",
+                borderRadius: 12,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 8,
+                elevation: 5,
+              }}
             >
-              <Text style={styles.sendText}>{t("send")}</Text>
-            </Pressable>
+              <Pressable
+                style={[
+                  styles.sendBtn,
+                  { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+                ]}
+                onPress={handleSend}
+              >
+                <Text style={styles.sendText}>{t("send")}</Text>
+              </Pressable>
+            </Tooltip>
           )}
         </Animated.View>
 
@@ -4105,7 +4268,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   sendBtn: {
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     borderRadius: 12,
     backgroundColor: "#111",
     alignItems: "center",

@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useAppTour } from "@/context/appTourContext";
 import { useUser } from "@/context/userContext";
 import { useI18n } from "@/i18n/I18nProvider";
 import { syncAll } from "@/services/syncService";
@@ -13,6 +14,7 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -23,6 +25,7 @@ export default function Setting() {
   const { colors, mode, preference, setPreference } = useTheme();
   const { user } = useUser();
   const { t } = useI18n();
+  const { isTourEnabled, setIsTourEnabled, resetTour } = useAppTour();
   const styles = React.useMemo(() => makeStyles(colors, mode), [colors, mode]);
   const [themeModalVisible, setThemeModalVisible] = React.useState(false);
   const [sync, setSync] = React.useState(syncState.getSyncState());
@@ -193,6 +196,28 @@ export default function Setting() {
             <Text style={styles.itemDesc}>{t("accountSettings_desc")}</Text>
           </View>
         </TouchableOpacity>
+
+        {/* App Tour Toggle */}
+        <View style={styles.item}>
+          <Ionicons name="help-circle-outline" size={28} color={colors.icon} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.itemTitle}>Hướng dẫn sử dụng</Text>
+            <Text style={styles.itemDesc}>
+              Bật/tắt hướng dẫn cho người dùng mới
+            </Text>
+          </View>
+          <Switch
+            value={isTourEnabled}
+            onValueChange={(value) => {
+              setIsTourEnabled(value);
+              if (value) {
+                resetTour();
+              }
+            }}
+            trackColor={{ false: "#d1d5db", true: "#86efac" }}
+            thumbColor={isTourEnabled ? "#10B981" : "#f3f4f6"}
+          />
+        </View>
       </View>
 
       {/* Theme Preference Modal */}

@@ -2,6 +2,7 @@ import {
   AppThemeProvider,
   useTheme as useAppTheme,
 } from "@/app/providers/ThemeProvider";
+import { AppTourProvider } from "@/context/appTourContext";
 import { UserProvider, useUser } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
@@ -107,11 +108,13 @@ export default function RootLayout() {
   return (
     <I18nProvider>
       <AppThemeProvider>
-        <UserProvider>
-          <PaperProvider>
-            <RootLayoutNav />
-          </PaperProvider>
-        </UserProvider>
+        <AppTourProvider>
+          <UserProvider>
+            <PaperProvider>
+              <RootLayoutNav />
+            </PaperProvider>
+          </UserProvider>
+        </AppTourProvider>
       </AppThemeProvider>
     </I18nProvider>
   );
