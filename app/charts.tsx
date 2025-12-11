@@ -150,6 +150,7 @@ export default function ChartsScreen() {
   const [transactionType, setTransactionType] =
     useState<TransactionType>("expense");
   const [loading, setLoading] = useState(false);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
 
   // State for comparison chart
   const [comparisonData, setComparisonData] = useState<
@@ -232,64 +233,194 @@ export default function ChartsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [startSec, endSec, transactionType, colors.text]);
+  }, [startSec, endSec, transactionType]);
 
   const loadComparisonData = useCallback(async () => {
+    setComparisonLoading(true);
     try {
-      // Get both expense and income totals
-      const [expenseTotal, incomeTotal] = await Promise.all([
-        totalInRange(startSec, endSec, "expense"),
-        totalInRange(startSec, endSec, "income"),
-      ]);
+      if (timeRange === "Năm") {
+        // For year view, show 3 consecutive years (but not future years)
+        const selectedYear = anchor.getFullYear();
+        const currentYear = new Date().getFullYear();
+        const years = [];
 
-      // Create comparison data with expense and income as separate bars
-      const data = [
-        {
-          value: expenseTotal,
-          label: "Chi tiêu",
-          frontColor: "#EF4444",
-          topLabelComponent: () => (
-            <Text
-              style={{
-                fontSize: 10,
-                color: colors.text,
-                fontWeight: "700",
-                textAlign: "center",
-              }}
-            >
-              {fmtMoneyVN(expenseTotal)}
-            </Text>
-          ),
-        },
-        {
-          value: incomeTotal,
-          label: "Thu nhập",
-          frontColor: "#10B981",
-          topLabelComponent: () => (
-            <Text
-              style={{
-                fontSize: 10,
-                color: colors.text,
-                fontWeight: "700",
-                textAlign: "center",
-              }}
-            >
-              {fmtMoneyVN(incomeTotal)}
-            </Text>
-          ),
-        },
-      ];
+        for (let i = -1; i <= 1; i++) {
+          const year = selectedYear + i;
+          // Only add years that are not in the future
+          if (year <= currentYear) {
+            years.push({
+              year: year,
+              isCurrentYear: year === selectedYear,
+            });
+          }
+        }
 
-      setComparisonData(data);
+        // Fetch data for years
+        const yearlyData = await Promise.all(
+          years.map(async (y) => {
+            const startDate = new Date(y.year, 0, 1);
+            const endDate = new Date(y.year + 1, 0, 1);
+            const startSec = startDate.getTime() / 1000;
+            const endSec = endDate.getTime() / 1000;
+
+            const total = await totalInRange(startSec, endSec, transactionType);
+            return {
+              label: `${y.year}`,
+              year: y.year,
+              value: total,
+              isCurrentYear: y.isCurrentYear,
+            };
+          })
+        );
+
+        // Create comparison data with years
+        const data = yearlyData.map((y) => {
+          const baseColor =
+            transactionType === "expense" ? "#EF4444" : "#10B981";
+          const opacity = y.isCurrentYear ? 1 : 0.5;
+          const rgbaColor = y.isCurrentYear
+            ? baseColor
+            : baseColor === "#EF4444"
+            ? "rgba(239, 68, 68, 0.5)"
+            : "rgba(16, 185, 129, 0.5)";
+
+          return {
+            value: y.value,
+            label: y.label,
+            frontColor: rgbaColor,
+            topLabelComponent: () => (
+              <Text
+                style={{
+                  fontSize: 10,
+                  color: colors.text,
+                  fontWeight: "700",
+                  textAlign: "center",
+                  opacity: opacity,
+                }}
+              >
+                {fmtMoneyVN(y.value)}
+              </Text>
+            ),
+          };
+        });
+
+        setComparisonData(data);
+      } else {
+        // For all other views, show 3 months (but not future months)
+        let selectedMonth: number;
+        let selectedYear: number;
+
+        if (timeRange === "Tháng") {
+          selectedMonth = anchor.getMonth();
+          selectedYear = anchor.getFullYear();
+        } else if (timeRange === "Tuần") {
+          selectedMonth = anchor.getMonth();
+          selectedYear = anchor.getFullYear();
+        } else if (timeRange === "Ngày") {
+          selectedMonth = anchor.getMonth();
+          selectedYear = anchor.getFullYear();
+        } else {
+          selectedMonth = rangeStart.getMonth();
+          selectedYear = rangeStart.getFullYear();
+        }
+
+        // Get 3 months: 1 before, selected, 1 after (but not future months)
+        const months = [];
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+
+        for (let i = -1; i <= 1; i++) {
+          const d = new Date(selectedYear, selectedMonth + i, 1);
+          // Only add months that are not in the future
+          if (
+            d.getFullYear() < currentYear ||
+            (d.getFullYear() === currentYear && d.getMonth() <= currentMonth)
+          ) {
+            months.push({
+              year: d.getFullYear(),
+              month: d.getMonth(),
+              date: d,
+              isCurrentMonth:
+                d.getMonth() === selectedMonth &&
+                d.getFullYear() === selectedYear,
+            });
+          }
+        }
+
+        // Fetch data for all months
+        const monthlyData = await Promise.all(
+          months.map(async (m) => {
+            const startDate = new Date(m.year, m.month, 1);
+            const endDate = new Date(m.year, m.month + 1, 1);
+            const startSec = startDate.getTime() / 1000;
+            const endSec = endDate.getTime() / 1000;
+
+            const total = await totalInRange(startSec, endSec, transactionType);
+            return {
+              label: `Thg ${m.month + 1}`,
+              month: m.month,
+              year: m.year,
+              value: total,
+              isCurrentMonth: m.isCurrentMonth,
+            };
+          })
+        );
+
+        // Create comparison data with months
+        const data = monthlyData.map((m) => {
+          const baseColor =
+            transactionType === "expense" ? "#EF4444" : "#10B981";
+          const opacity = m.isCurrentMonth ? 1 : 0.5;
+          const rgbaColor = m.isCurrentMonth
+            ? baseColor
+            : baseColor === "#EF4444"
+            ? "rgba(239, 68, 68, 0.5)"
+            : "rgba(16, 185, 129, 0.5)";
+
+          return {
+            value: m.value,
+            label: m.label,
+            frontColor: rgbaColor,
+            topLabelComponent: () => (
+              <Text
+                style={{
+                  fontSize: 10,
+                  color: colors.text,
+                  fontWeight: "700",
+                  textAlign: "center",
+                  opacity: opacity,
+                }}
+              >
+                {fmtMoneyVN(m.value)}
+              </Text>
+            ),
+          };
+        });
+
+        setComparisonData(data);
+      }
     } catch (error) {
       console.error("Error loading comparison data:", error);
+    } finally {
+      setComparisonLoading(false);
     }
-  }, [startSec, endSec, colors.text]);
+  }, [
+    transactionType,
+    timeRange,
+    anchor.getFullYear(),
+    anchor.getMonth(),
+    rangeStart.getFullYear(),
+    rangeStart.getMonth(),
+  ]);
 
   useEffect(() => {
     loadChartData();
+  }, [loadChartData]);
+
+  useEffect(() => {
     loadComparisonData();
-  }, [loadChartData, loadComparisonData]);
+  }, [loadComparisonData]);
 
   // Auto-refresh when screen comes into focus
   useFocusEffect(
@@ -1083,8 +1214,8 @@ export default function ChartsScreen() {
 
         {/* Comparison Chart - Thu/Chi cùng khoảng thời gian */}
         <View style={[styles.chartContainer, { marginBottom: 20 }]}>
-          <Text style={styles.chartTitle}>So sánh Thu nhập vs Chi tiêu</Text>
-          {loading ? (
+          <Text style={styles.chartTitle}>So sánh 3 tháng gần đây nhất</Text>
+          {comparisonLoading ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Đang tải...</Text>
             </View>
@@ -1095,6 +1226,7 @@ export default function ChartsScreen() {
               contentContainerStyle={{ paddingRight: 20 }}
             >
               <BarChart
+                key={`comparison-${timeRange}-${anchor.getTime()}`}
                 data={comparisonData}
                 width={Math.max(comparisonData.length * 80 + 20, 300)}
                 barWidth={50}
