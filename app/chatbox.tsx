@@ -2857,7 +2857,8 @@ export default function Chatbox() {
         }
       }
 
-      // Update message in chat - bao gồm cả io type
+      // Update message in chat - bao gồm cả io type, icon và color
+      const updatedCategory = items.find((c) => c.id === editCategoryId);
       setMessages((msgs) =>
         msgs.map((m) =>
           m.role === "card" && m.transactionId === editingTx.transactionId
@@ -2867,9 +2868,9 @@ export default function Chatbox() {
                 note: editNote,
                 categoryId: editCategoryId,
                 io: editingTx.io, // Update io type
-                categoryName:
-                  items.find((c) => c.id === editCategoryId)?.name ||
-                  m.categoryName,
+                categoryName: updatedCategory?.name || m.categoryName,
+                categoryIcon: updatedCategory?.icon || m.categoryIcon, // Update icon
+                categoryColor: updatedCategory?.color || m.categoryColor, // Update color
               }
             : m
         )
@@ -2888,12 +2889,30 @@ export default function Chatbox() {
   const handleDeleteTransaction = async (transactionId: string) => {
     try {
       await deleteTx(transactionId);
-      // Remove from messages
-      setMessages((msgs) =>
-        msgs.filter(
-          (m) => m.role !== "card" || m.transactionId !== transactionId
-        )
-      );
+      // Remove card and its associated bot message from messages
+      setMessages((msgs) => {
+        const cardIndex = msgs.findIndex(
+          (m) => m.role === "card" && m.transactionId === transactionId
+        );
+
+        if (cardIndex === -1) return msgs;
+
+        // Check if there's a bot message right before the card
+        const hasBotMessageBefore =
+          cardIndex > 0 && msgs[cardIndex - 1].role === "bot";
+
+        return msgs.filter((m, index) => {
+          // Remove the card
+          if (m.role === "card" && m.transactionId === transactionId) {
+            return false;
+          }
+          // Remove bot message before card if exists
+          if (hasBotMessageBefore && index === cardIndex - 1) {
+            return false;
+          }
+          return true;
+        });
+      });
     } catch (e: any) {
       alert("Không thể xóa: " + (e?.message || "Lỗi"));
     }
@@ -3038,13 +3057,24 @@ export default function Chatbox() {
       // Use full keyboard height so when keyboard is hidden (height = 0)
       // the input bottom will be 0 as requested.
       setKeyboardHeight(h);
+
       // Ensure view scrolls so input and last messages are visible
-      requestAnimationFrame(() =>
-        flatRef.current?.scrollToEnd({ animated: true })
-      );
+      // Multiple attempts to handle different keyboard animation timings
+      setTimeout(() => {
+        flatRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      setTimeout(() => {
+        flatRef.current?.scrollToEnd({ animated: true });
+      }, 300);
     };
 
-    const onHide = () => setKeyboardHeight(0);
+    const onHide = () => {
+      setKeyboardHeight(0);
+      // Scroll to end when keyboard hides to keep chat at bottom
+      setTimeout(() => {
+        flatRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    };
 
     const subShow = Keyboard.addListener("keyboardDidShow", onShow);
     const subHide = Keyboard.addListener("keyboardDidHide", onHide);
@@ -3144,7 +3174,19 @@ export default function Chatbox() {
           contentContainerStyle={{
             padding: 16,
             gap: 12,
-            paddingBottom: keyboardHeight ? keyboardHeight + 120 : 120,
+            paddingBottom: keyboardHeight + 140,
+          }}
+          onContentSizeChange={() => {
+            // Auto scroll to end when content size changes (new messages)
+            requestAnimationFrame(() => {
+              flatRef.current?.scrollToEnd({ animated: true });
+            });
+          }}
+          onLayout={() => {
+            // Scroll to end on initial layout
+            requestAnimationFrame(() => {
+              flatRef.current?.scrollToEnd({ animated: false });
+            });
           }}
           renderItem={({ item }) => {
             if (item.role === "user") {
