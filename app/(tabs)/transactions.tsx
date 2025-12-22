@@ -11,7 +11,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { writeAsStringAsync } from "expo-file-system/legacy";
 import { router } from "expo-router";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -146,6 +146,7 @@ export default function Transactions() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadedDays, setLoadedDays] = useState(0);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
 
   // Filter state
   const [filterType, setFilterType] = useState<FilterType>("all");
@@ -276,11 +277,19 @@ export default function Transactions() {
     try {
       const secs = await fetchRange(0, PAGE_DAYS);
       setSections(secs);
-      setLoadedDays(PAGE_DAYS);
+
+      // When using date filters (not "all"), all data is loaded in one go
+      if (filterType !== "all") {
+        setAllDataLoaded(true);
+        setLoadedDays(0); // Reset since we don't track pages for filtered views
+      } else {
+        setAllDataLoaded(false);
+        setLoadedDays(PAGE_DAYS);
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [fetchRange]);
+  }, [fetchRange, filterType]);
 
   useFocusEffect(
     useCallback(() => {
@@ -297,6 +306,33 @@ export default function Transactions() {
       console.warn("Load categories error", e);
     }
   };
+
+  // Memoize filtered sections to prevent recalculation on every render
+  const filteredSections = useMemo(() => {
+    return sections
+      .map((section) => ({
+        ...section,
+        data: section.data.filter((item) => {
+          // Filter by search text
+          const matchesSearch =
+            !searchText ||
+            (item.note || "")
+              .toLowerCase()
+              .includes(searchText.toLowerCase()) ||
+            (item.category_name || "")
+              .toLowerCase()
+              .includes(searchText.toLowerCase());
+
+          // Filter by category
+          const matchesCategory =
+            !selectedCategoryFilter ||
+            item.category_id === selectedCategoryFilter;
+
+          return matchesSearch && matchesCategory;
+        }),
+      }))
+      .filter((section) => section.data.length > 0);
+  }, [sections, searchText, selectedCategoryFilter]);
 
   const ICON_SIZE = 28;
 
@@ -757,17 +793,23 @@ export default function Transactions() {
 
   // Load more theo page (chỉ khi filter = "all")
   const loadMore = useCallback(async () => {
-    // Chỉ load more khi filter = all
-    if (filterType !== "all") return;
+    // Chỉ load more khi filter = all và chưa load hết data
+    if (filterType !== "all" || allDataLoaded) return;
 
     if (loadingMoreRef.current) return;
-    if (loadedDays >= MAX_PAST_DAYS) return;
+    if (loadedDays >= MAX_PAST_DAYS) {
+      setAllDataLoaded(true);
+      return;
+    }
 
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
       const more = await fetchRange(loadedDays, PAGE_DAYS);
-      if (more.length === 0) return;
+      if (more.length === 0) {
+        setAllDataLoaded(true);
+        return;
+      }
 
       // merge theo key (ngày)
       const merged = new Map<string, Section>();
@@ -787,7 +829,86 @@ export default function Transactions() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [fetchRange, loadedDays, sections, filterType]);
+  }, [fetchRange, loadedDays, sections, filterType, allDataLoaded]);
+
+  // Memoized Transaction Item Component
+  const TransactionItem = React.memo(({ item }: { item: TxDetailRow }) => {
+    // Icon mapping for mi: prefix
+    const iconMap: Record<string, string> = {
+      "directions-car": "car",
+      "flight-takeoff": "airplane-takeoff",
+      assignment: "file-document-outline",
+      pets: "paw",
+      "credit-card": "credit-card-outline",
+    };
+
+    // Determine icon name and color
+    let iconName = "cash";
+    let iconColor = colors.icon;
+
+    if (item.category_icon) {
+      if (item.category_icon.startsWith("mc:")) {
+        iconName = item.category_icon.replace("mc:", "");
+      } else if (item.category_icon.startsWith("mi:")) {
+        const miName = item.category_icon.replace("mi:", "");
+        iconName = iconMap[miName] || "help-circle-outline";
+      } else {
+        iconName = item.category_icon;
+      }
+    }
+
+    if (item.category_color) {
+      iconColor = item.category_color;
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => router.push(`/add-transaction?id=${item.id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.leftIcon}>
+          <MaterialCommunityIcons
+            name={iconName as any}
+            size={18}
+            color={iconColor}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.catName}>{item.category_name || "Khác"}</Text>
+          <Text style={styles.sub}>{item.note || ""}</Text>
+        </View>
+        <Text
+          style={[
+            styles.amount,
+            {
+              color: item.type === "expense" ? "#EF4444" : "#10B981",
+            },
+          ]}
+        >
+          {item.type === "expense" ? "-" : "+"}
+          {fmtMoney(item.amount)}
+        </Text>
+      </TouchableOpacity>
+    );
+  });
+
+  // Memoized Section Header Component
+  const SectionHeader = React.memo(({ section }: { section: Section }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+    </View>
+  ));
+
+  const renderItem = useCallback(
+    ({ item }: { item: TxDetailRow }) => <TransactionItem item={item} />,
+    []
+  );
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: Section }) => <SectionHeader section={section} />,
+    []
+  );
 
   const exportToCSV = async () => {
     try {
@@ -1496,102 +1617,15 @@ export default function Transactions() {
       )}
 
       <SectionList
-        sections={sections
-          .map((section) => ({
-            ...section,
-            data: section.data.filter((item) => {
-              // Filter by search text
-              const matchesSearch =
-                !searchText ||
-                (item.note || "")
-                  .toLowerCase()
-                  .includes(searchText.toLowerCase()) ||
-                (item.category_name || "")
-                  .toLowerCase()
-                  .includes(searchText.toLowerCase());
-
-              // Filter by category
-              const matchesCategory =
-                !selectedCategoryFilter ||
-                item.category_id === selectedCategoryFilter;
-
-              return matchesSearch && matchesCategory;
-            }),
-          }))
-          .filter((section) => section.data.length > 0)}
+        sections={filteredSections}
         keyExtractor={(item, index) => `${item.id || index}`}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-          </View>
-        )}
-        renderItem={({ item }) => {
-          // Icon mapping for mi: prefix
-          const iconMap: Record<string, string> = {
-            "directions-car": "car",
-            "flight-takeoff": "airplane-takeoff",
-            assignment: "file-document-outline",
-            pets: "paw",
-            "credit-card": "credit-card-outline",
-          };
-
-          // Determine icon name and color
-          let iconName = "cash";
-          let iconColor = colors.icon;
-
-          if (item.category_icon) {
-            if (item.category_icon.startsWith("mc:")) {
-              iconName = item.category_icon.replace("mc:", "");
-            } else if (item.category_icon.startsWith("mi:")) {
-              const miName = item.category_icon.replace("mi:", "");
-              iconName = iconMap[miName] || "help-circle-outline";
-            } else {
-              iconName = item.category_icon;
-            }
-          }
-
-          if (item.category_color) {
-            iconColor = item.category_color;
-          }
-
-          return (
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => router.push(`/add-transaction?id=${item.id}`)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.leftIcon}>
-                <MaterialCommunityIcons
-                  name={iconName as any}
-                  size={18}
-                  color={iconColor}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.catName}>
-                  {item.category_name || "Khác"}
-                </Text>
-                <Text style={styles.sub}>{item.note || ""}</Text>
-              </View>
-              <Text
-                style={[
-                  styles.amount,
-                  {
-                    color: item.type === "expense" ? "#EF4444" : "#10B981",
-                  },
-                ]}
-              >
-                {item.type === "expense" ? "-" : "+"}
-                {fmtMoney(item.amount)}
-              </Text>
-            </TouchableOpacity>
-          );
-        }}
+        renderSectionHeader={renderSectionHeader}
+        renderItem={renderItem}
         refreshing={refreshing}
         onRefresh={loadInitial}
         onEndReached={() => {
-          // Chỉ load more khi filter = all
-          if (filterType !== "all") return;
+          // Chỉ load more khi filter = all và chưa load hết data
+          if (filterType !== "all" || allDataLoaded) return;
 
           if (!loadingMoreRef.current && onEndMomentumFired.current) {
             loadMore();
@@ -1602,7 +1636,7 @@ export default function Transactions() {
           onEndMomentumFired.current = true;
         }}
         ListFooterComponent={
-          loadingMore ? (
+          loadingMore && !allDataLoaded ? (
             <View style={{ paddingVertical: 20 }}>
               <ActivityIndicator size="small" color={colors.icon} />
             </View>
@@ -1610,6 +1644,11 @@ export default function Transactions() {
         }
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
         stickySectionHeadersEnabled={false}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={15}
+        windowSize={10}
+        removeClippedSubviews={true}
       />
     </SafeAreaView>
   );
