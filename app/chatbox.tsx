@@ -15,7 +15,6 @@ import {
   deleteTx,
   updateTransaction,
 } from "@/repos/transactionRepo";
-import { sendToHf } from "@/services/hfChatbot";
 import { phobertExtractor } from "@/services/phobertAmountExtractor";
 import { transactionClassifier } from "@/services/transactionClassifier";
 import useAudioMeter from "@/services/useAudioMeter";
@@ -275,33 +274,6 @@ async function getEmotionalReplyDirect(args: {
 → Đã ghi chi 45.000đ ăn trưa hôm nay. Ngon miệng! 🍜
 
 YÊU CẦU: Tạo câu tương tự (1-2 câu, emoji cuối), CHỈ TRẢ CÂU PHẢN HỒI:`;
-
-  try {
-    if (HUGGINGFACE_API_KEY) {
-      const reply = await sendToHf(
-        prompt,
-        HUGGINGFACE_MODEL,
-        HUGGINGFACE_API_KEY,
-        {
-          max_new_tokens: 150,
-          temperature: 0.8,
-        }
-      );
-
-      if (reply && reply.trim()) {
-        return {
-          message: reply.trim(),
-          categoryId: undefined,
-          amount,
-          io,
-          note,
-          date: extractedDate,
-        };
-      }
-    }
-  } catch (e) {
-    console.warn("❌ AI failed:", e);
-  }
 
   // Fallback: Smart response with full context
   let dateStr = "";
@@ -889,90 +861,6 @@ const parseTransactionWithAI = async (
   }
 };
 
-const getAmountFromHF = async (text: string): Promise<number | null> => {
-  try {
-    if (!HUGGINGFACE_API_KEY || HUGGINGFACE_API_KEY.length < 10) {
-      return null;
-    }
-
-    const prompt = `Trích xuất số tiền CHÍNH XÁC từ văn bản tiếng Việt. Trả về format: <số><đơn vị>
-
-QUY TẮC:
-- "847k948đ" → "847k948"
-- "1tr238k" → "1tr238k"
-- "2tr5" → "2tr5"
-- "50k" → "50k"
-- "749k" → "749k"
-- "100đ" → "100"
-
-Văn bản: "${text}"
-
-Chỉ trả về số và đơn vị (k/tr/tỷ), ví dụ: "749k":`;
-
-    const response = await sendToHf(
-      prompt,
-      HUGGINGFACE_MODEL,
-      HUGGINGFACE_API_KEY,
-      {
-        max_new_tokens: 30,
-        temperature: 0.1,
-      }
-    );
-
-    if (response && response.trim()) {
-      // Parse Vietnamese amount format using the same logic as textPreprocessing.ts
-      const cleaned = response.trim().toLowerCase();
-
-      // Pattern 1: Complex formats like "847k948" or "1tr238k"
-      const complexTrK = cleaned.match(/(\d+)tr(\d+)k?/i);
-      if (complexTrK) {
-        const millions = parseInt(complexTrK[1], 10);
-        const thousands = parseInt(complexTrK[2], 10);
-        const result = millions * 1000000 + thousands * 100000;
-        return result;
-      }
-
-      const complexK = cleaned.match(/(\d+)k(\d+)/i);
-      if (complexK) {
-        const thousands = parseInt(complexK[1], 10);
-        const hundreds = parseInt(complexK[2], 10);
-        const result = thousands * 1000 + hundreds;
-        return result;
-      }
-
-      // Pattern 2: Simple formats like "749k", "50k", "2tr5"
-      const simpleMatch = cleaned.match(
-        /(\d+(?:[.,]\d+)?)\s*(k|tr|triệu|trieu|tỷ|ty)?/i
-      );
-      if (simpleMatch) {
-        const numStr = simpleMatch[1].replace(",", ".");
-        const n = parseFloat(numStr);
-        const unit = (simpleMatch[2] || "").toLowerCase();
-
-        let factor = 1;
-        if (unit.startsWith("k")) {
-          factor = 1000;
-        } else if (unit.startsWith("tr")) {
-          factor = 1000000;
-        } else if (unit.startsWith("tỷ") || unit.startsWith("ty")) {
-          factor = 1000000000;
-        }
-
-        const result = Math.round(n * factor);
-        return result;
-      }
-
-      // Fallback: plain number
-      const plainNum = parseInt(cleaned.replace(/\D/g, ""), 10);
-      if (!isNaN(plainNum) && plainNum > 0) {
-        return plainNum;
-      }
-    }
-  } catch (error) {
-    console.error("❌ AI extraction error:", error);
-  }
-  return null;
-};
 const detectInOut = (text: string): "IN" | "OUT" => {
   const t = text.toLowerCase();
   if (/(lương|thu nhập|refund|hoàn tiền|chuyển vào)/.test(t)) return "IN";
