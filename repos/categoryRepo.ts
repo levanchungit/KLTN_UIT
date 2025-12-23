@@ -297,3 +297,52 @@ export async function seedCategoryDefaults() {
     });
   }
 }
+
+/** Ensure demo budget categories exist with proper icons/colors */
+export async function ensureDemoBudgetCategories() {
+  const base: Array<{
+    name: string;
+    type: "expense" | "income";
+    icon: string;
+    color: string;
+  }> = [
+    { name: "Ăn uống", type: "expense", icon: "mc:food", color: "#F29F3F" },
+    { name: "Hóa đơn", type: "expense", icon: "mc:receipt", color: "#B19CD9" },
+    { name: "Bảo hiểm", type: "expense", icon: "mc:shield", color: "#2E86C1" },
+    {
+      name: "Di chuyển",
+      type: "expense",
+      icon: "mc:car-outline",
+      color: "#3A78D0",
+    },
+    {
+      name: "Mua sắm",
+      type: "expense",
+      icon: "mc:cart-outline",
+      color: "#18A689",
+    },
+    { name: "Giải trí", type: "expense", icon: "mc:film", color: "#C7CEEA" },
+    {
+      name: "Thể thao",
+      type: "expense",
+      icon: "mc:dumbbell",
+      color: "#FF8B94",
+    },
+    { name: "Học tập", type: "expense", icon: "mc:book", color: "#95E1D3" },
+    { name: "Lương", type: "income", icon: "mc:cash", color: "#52C41A" },
+  ];
+
+  const existing = await listCategories();
+  const names = new Set(existing.map((c) => c.name));
+
+  for (const d of base) {
+    if (!names.has(d.name)) {
+      await createCategory({
+        name: d.name,
+        type: d.type,
+        icon: d.icon,
+        color: d.color,
+      });
+    }
+  }
+}

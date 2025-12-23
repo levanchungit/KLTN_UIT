@@ -253,17 +253,16 @@ export class HistoricalAnalyzer {
         SELECT 
           c.id as category_id,
           c.name as category_name,
-          c.group_type,
-          strftime('%Y-%m', t.date, 'unixepoch') as month,
+          strftime('%Y-%m', t.occurred_at, 'unixepoch') as month,
           SUM(t.amount) as total_amount,
           COUNT(*) as txn_count,
           AVG(t.amount) as avg_txn_amount,
-          MAX(t.date) as last_date
+          MAX(t.occurred_at) as last_date
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         WHERE t.user_id = ? 
-          AND t.date >= ?
-          AND t.date <= ?
+          AND t.occurred_at >= ?
+          AND t.occurred_at <= ?
           AND t.type = 'expense'
         GROUP BY c.id, month
         ORDER BY month DESC, total_amount DESC
@@ -343,13 +342,13 @@ export class HistoricalAnalyzer {
       const incomeData = await db.getAllAsync<any>(
         `
         SELECT 
-          strftime('%Y-%m', t.date, 'unixepoch') as month,
+          strftime('%Y-%m', t.occurred_at, 'unixepoch') as month,
           SUM(t.amount) as total_income
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         WHERE t.user_id = ?
-          AND t.date >= ?
-          AND t.date <= ?
+          AND t.occurred_at >= ?
+          AND t.occurred_at <= ?
           AND t.type = 'income'
         GROUP BY month
       `,

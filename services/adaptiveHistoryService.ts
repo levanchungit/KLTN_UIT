@@ -42,15 +42,15 @@ export async function intelligentHistoryDetection(
       SELECT 
         t.id,
         t.amount,
-        t.date,
+        t.occurred_at as date,
         t.category_id,
         c.name as category_name
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
       WHERE t.user_id = ?
         AND t.type = 'expense'
-        AND t.date >= ?
-      ORDER BY t.date DESC
+        AND t.occurred_at >= ?
+      ORDER BY t.occurred_at DESC
     `,
       userId as any,
       Math.floor(threeMonthsAgo)

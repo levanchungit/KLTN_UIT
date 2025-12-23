@@ -325,6 +325,137 @@ async function buildTemplateAllocations(
   ];
 }
 
+async function buildHistoricalAllocations(
+  income: number,
+  ratio: BudgetRatio,
+  description: string,
+  patterns: import("@/services/budgetAIService").SpendingPattern[]
+): Promise<CategoryScoring[]> {
+  const signals = parseLifestyleSignals(description || "");
+
+  const needsBudget = Math.round(income * ratio.needs);
+  const wantsBudget = Math.round(income * ratio.wants);
+  const savingsBudget = Math.round(income * ratio.savings);
+
+  // Map patterns to groups
+  const needs: typeof patterns = [] as any;
+  const wants: typeof patterns = [] as any;
+
+  for (const p of patterns) {
+    const group = classifyCategoryType(p.categoryName, signals);
+    if (group === "needs") needs.push(p);
+    else if (group === "wants") wants.push(p);
+  }
+
+  // Helper to convert to CategoryScoring with proportional allocation
+  const toAllocations = (
+    pats: typeof patterns,
+    budget: number,
+    groupType: "needs" | "wants"
+  ): CategoryScoring[] => {
+    if (!pats || pats.length === 0 || budget <= 0) return [];
+
+    // Sort by average spend desc and keep up to 8 categories for readability
+    const sorted = [...pats]
+      .sort((a, b) => b.avgMonthlySpend - a.avgMonthlySpend)
+      .slice(0, 8);
+    const total =
+      sorted.reduce((s, x) => s + Math.max(0, x.avgMonthlySpend), 0) || 1;
+
+    return sorted.map((p) => ({
+      categoryId: p.categoryId,
+      categoryName: p.categoryName,
+      groupType,
+      categoryIcon: undefined,
+      categoryColor: undefined,
+      score: p.avgMonthlySpend / total,
+      allocatedAmount: Math.round(
+        (Math.max(0, p.avgMonthlySpend) / total) * budget
+      ),
+      reason: "Phân bổ theo lịch sử chi tiêu 3 tháng gần nhất",
+    }));
+  };
+
+  const needsAlloc = toAllocations(needs, needsBudget, "needs");
+  const wantsAlloc = toAllocations(wants, wantsBudget, "wants");
+
+  // Add Savings as a single bucket (create category if missing)
+  const savingsAlloc: CategoryScoring[] = [];
+  if (savingsBudget > 0) {
+    const { listCategories, createCategory } = await import(
+      "@/repos/categoryRepo"
+    );
+    const existing = await listCategories({ type: "expense" });
+    const map = new Map(existing.map((c: any) => [c.name, c]));
+
+    const ensureCategory = async (
+      name: string,
+      icon: string,
+      color: string
+    ) => {
+      if (!map.has(name)) {
+        const id = await createCategory({ name, type: "expense", icon, color });
+        map.set(name, { id, name, type: "expense", icon, color } as any);
+      }
+      return map.get(name)!;
+    };
+
+    const savingsCat = await ensureCategory(
+      "Tiết kiệm",
+      "mc:piggy-bank",
+      "#2ECC71"
+    );
+    savingsAlloc.push({
+      categoryId: savingsCat.id,
+      categoryName: "Tiết kiệm",
+      categoryIcon: "mc:piggy-bank",
+      categoryColor: "#2ECC71",
+      groupType: "savings",
+      score: 1,
+      allocatedAmount: savingsBudget,
+      reason: "Dự phòng và tích lũy theo mục tiêu",
+    });
+  }
+
+  // Optional: add a small "Dự phòng" line in needs if budget remains due to rounding
+  const sumNeeds = needsAlloc.reduce((s, a) => s + a.allocatedAmount, 0);
+  if (needsBudget - sumNeeds >= 1000) {
+    const remain = needsBudget - sumNeeds;
+    const { listCategories, createCategory } = await import(
+      "@/repos/categoryRepo"
+    );
+    const existing = await listCategories({ type: "expense" });
+    const map = new Map(existing.map((c: any) => [c.name, c]));
+    const ensureCategory = async (
+      name: string,
+      icon: string,
+      color: string
+    ) => {
+      if (!map.has(name)) {
+        const id = await createCategory({ name, type: "expense", icon, color });
+        map.set(name, { id, name, type: "expense", icon, color } as any);
+      }
+      return map.get(name)!;
+    };
+    const otherCat = await ensureCategory(
+      "Dự phòng",
+      "mc:lightbulb-on-outline",
+      "#7EC5E8"
+    );
+    needsAlloc.push({
+      categoryId: otherCat.id,
+      categoryName: "Dự phòng",
+      categoryIcon: "mc:lightbulb-on-outline",
+      categoryColor: "#7EC5E8",
+      groupType: "needs",
+      score: 0.2,
+      allocatedAmount: remain,
+      reason: "Khoản dự phòng từ phần còn lại",
+    });
+  }
+
+  return [...needsAlloc, ...wantsAlloc, ...savingsAlloc];
+}
 // ============ Helper Functions ============
 
 /**
@@ -986,11 +1117,25 @@ export async function generateSmartBudget(
     }
 
     // === PHASE 4: BUILD ALLOCATIONS ===
-    const allocated = await buildTemplateAllocations(
-      input.income,
-      ratio,
-      input.description
-    );
+    let allocated: CategoryScoring[];
+    if (
+      historicalData &&
+      historicalData.patterns &&
+      historicalData.patterns.length > 0
+    ) {
+      allocated = await buildHistoricalAllocations(
+        input.income,
+        ratio,
+        input.description,
+        historicalData.patterns
+      );
+    } else {
+      allocated = await buildTemplateAllocations(
+        input.income,
+        ratio,
+        input.description
+      );
+    }
 
     // === PHASE 5: CALCULATE DEVIATION ===
     let deviation = 0;

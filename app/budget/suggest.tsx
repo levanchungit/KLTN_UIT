@@ -579,28 +579,6 @@ export default function BudgetSuggestScreen() {
                   </Text>
                 </View>
               )}
-              {/* ML Model version badge */}
-              {mlModelUsed && modelVersion !== "none" && (
-                <View
-                  style={{
-                    marginLeft: 8,
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: 12,
-                    backgroundColor: "#E9D5FF",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: "600",
-                      color: "#9333EA",
-                    }}
-                  >
-                    v{modelVersion}
-                  </Text>
-                </View>
-              )}
             </View>
 
             <Text
