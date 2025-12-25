@@ -1,14 +1,5 @@
-// services/firestoreSync.ts
-// @ts-nocheck
-// Lightweight Firestore sync helpers for categories, transactions and accounts.
-// NOTE: This file expects the Firebase JS SDK (v9 modular) to be installed.
-// Install with: `npm install firebase` or `yarn add firebase`.
-
 import { db as _db } from "@/db";
 import { getCurrentUserId } from "@/utils/auth";
-// In this file we frequently pass nullable or mixed-typed params to the
-// local wrapper around SQLite bindings. For practicality we treat `db`
-// as `any` here to avoid repetitive casts in every call site.
 const db: any = _db;
 
 // Use lazy imports so the app won't crash if firebase isn't installed yet.
@@ -495,7 +486,7 @@ async function computeAccountBalances(userId: string) {
   }
 }
 
-/** Sync categories to Firestore under `users/{userId}/categories/{categoryId}` */
+/** Đồng bộ danh mục lên Firestore tại `users/{userId}/categories/{categoryId}` */
 export async function syncCategories(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
@@ -542,7 +533,7 @@ export async function syncCategories(userId?: string, since?: number) {
   await batch.commit();
 }
 
-/** Sync accounts to Firestore under `users/{userId}/accounts/{accountId}` */
+/** Đồng bộ tài khoản lên Firestore tại `users/{userId}/accounts/{accountId}` */
 export async function syncAccounts(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
@@ -589,7 +580,7 @@ export async function syncAccounts(userId?: string, since?: number) {
   await batch.commit();
 }
 
-/** Sync all transactions to Firestore under `users/{userId}/transactions/{txId}` */
+/** Đồng bộ tất cả giao dịch lên Firestore tại `users/{userId}/transactions/{txId}` */
 export async function syncTransactions(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
@@ -632,7 +623,7 @@ export async function syncTransactions(userId?: string, since?: number) {
   await batch.commit();
 }
 
-/** Sync budgets and budget_allocations to Firestore under `users/{userId}/budgets/{budgetId}` and `.../allocations/{allocId}` */
+/** Đồng bộ ngân sách và phân bổ lên Firestore tại `users/{userId}/budgets/{budgetId}` và `.../allocations/{allocId}` */
 export async function syncBudgets(userId?: string, since?: number) {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");
@@ -966,7 +957,7 @@ async function syncBudgetsPullAndPush(
   await batch.commit();
 }
 
-/** Convenience: sync all three collections */
+/** Tiện lợi: đồng bộ cả ba bộ sưu tập */
 export async function syncAllToFirestore(userId?: string): Promise<boolean> {
   const localUid = userId ?? (await getCurrentUserId());
   if (!localUid) throw new Error("No user logged in");

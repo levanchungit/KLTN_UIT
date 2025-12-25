@@ -1,4 +1,3 @@
-// app/setting/language.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons } from "@expo/vector-icons";

@@ -1,4 +1,3 @@
-// smartNotificationService.ts - Intelligent push notification system
 import { db, openDb } from "@/db";
 import { getCurrentUserId } from "@/utils/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";

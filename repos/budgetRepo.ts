@@ -1,4 +1,3 @@
-// budgetRepo.ts
 import { db, openDb } from "@/db";
 import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";
@@ -34,7 +33,7 @@ function genId(prefix: string) {
   return prefix + "_" + Math.random().toString(36).slice(2, 10);
 }
 
-/** ===== Budget CRUD ===== */
+/** ===== CRUD Ngân sách ===== */
 export async function createBudget(input: {
   name: string;
   totalIncome: number;
@@ -292,7 +291,7 @@ export async function updateBudget(input: {
   }
 }
 
-/** ===== Budget analysis ===== */
+/** ===== Phân tích ngân sách ===== */
 export async function computeBudgetProgress(
   budgetId: string,
   userId?: string
@@ -344,7 +343,7 @@ export async function computeBudgetProgress(
   return { budget, allocations: enhanced, totalAllocated, totalSpent };
 }
 
-/** ===== Active budget ===== */
+/** ===== Ngân sách đang hoạt động ===== */
 export async function getActiveBudget(
   userId?: string
 ): Promise<Budget | undefined> {

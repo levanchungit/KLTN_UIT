@@ -1,4 +1,3 @@
-// app/charts.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {

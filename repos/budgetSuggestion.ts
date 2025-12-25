@@ -1,4 +1,3 @@
-// budgetSuggestion.ts – ML-powered budget allocation suggestions
 import { createCategory, listCategories } from "./categoryRepo";
 import { categoryBreakdown } from "./transactionRepo";
 

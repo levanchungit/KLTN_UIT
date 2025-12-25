@@ -1,6 +1,3 @@
-// services/syncState.ts
-// Simple observable sync status store used by the UI and sync service.
-
 type Status = "idle" | "syncing" | "error";
 
 let state: {
@@ -22,7 +19,7 @@ export function getSyncState() {
 
 export function subscribe(fn: Listener) {
   listeners.add(fn);
-  // emit initial
+  // Phát ra trạng thái ban đầu
   fn(getSyncState());
   return () => listeners.delete(fn);
 }

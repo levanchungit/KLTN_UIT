@@ -1,4 +1,3 @@
-// utils/biometric.ts - Biometric authentication utility
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
@@ -6,7 +5,7 @@ import { Platform } from "react-native";
 const BIOMETRIC_ENABLED_KEY = "@biometric_enabled";
 
 /**
- * Check if device supports biometric authentication
+ * Kiểm tra thiết bị có hỗ trợ xác thực sinh trắc học hay không
  */
 export async function isBiometricSupported(): Promise<boolean> {
   try {
@@ -19,7 +18,7 @@ export async function isBiometricSupported(): Promise<boolean> {
 }
 
 /**
- * Get available biometric types (fingerprint, face, iris)
+ * Lấy loại sinh trắc học khả dụng (vân tay, khuôn mặt, mống mắt)
  */
 export async function getBiometricType(): Promise<string> {
   try {
@@ -39,7 +38,7 @@ export async function getBiometricType(): Promise<string> {
 }
 
 /**
- * Check if biometric lock is enabled by user
+ * Kiểm tra người dùng đã bật khoá sinh trắc học chưa
  */
 export async function isBiometricEnabled(): Promise<boolean> {
   try {
@@ -51,19 +50,19 @@ export async function isBiometricEnabled(): Promise<boolean> {
 }
 
 /**
- * Enable or disable biometric lock
+ * Bật/tắt khoá sinh trắc học
  */
 export async function setBiometricEnabled(enabled: boolean): Promise<void> {
   try {
     await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled.toString());
   } catch (err) {
-    console.error("Failed to save biometric preference:", err);
+    console.error("Lưu tuỳ chọn sinh trắc học thất bại:", err);
   }
 }
 
 /**
- * Authenticate user with biometrics
- * Returns { success: boolean, cancelled: boolean }
+ * Xác thực người dùng bằng sinh trắc học
+ * Trả về { success: boolean, cancelled: boolean }
  */
 export async function authenticateWithBiometric(
   promptMessage?: string
@@ -81,14 +80,14 @@ export async function authenticateWithBiometric(
       cancelled: !result.success && result.error === "user_cancel",
     };
   } catch (err) {
-    console.error("Biometric authentication error:", err);
+    console.error("Lỗi xác thực sinh trắc học:", err);
     return { success: false, cancelled: false };
   }
 }
 
 /**
- * Request biometric unlock if enabled
- * Returns { success: boolean, cancelled: boolean }
+ * Yêu cầu mở khoá sinh trắc học nếu đã bật
+ * Trả về { success: boolean, cancelled: boolean }
  */
 export async function requestBiometricUnlock(
   promptMessage?: string
@@ -96,15 +95,15 @@ export async function requestBiometricUnlock(
   const enabled = await isBiometricEnabled();
 
   if (!enabled) {
-    return { success: false, cancelled: false }; // Require biometric if not enabled? Wait, no, if not enabled, allow
-    // Wait, user wants to require biometric, so if not enabled, fail
+    // Yêu cầu sinh trắc học: nếu chưa bật thì thất bại
+    return { success: false, cancelled: false };
   }
 
   const supported = await isBiometricSupported();
 
   if (!supported) {
-    console.warn("Biometric not supported");
-    return { success: false, cancelled: false }; // Fail if not supported
+    console.warn("Thiết bị không hỗ trợ sinh trắc học");
+    return { success: false, cancelled: false }; // Thất bại nếu không hỗ trợ
   }
 
   return await authenticateWithBiometric(promptMessage);

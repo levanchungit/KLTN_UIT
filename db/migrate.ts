@@ -1,4 +1,3 @@
-// migrate.ts
 import type { SQLiteDatabase } from "expo-sqlite";
 
 const initSQL = `
@@ -164,10 +163,10 @@ export async function runMigrations(db: SQLiteDatabase) {
   // 1) Tạo bảng/cấu trúc cơ bản
   await db.execAsync(initSQL);
 
-  // 2) No local_user mode: the app requires authenticated users. Do not
-  // create a default 'local_user' account automatically.
+  // 2) Không dùng chế độ local_user: ứng dụng yêu cầu người dùng đã xác thực.
+  // Không tạo tài khoản 'local_user' mặc định một cách tự động.
 
-  // Keep u_demo for backward compatibility
+  // Giữ u_demo để đảm bảo tương thích ngược
   const demoUser = await db.getFirstAsync<{ id: string }>(
     `SELECT id FROM users WHERE id=?`,
     ["u_demo"]

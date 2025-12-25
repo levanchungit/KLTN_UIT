@@ -1,9 +1,3 @@
-/**
- * PhoBERT-based Amount Extractor
- * Few-shot learning for Vietnamese amount extraction
- * Uses lightweight model (~40MB) for offline capability
- */
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-react-native";
@@ -21,12 +15,12 @@ class PhoBERTAmountExtractor {
   private vocabMap: Map<string, number> = new Map();
   private isInitialized: boolean = false;
   private labelMap: Map<number, string> = new Map([
-    [0, "O"], // Other
-    [1, "B-AMT"], // Begin Amount
-    [2, "I-AMT"], // Inside Amount
+    [0, "O"], // Khác
+    [1, "B-AMT"], // Bắt đầu số tiền
+    [2, "I-AMT"], // Bên trong số tiền
   ]);
 
-  // Few-shot examples for context
+  // Ví dụ few-shot để tạo ngữ cảnh
   private fewShotExamples = [
     { text: "Chi tiền điện 450k", amount: 450000 },
     { text: "Mua cafe 45 nghìn", amount: 45000 },
@@ -37,16 +31,16 @@ class PhoBERTAmountExtractor {
   ];
 
   /**
-   * Initialize the model
+   * Khởi tạo mô hình
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
-      // Initialize TensorFlow
+      // Khởi tạo TensorFlow
       await tf.ready();
 
-      // Try to load existing model
+      // Thử tải mô hình đã tồn tại
       try {
         const modelJson = await AsyncStorage.getItem("phobert_amount_model");
         const vocabJson = await AsyncStorage.getItem("phobert_vocab");

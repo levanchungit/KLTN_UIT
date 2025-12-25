@@ -1,4 +1,3 @@
-// categoryRepo.ts
 import { openDb } from "@/db";
 import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";
@@ -298,7 +297,7 @@ export async function seedCategoryDefaults() {
   }
 }
 
-/** Ensure demo budget categories exist with proper icons/colors */
+/** Đảm bảo danh mục ngân sách demo tồn tại với biểu tượng/màu sắc phù hợp */
 export async function ensureDemoBudgetCategories() {
   const base: Array<{
     name: string;

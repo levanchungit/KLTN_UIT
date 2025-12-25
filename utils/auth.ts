@@ -1,8 +1,8 @@
-// utils/auth.ts
+// utils/auth.ts - Tiện ích xác thực
 import { loadSession } from "@/context/session";
 
 /**
- * Get the current user's ID. Throws if no user is logged in.
+ * Lấy ID người dùng hiện tại. Ném lỗi nếu chưa đăng nhập.
  */
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await loadSession();
@@ -10,7 +10,7 @@ export async function getCurrentUserId(): Promise<string | null> {
 }
 
 /**
- * Check if user is logged in with an account
+ * Kiểm tra người dùng đã đăng nhập bằng tài khoản chưa
  */
 export async function isUserLoggedIn(): Promise<boolean> {
   const session = await loadSession();
@@ -18,7 +18,7 @@ export async function isUserLoggedIn(): Promise<boolean> {
 }
 
 /**
- * Get user ID or throw error if not logged in
+ * Lấy ID người dùng hoặc ném lỗi nếu chưa đăng nhập
  */
 export async function requireUserId(): Promise<string> {
   const userId = await getCurrentUserId();
@@ -27,10 +27,10 @@ export async function requireUserId(): Promise<string> {
 }
 
 /**
- * Initialize local user session if no session exists
+ * Khởi tạo phiên người dùng cục bộ nếu chưa có (đã bỏ hỗ trợ)
  */
-// Note: local_user support removed. The app requires a signed-in user to operate.
+// Lưu ý: đã bỏ chế độ local_user. Ứng dụng yêu cầu người dùng đã đăng nhập.
 export async function ensureLocalUser(): Promise<void> {
-  // No-op kept for compatibility — previously created local user concept removed.
+  // Không làm gì (giữ tương thích) — khái niệm local user đã bị loại bỏ.
   return;
 }

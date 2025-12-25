@@ -1,4 +1,3 @@
-// components/AIBotIcon.tsx
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 import Svg, {
@@ -10,13 +9,13 @@ import Svg, {
 } from "react-native-svg";
 
 export default function AIBotIcon({ size = 40 }: { size?: number }) {
-  // Animation values
+  // Giá trị animation
   const sparkleAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Sparkle animation
+    // Hiệu ứng lấp lánh
     Animated.loop(
       Animated.sequence([
         Animated.timing(sparkleAnim, {
@@ -34,7 +33,7 @@ export default function AIBotIcon({ size = 40 }: { size?: number }) {
       ])
     ).start();
 
-    // Rotate animation
+    // Hiệu ứng xoay
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -44,7 +43,7 @@ export default function AIBotIcon({ size = 40 }: { size?: number }) {
       })
     ).start();
 
-    // Pulse animation
+    // Hiệu ứng nhịp (phóng to/thu nhỏ)
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -81,7 +80,7 @@ export default function AIBotIcon({ size = 40 }: { size?: number }) {
         transform: [{ scale: pulseAnim }],
       }}
     >
-      {/* Background rotating gradient glow */}
+      {/* Nền phát sáng với gradient xoay */}
       <Animated.View
         style={{
           position: "absolute",
@@ -108,56 +107,56 @@ export default function AIBotIcon({ size = 40 }: { size?: number }) {
         </Svg>
       </Animated.View>
 
-      {/* Main Gemini-style star icon */}
+      {/* Biểu tượng ngôi sao phong cách Gemini */}
       <Svg width={size} height={size} viewBox="0 0 48 48">
         <Defs>
-          {/* Blue gradient */}
+          {/* Gradient xanh dương */}
           <LinearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#4285F4" stopOpacity="1" />
             <Stop offset="100%" stopColor="#1967D2" stopOpacity="1" />
           </LinearGradient>
-          {/* Red gradient */}
+          {/* Gradient đỏ */}
           <LinearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#EA4335" stopOpacity="1" />
             <Stop offset="100%" stopColor="#C5221F" stopOpacity="1" />
           </LinearGradient>
-          {/* Yellow gradient */}
+          {/* Gradient vàng */}
           <LinearGradient id="yellowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#FBBC04" stopOpacity="1" />
             <Stop offset="100%" stopColor="#F9AB00" stopOpacity="1" />
           </LinearGradient>
-          {/* Green gradient */}
+          {/* Gradient xanh lá */}
           <LinearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#34A853" stopOpacity="1" />
             <Stop offset="100%" stopColor="#0F9D58" stopOpacity="1" />
           </LinearGradient>
         </Defs>
 
-        {/* Gemini star shape - 4 pointed star with Google colors */}
-        {/* Top point - Blue */}
+        {/* Hình ngôi sao Gemini - 4 đỉnh với màu Google */}
+        {/* Đỉnh trên - Xanh dương */}
         <Path d="M 24 6 L 28 20 L 24 22 L 20 20 Z" fill="url(#blueGrad)" />
 
-        {/* Right point - Red */}
+        {/* Đỉnh phải - Đỏ */}
         <Path d="M 42 24 L 28 28 L 26 24 L 28 20 Z" fill="url(#redGrad)" />
 
-        {/* Bottom point - Yellow */}
+        {/* Đỉnh dưới - Vàng */}
         <Path d="M 24 42 L 20 28 L 24 26 L 28 28 Z" fill="url(#yellowGrad)" />
 
-        {/* Left point - Green */}
+        {/* Đỉnh trái - Xanh lá */}
         <Path d="M 6 24 L 20 20 L 22 24 L 20 28 Z" fill="url(#greenGrad)" />
 
-        {/* Center star core - bright gradient */}
+        {/* Lõi ngôi sao ở giữa - gradient sáng */}
         <Path
           d="M 24 18 L 26 22 L 30 24 L 26 26 L 24 30 L 22 26 L 18 24 L 22 22 Z"
           fill="#FFFFFF"
           opacity="0.95"
         />
 
-        {/* Inner accent */}
+        {/* Điểm nhấn bên trong */}
         <Circle cx="24" cy="24" r="3" fill="url(#blueGrad)" opacity="0.8" />
       </Svg>
 
-      {/* Animated sparkles */}
+      {/* Hiệu ứng lấp lánh động */}
       <Animated.View
         style={{
           position: "absolute",
@@ -167,22 +166,22 @@ export default function AIBotIcon({ size = 40 }: { size?: number }) {
         }}
       >
         <Svg width={size} height={size} viewBox="0 0 48 48">
-          {/* Sparkle top-right */}
+          {/* Lấp lánh góc trên bên phải */}
           <Path
             d="M 36 8 L 37 10 L 39 11 L 37 12 L 36 14 L 35 12 L 33 11 L 35 10 Z"
             fill="#FBBC04"
           />
-          {/* Sparkle bottom-left */}
+          {/* Lấp lánh góc dưới bên trái */}
           <Path
             d="M 12 40 L 13 42 L 15 43 L 13 44 L 12 46 L 11 44 L 9 43 L 11 42 Z"
             fill="#34A853"
           />
-          {/* Sparkle top-left */}
+          {/* Lấp lánh góc trên bên trái */}
           <Path
             d="M 8 12 L 9 13.5 L 10.5 14.5 L 9 15.5 L 8 17 L 7 15.5 L 5.5 14.5 L 7 13.5 Z"
             fill="#4285F4"
           />
-          {/* Sparkle bottom-right */}
+          {/* Lấp lánh góc dưới bên phải */}
           <Path
             d="M 40 36 L 41 37.5 L 42.5 38.5 L 41 39.5 L 40 41 L 39 39.5 L 37.5 38.5 L 39 37.5 Z"
             fill="#EA4335"

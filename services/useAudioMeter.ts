@@ -21,7 +21,7 @@ export default function useAudioMeter(): UseAudioMeter {
 
   useEffect(() => {
     return () => {
-      // cleanup
+      // Dọn dẹp
       stop().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,13 +35,13 @@ export default function useAudioMeter(): UseAudioMeter {
         playsInSilentModeIOS: true,
       });
 
-      // Ensure Recording class is available. Some runtimes / adapters may not
-      // expose `Audio.Recording` directly — try to resolve a Recording class
-      // from common locations and fail gracefully with a helpful message.
+      // Đảm bảo lớp Recording khả dụng. Một số runtime/adapter có thể không
+      // cung cấp trực tiếp `Audio.Recording` — thử tìm lớp Recording ở các vị trí
+      // phổ biến và thất bại một cách nhẹ nhàng với thông báo hữu ích.
       let RecordingClass: any = Audio && Audio.Recording;
       if (!RecordingClass) {
         try {
-          // Try expo-av directly as a fallback
+          // Thử dùng expo-av trực tiếp như phương án dự phòng
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const av = require("expo-av");
           RecordingClass =
@@ -70,10 +70,10 @@ export default function useAudioMeter(): UseAudioMeter {
 
       await recording.prepareToRecordAsync(recordingOptions);
 
-      // set a status update to read metering when available
+      // Thiết lập cập nhật trạng thái để đọc mức âm lượng khi khả dụng
       recording.setOnRecordingStatusUpdate((status: any) => {
-        // status may contain metering info on some platforms (iOS)
-        // try multiple possible fields; fallback to a small animated value
+        // Trên một số nền tảng (iOS), status có thể chứa thông tin đo mức âm.
+        // Thử nhiều trường có thể có; nếu không có thì dùng giá trị giả lập nhỏ có animation.
         let db: number | null = null;
         if (status && typeof status === "object") {
           if (status.metering && typeof status.metering === "object") {
@@ -89,16 +89,16 @@ export default function useAudioMeter(): UseAudioMeter {
         }
 
         if (db == null) {
-          // fallback: more reactive pseudo value (spikes + smoothing)
+          // Phương án dự phòng: giá trị giả lập phản ứng nhanh (đỉnh + làm mượt)
           const t = (status?.durationMillis || 0) / 1000;
           const spike = Math.random() * 0.4; // smaller occasional spikes
           const base = 0.04 + 0.08 * Math.abs(Math.sin(t * 2.0));
           const pseudo = Math.min(1, base + spike);
 
-          // stronger smoothing for a steady meter
+          // Làm mượt mạnh hơn để đồng hồ ổn định
           setLevel((l) => {
             const next = l * 0.85 + pseudo * 0.15;
-            // animate meter towards next for smooth visuals
+            // Animate đồng hồ tiến về giá trị tiếp theo để hiển thị mượt mà
             try {
               animRef.current?.stop?.();
             } catch {}
@@ -116,7 +116,7 @@ export default function useAudioMeter(): UseAudioMeter {
           return;
         }
 
-        // db usually negative (e.g., -160..0). Normalize to 0..1
+        // db thường là số âm (ví dụ -160..0). Chuẩn hoá về 0..1
         const normalized = Math.max(0, Math.min(1, (db + 160) / 160));
         setLevel((l) => {
           const next = Math.max(0, Math.min(1, l * 0.9 + normalized * 0.1));
@@ -173,7 +173,7 @@ export default function useAudioMeter(): UseAudioMeter {
         setRecordingUri(uri);
       } catch {}
 
-      // Ensure we always clear internal refs/state even if stop failed
+      // Đảm bảo luôn xoá ref/trạng thái nội bộ kể cả khi dừng thất bại
       recordingRef.current = null;
       setIsRecording(false);
       setLevel(0);

@@ -1,8 +1,3 @@
-/**
- * Text Preprocessing for Vietnamese Transaction Notes
- * Chuyển đổi text thành vectors để train model
- */
-
 // Danh sách stopwords tiếng Việt (các từ không mang nhiều ý nghĩa)
 const VIETNAMESE_STOPWORDS = [
   "và",
@@ -36,24 +31,24 @@ const VIETNAMESE_STOPWORDS = [
   "ngoài",
 ];
 
-// Money pattern for extraction - more precise to avoid over-matching
-// Valid formats: "500k", "1 triệu 2", "4tr8", "750.000 đồng", "5tr873"
-// Invalid (too complex): "5tr873k387d" - let AI handle these
+// Mẫu nhận diện số tiền — chính xác hơn để tránh khớp sai
+// Định dạng hợp lệ: "500k", "1 triệu 2", "4tr8", "750.000 đồng", "5tr873"
+// Không hợp lệ (quá phức tạp): "5tr873k387d" — để AI xử lý
 const MONEY_PATTERN =
   /\d+(?:[.,]\d{3})*\s*(?:k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|đồng|dong|đ|d|vnd|vnđ)(?:\s*\d{1,3})?(?!\d)/gi;
 
-// Patterns to remove from text before classification
+// Các mẫu cần loại bỏ khỏi văn bản trước khi phân loại
 const NOISE_PATTERNS = [
-  // Numbers with units (money, time, etc.)
+  // Số kèm đơn vị (tiền, thời gian, v.v.)
   MONEY_PATTERN,
-  // Plain numbers
+  // Số đơn thuần
   /\b\d+[.,]?\d*\b/g,
-  // Date/time patterns
+  // Mẫu ngày/giờ
   /tháng\s*\d+/gi,
   /ngày\s*\d+/gi,
   /\/\d+\/\d+/g,
   /\d+\/\d+/g,
-  // Generic noise words for transactions
+  // Từ nhiễu phổ biến trong giao dịch
   /\btháng\b/gi,
   /\bngày\b/gi,
   /\bnăm\b/gi,
@@ -80,22 +75,22 @@ export function parseTransactionText(text: string): {
   // Clean the note by removing amount and other noise
   let note = text;
 
-  // Remove money amounts
+  // Loại bỏ các mẫu số tiền
   note = note.replace(MONEY_PATTERN, " ");
 
-  // Remove dates
+  // Loại bỏ ngày tháng
   note = note.replace(/tháng\s*\d+/gi, " ");
   note = note.replace(/ngày\s*\d+/gi, " ");
   note = note.replace(/\/\d+\/\d+/g, " ");
   note = note.replace(/\d+\/\d+/g, " ");
 
-  // Remove standalone numbers
+  // Loại bỏ số đứng riêng lẻ
   note = note.replace(/\b\d+[.,]?\d*\b/g, " ");
 
-  // Remove time keywords if standalone
+  // Loại bỏ từ khoá thời gian nếu đứng riêng
   note = note.replace(/\s+(tháng|ngày|năm)\s+/gi, " ");
 
-  // Clean up spaces
+  // Làm sạch khoảng trắng
   note = note.replace(/\s+/g, " ").trim();
 
   return { amount, note };
@@ -111,13 +106,13 @@ export function parseAmountVN(text: string): number | null {
   const cleaned = text.toLowerCase().trim();
   console.log(`🔍 parseAmountVN input: "${text}" → cleaned: "${cleaned}"`);
 
-  // PRIORITY 1: Handle formatted numbers with thousand separators (e.g., "750.000", "1,500,000")
+  // ƯU TIÊN 1: Xử lý số đã định dạng với dấu phân tách hàng nghìn (vd: "750.000", "1,500,000")
   // This must come BEFORE unit-based parsing to avoid confusion
   const formattedMatch = cleaned.match(
     /(\d{1,3}(?:[.,]\d{3})+)(?:\s*(?:đồng|dong|đ|d|vnd|vnđ))?/i
   );
   if (formattedMatch) {
-    const numStr = formattedMatch[1].replace(/[.,]/g, ""); // Remove all separators
+    const numStr = formattedMatch[1].replace(/[.,]/g, ""); // Loại bỏ tất cả dấu phân tách
     const n = parseInt(numStr, 10);
     if (!isNaN(n) && n >= 1000) {
       // Only apply if it's a reasonable amount with separators
@@ -126,9 +121,9 @@ export function parseAmountVN(text: string): number | null {
     }
   }
 
-  // PRIORITY 2: Vietnamese shorthand formats
+  // ƯU TIÊN 2: Định dạng viết tắt tiếng Việt
 
-  // Format 0: Complex format "8tr354k238d" = 8,354,238 (8M + 354k + 238)
+  // Định dạng 0: phức tạp "8tr354k238d" = 8.354.238 (8 triệu + 354 nghìn + 238)
   const complexFullMatch = cleaned.match(
     /(\d+)tr(\d+)k(\d+)(?:đ|d|dong|đồng)?/i
   );
@@ -141,7 +136,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // Format 0.5: "8tr476k" = 8,476,000 (8M + 476k)
+  // Định dạng 0.5: "8tr476k" = 8.476.000 (8 triệu + 476 nghìn)
   const trKFormat2 = cleaned.match(/(\d+)tr(\d+)k(?![\d])/i);
   if (trKFormat2) {
     const millions = parseInt(trKFormat2[1], 10);
@@ -151,8 +146,8 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // Format A: "5tr873" = 5,873,000 (5 million 873 thousand)
-  // Format A2: "4tr8" = 4,800,000 (4 million 8 hundred thousand)
+  // Định dạng A: "5tr873" = 5.873.000 (5 triệu 873 nghìn)
+  // Định dạng A2: "4tr8" = 4.800.000 (4 triệu 8 trăm nghìn)
   // NOT "5 triệu 873" with space (that's handled separately)
   const trKFormat = cleaned.match(/(\d+)tr(\d+)(?!k)/i);
   if (trKFormat) {
@@ -161,12 +156,12 @@ export function parseAmountVN(text: string): number | null {
 
     let result: number;
     if (extra < 10) {
-      // Single digit after "tr" = hundreds of thousands
-      // "4tr8" = 4,800,000 (4 million + 800 thousand)
+      // Một chữ số sau "tr" = hàng trăm nghìn
+      // "4tr8" = 4.800.000 (4 triệu + 800 nghìn)
       result = millions * 1000000 + extra * 100000;
     } else {
-      // Multiple digits = exact thousands
-      // "5tr873" = 5,873,000 (5 million + 873 thousand)
+      // Nhiều chữ số = số nghìn chính xác
+      // "5tr873" = 5.873.000 (5 triệu + 873 nghìn)
       result = millions * 1000000 + extra * 1000;
     }
 
@@ -174,7 +169,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // Format B: "1 triệu 2" with SPACE = 1,200,000 (1 million + 2 hundred thousand)
+  // Định dạng B: "1 triệu 2" có khoảng trắng = 1.200.000 (1 triệu + 2 trăm nghìn)
   const spacedTrieuMatch = cleaned.match(
     /(\d+)\s+(triệu|trieu|m)\s+(\d+)(?!\d)/i
   );
@@ -187,7 +182,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // Format C: "4tr8k" = 4,800,000 (4 million 8 hundred thousand)
+  // Định dạng C: "4tr8k" = 4.800.000 (4 triệu 8 trăm nghìn)
   const trWithK = cleaned.match(/(\d+)tr(\d+)k/i);
   if (trWithK) {
     const millions = parseInt(trWithK[1], 10);
@@ -198,7 +193,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // Format D: "847k948" = 847,948
+  // Định dạng D: "847k948" = 847.948
   const complexMatch2 = cleaned.match(/(\d+)k(\d+)/i);
   if (complexMatch2) {
     const thousands = parseInt(complexMatch2[1], 10);
@@ -209,7 +204,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // PRIORITY 3: Numbers with units (75k, 500k, 2tr, 750000đ)
+  // ƯU TIÊN 3: Số kèm đơn vị (75k, 500k, 2tr, 750000đ)
   // Match: number + unit (k/tr/đ/etc)
   const unitMatch = cleaned.match(
     /(\d+(?:[.,]\d+)?)\s*([kdđ]|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|dong|đồng|vnd|vnđ)/i
@@ -251,7 +246,7 @@ export function parseAmountVN(text: string): number | null {
     return result;
   }
 
-  // PRIORITY 4: Plain numbers without units (last resort)
+  // ƯU TIÊN 4: Số thuần không có đơn vị (phương án cuối)
   const plainMatch = cleaned.match(/^(\d+(?:[.,]\d+)?)$/);
   if (plainMatch) {
     const numStr = plainMatch[1].replace(/[.,]/g, "");
@@ -273,48 +268,48 @@ export function parseAmountVN(text: string): number | null {
 export function cleanTransactionText(text: string): string {
   let cleaned = text;
 
-  // Remove noise patterns
+  // Loại bỏ các mẫu nhiễu
   NOISE_PATTERNS.forEach((pattern) => {
     cleaned = cleaned.replace(pattern, " ");
   });
 
-  // Remove extra spaces
+  // Loại bỏ khoảng trắng thừa
   cleaned = cleaned.replace(/\s+/g, " ").trim();
 
   return cleaned;
 }
 
-// Normalize Vietnamese text
+// Chuẩn hoá văn bản tiếng Việt
 export function normalizeVietnameseText(text: string): string {
   return (
     text
       .toLowerCase()
       .trim()
-      // Remove special characters but keep Vietnamese characters
+      // Loại ký tự đặc biệt nhưng giữ lại ký tự tiếng Việt
       .replace(
         /[^\w\sáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]/gi,
         " "
       )
-      // Remove extra spaces
+      // Loại bỏ khoảng trắng thừa
       .replace(/\s+/g, " ")
       .trim()
   );
 }
 
-// Tokenize text into words
+// Token hoá văn bản thành các từ
 export function tokenize(text: string): string[] {
-  // First clean the text to remove noise
+  // Trước tiên làm sạch văn bản để loại bỏ nhiễu
   const cleaned = cleanTransactionText(text);
   const normalized = normalizeVietnameseText(cleaned);
   return normalized.split(" ").filter((word) => word.length > 0);
 }
 
-// Remove stopwords
+// Loại bỏ stopwords
 export function removeStopwords(tokens: string[]): string[] {
   return tokens.filter((token) => !VIETNAMESE_STOPWORDS.includes(token));
 }
 
-// Build vocabulary from training data
+// Xây dựng từ vựng từ dữ liệu huấn luyện
 export function buildVocabulary(
   texts: string[],
   minFrequency = 2
@@ -363,7 +358,7 @@ export function textToVector(
   return vector;
 }
 
-// Calculate TF-IDF (Term Frequency - Inverse Document Frequency)
+// Tính TF-IDF (Term Frequency - Inverse Document Frequency)
 export function calculateTFIDF(
   texts: string[],
   vocabulary: Map<string, number>
@@ -371,7 +366,7 @@ export function calculateTFIDF(
   const numDocs = texts.length;
   const vocabSize = vocabulary.size;
 
-  // Calculate document frequency for each word
+  // Tính tần suất tài liệu cho mỗi từ
   const docFrequency = new Array(vocabSize).fill(0);
 
   texts.forEach((text) => {
@@ -384,7 +379,7 @@ export function calculateTFIDF(
     });
   });
 
-  // Calculate TF-IDF vectors
+  // Tính vector TF-IDF
   return texts.map((text) => {
     const tfVector = textToVector(text, vocabulary);
 
@@ -397,14 +392,14 @@ export function calculateTFIDF(
   });
 }
 
-// Normalize vector (L2 normalization)
+// Chuẩn hoá vector (chuẩn L2)
 export function normalizeVector(vector: number[]): number[] {
   const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
   if (magnitude === 0) return vector;
   return vector.map((val) => val / magnitude);
 }
 
-// Extract features from transaction note
+// Trích đặc trưng từ ghi chú giao dịch
 export function extractFeatures(note: string): {
   tokens: string[];
   wordCount: number;
@@ -421,7 +416,7 @@ export function extractFeatures(note: string): {
   };
 }
 
-// Similarity between two texts (Cosine similarity)
+// Độ tương tự giữa hai văn bản (Cosine similarity)
 export function cosineSimilarity(vec1: number[], vec2: number[]): number {
   if (vec1.length !== vec2.length) return 0;
 

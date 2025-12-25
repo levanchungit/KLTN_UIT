@@ -1,16 +1,3 @@
-/**
- * TensorFlow-based Transaction Parser
- * Locally parses Vietnamese transaction text without API calls
- *
- * Features:
- * - Amount extraction with Vietnamese formats (5tr873, 60k, etc.)
- * - Action type detection (CREATE_TRANSACTION, CHAT, VIEW_STATS, etc.)
- * - Category classification from user's categories
- * - Date parsing (hôm nay, hôm qua, DD/MM/YYYY)
- * - IO type detection (IN/OUT)
- * - On-device processing, no API needed
- */
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-react-native";
@@ -64,23 +51,23 @@ class TensorFlowTransactionParser {
     try {
       console.log("🔧 Initializing TensorFlow...");
 
-      // Initialize TensorFlow for React Native
+      // Khởi tạo TensorFlow cho React Native
       await tf.ready();
       console.log("✅ TensorFlow ready");
 
-      // Try to load existing model
+      // Thử tải mô hình đã tồn tại
       try {
         const modelJson = await AsyncStorage.getItem("tf_transaction_model");
         const vocabJson = await AsyncStorage.getItem("tf_vocab");
 
         if (modelJson && vocabJson) {
-          // Load model from storage
+          // Tải mô hình từ bộ nhớ
           const modelData = JSON.parse(modelJson);
           this.model = await tf.loadLayersModel(tf.io.fromMemory(modelData));
           this.vocab = new Map(JSON.parse(vocabJson));
           console.log("✅ Loaded existing TF model from storage");
         } else {
-          // Create new model
+          // Tạo mô hình mới
           await this.createModel();
           console.log("✅ Created new TF model");
         }
@@ -97,11 +84,11 @@ class TensorFlowTransactionParser {
   }
 
   /**
-   * Create a new neural network model for text classification
+   * Tạo mô hình mạng nơ-ron mới để phân loại văn bản
    */
   private async createModel(): Promise<void> {
-    // Simple text classification model
-    // Input: tokenized text → Embedding → LSTM → Dense → Output
+    // Mô hình phân loại văn bản đơn giản
+    // Đầu vào: văn bản đã token hóa → Embedding → LSTM → Dense → Output
     this.model = tf.sequential({
       layers: [
         tf.layers.embedding({
@@ -133,41 +120,41 @@ class TensorFlowTransactionParser {
   }
 
   /**
-   * Parse transaction text locally without API
+   * Phân tích văn bản giao dịch cục bộ, không cần API
    */
   async parseTransaction(
     text: string,
     userCategories: Category[]
   ): Promise<ParsedTransaction | null> {
     try {
-      // Skip TensorFlow initialization for now, use rule-based parsing only
-      // This avoids issues with TF setup on first run
+      // Tạm bỏ khởi tạo TensorFlow, chỉ dùng phân tích theo luật
+      // Tránh lỗi thiết lập TF ở lần chạy đầu tiên
       console.log("🔍 Parsing text locally (rule-based):", text);
 
-      // Step 1: Detect action type
+      // Bước 1: Nhận diện loại hành động
       const action = this.detectActionType(text);
       console.log("📋 Action type:", action);
 
-      // Step 2: Parse amount with hybrid approach (PhoBERT + fallback)
+      // Bước 2: Phân tích số tiền bằng cách kết hợp (PhoBERT + dự phòng)
       const amount =
         action === "CREATE_TRANSACTION"
           ? await this.parseAmountHybrid(text)
           : null;
       console.log("💰 Amount:", amount);
 
-      // Step 3: Detect IO type
+      // Bước 3: Nhận diện luồng tiền (IN/OUT)
       const io = this.detectIOType(text);
       console.log("📊 IO type:", io);
 
-      // Step 4: Parse date
+      // Bước 4: Phân tích ngày
       const date = this.parseDate(text);
       console.log("📅 Date:", date);
 
-      // Step 5: Extract note (remove amount and date)
+      // Bước 5: Trích ghi chú (loại bỏ số tiền và ngày)
       const note = this.extractNote(text, amount);
       console.log("📝 Note:", note);
 
-      // Step 6: Classify category with confidence + alternatives
+      // Bước 6: Phân loại danh mục kèm độ tin cậy + lựa chọn thay thế
       const { primary, alternatives } = await this.classifyCategory(
         note,
         userCategories,
@@ -185,7 +172,7 @@ class TensorFlowTransactionParser {
         );
       }
 
-      // Step 7: Generate message
+      // Bước 7: Tạo thông điệp
       const primaryCategory = userCategories.find(
         (c) => c.id === primary.categoryId
       );

@@ -1,4 +1,3 @@
-// accountRepo.ts
 import { openDb } from "@/db";
 import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { getCurrentUserId } from "@/utils/auth";

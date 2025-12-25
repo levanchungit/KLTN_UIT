@@ -1,4 +1,3 @@
-// app/category-detail.tsx
 import { useI18n } from "@/i18n/I18nProvider";
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";

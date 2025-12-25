@@ -1,4 +1,3 @@
-// app/setting/account.tsx
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";

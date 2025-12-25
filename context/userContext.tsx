@@ -1,4 +1,3 @@
-// src/userContext.tsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { NativeModules } from "react-native";
 import { clearSession, loadSession, saveSession, UserSession } from "./session";

@@ -1,21 +1,18 @@
-// services/syncTrigger.ts
-// Debounced sync trigger to avoid excessive sync calls after many repo writes.
-
 const timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-// Simple counters for observability/optimization
+// Bộ đếm đơn giản để quan sát/tối ưu hoá
 const stats = {
   coalescedCalls: 0,
   scheduledCalls: 0,
   immediateCalls: 0,
 };
-const DEFAULT_DELAY_MS = 4000; // 4 seconds debounce
+const DEFAULT_DELAY_MS = 4000; // Trì hoãn 4 giây
 const lastSyncTs: Map<string, number> = new Map();
 const retryCounts: Map<string, number> = new Map();
-const MIN_INTERVAL_MS = 15_000; // don't perform sync more often than every 15s per user
+const MIN_INTERVAL_MS = 15_000; // Không đồng bộ thường hơn 15 giây cho mỗi người dùng
 
 /**
- * Schedule a debounced sync for a specific user (or current user if not provided).
- * Multiple calls within the debounce window will coalesce into a single sync.
+ * Lên lịch đồng bộ có trì hoãn cho một người dùng (hoặc người dùng hiện tại nếu không truyền).
+ * Nhiều lời gọi trong cùng cửa sổ trì hoãn sẽ gộp thành một lần đồng bộ.
  */
 export function scheduleSyncDebounced(
   userId?: string,
@@ -24,7 +21,7 @@ export function scheduleSyncDebounced(
   const key = userId ?? "__global";
   const existing = timers.get(key);
   if (existing) {
-    // existing pending timer -> this call will be coalesced
+    // Đã có timer chờ -> lời gọi này sẽ được gộp
     stats.coalescedCalls++;
     clearTimeout(existing);
   }
@@ -33,18 +30,18 @@ export function scheduleSyncDebounced(
     stats.scheduledCalls++;
     timers.delete(key);
     try {
-      // Rate limit: if last sync was recent, schedule a short-delay instead of running now
+      // Giới hạn tốc độ: nếu lần đồng bộ gần đây, lên lịch trì hoãn ngắn thay vì chạy ngay
       const last = lastSyncTs.get(key) ?? 0;
       const elapsed = Date.now() - last;
       if (elapsed < MIN_INTERVAL_MS) {
-        // schedule to run after remaining time
+        // Lên lịch chạy sau thời gian còn lại
         const remaining = MIN_INTERVAL_MS - elapsed + 1000;
         scheduleSyncDebounced(userId, Math.max(1000, remaining));
         return;
       }
 
-      // Try to detect offline state (best-effort). If NetInfo is available, use it.
-      // Be defensive: handle default export, missing native module, and call failures.
+      // Cố gắng phát hiện trạng thái offline (best-effort). Nếu có NetInfo thì dùng.
+      // Lập trình phòng thủ: xử lý default export, thiếu module native, và lỗi gọi hàm.
       let online = true;
       try {
         const netMod = await import("@react-native-community/netinfo");
@@ -52,7 +49,7 @@ export function scheduleSyncDebounced(
         const fetchFn = NetInfo && (NetInfo.fetch || NetInfo.getCurrentState);
         if (typeof fetchFn === "function") {
           try {
-            // Call the available API and guard against native errors
+            // Gọi API sẵn có và phòng tránh lỗi native
             const state = await fetchFn.call(NetInfo);
             online = !!(state && state.isConnected);
           } catch (callErr) {
@@ -60,15 +57,15 @@ export function scheduleSyncDebounced(
               "NetInfo available but fetch/getCurrentState failed:",
               callErr
             );
-            // If NetInfo is broken (native module missing), assume online to avoid crashes
+            // Nếu NetInfo lỗi (thiếu module native), giả định online để tránh crash
             online = true;
           }
         }
       } catch (e) {
-        // netinfo not installed or import failed; assume online
+        // NetInfo chưa cài hoặc import thất bại; giả định online
       }
       if (!online) {
-        // schedule retry with backoff
+        // Lên lịch thử lại với backoff lũy tiến
         const rc = (retryCounts.get(key) ?? 0) + 1;
         retryCounts.set(key, rc);
         const backoff = Math.min(60_000, 1000 * Math.pow(2, rc));
@@ -76,7 +73,7 @@ export function scheduleSyncDebounced(
         return;
       }
 
-      // Check Firebase sign-in before attempting sync to avoid repeated skips.
+      // Kiểm tra đăng nhập Firebase trước khi đồng bộ để tránh bỏ qua liên tục.
       try {
         const fsync = await import("@/services/firestoreSync");
         if (fsync && typeof fsync.isFirebaseSignedIn === "function") {
@@ -86,7 +83,7 @@ export function scheduleSyncDebounced(
               console.warn(
                 "Skipping Firestore sync: no authenticated Firebase user"
               );
-              // schedule retry later with backoff
+              // Lên lịch thử lại sau với backoff
               const rc = (retryCounts.get(key) ?? 0) + 1;
               retryCounts.set(key, rc);
               const backoff = Math.min(60_000, 1000 * Math.pow(2, rc));
@@ -94,7 +91,7 @@ export function scheduleSyncDebounced(
               return;
             }
           } catch (e) {
-            // If check failed, fall through to attempt sync
+            // Nếu kiểm tra thất bại, vẫn tiếp tục thử đồng bộ
             console.warn(
               "isFirebaseSignedIn check failed, proceeding to attempt sync:",
               e
@@ -102,7 +99,7 @@ export function scheduleSyncDebounced(
           }
         }
       } catch (e) {
-        // ignore import errors and proceed
+        // Bỏ qua lỗi import và tiếp tục
       }
 
       const svc = await import("@/services/syncService");
@@ -117,7 +114,7 @@ export function scheduleSyncDebounced(
       retryCounts.delete(key);
     } catch (e) {
       console.warn("Debounced sync failed:", e);
-      // on failure schedule retry with exponential backoff
+      // Nếu thất bại hãy lên lịch thử lại với backoff theo cấp số nhân
       const rc = (retryCounts.get(key) ?? 0) + 1;
       retryCounts.set(key, rc);
       const backoff = Math.min(60_000, 1000 * Math.pow(2, rc));
@@ -128,7 +125,7 @@ export function scheduleSyncDebounced(
   timers.set(key, t);
 }
 
-/** Trigger an immediate sync (cancels any pending debounced sync). */
+/** Kích hoạt đồng bộ ngay lập tức (huỷ mọi đồng bộ đang trì hoãn). */
 export async function triggerImmediate(userId?: string) {
   const key = userId ?? "__global";
   const existing = timers.get(key);
@@ -136,7 +133,7 @@ export async function triggerImmediate(userId?: string) {
   timers.delete(key);
   stats.immediateCalls++;
   try {
-    // Check Firebase sign-in before attempting sync
+    // Kiểm tra đăng nhập Firebase trước khi đồng bộ
     try {
       const fsync = await import("@/services/firestoreSync");
       if (fsync && typeof fsync.isFirebaseSignedIn === "function") {
@@ -153,7 +150,7 @@ export async function triggerImmediate(userId?: string) {
         }
       }
     } catch (e) {
-      // ignore and proceed
+      // Bỏ qua và tiếp tục
     }
 
     const svc = await import("@/services/syncService");

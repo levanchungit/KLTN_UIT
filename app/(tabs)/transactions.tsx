@@ -1,4 +1,3 @@
-// app/(tabs)/Transactions.tsx
 import { useI18n } from "@/i18n/I18nProvider";
 import { listCategories } from "@/repos/categoryRepo";
 import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";

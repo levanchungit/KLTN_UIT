@@ -1,17 +1,15 @@
-// iconMapper.ts - Map invalid icon names to valid MaterialCommunityIcons names
-
 /**
- * Maps invalid or non-existent MaterialCommunityIcons names to valid ones
+ * Ánh xạ các tên biểu tượng MaterialCommunityIcons không tồn tại/không hợp lệ sang tên hợp lệ
  */
 export function fixIconName(iconName: string | null | undefined): string {
   if (!iconName) return "help-circle-outline";
 
-  // Remove prefix if exists
+  // Loại bỏ tiền tố nếu có
   const cleanName = iconName.replace(/^(mc:|mi:|mci:)/, "");
 
-  // Map of invalid/non-existent icons to valid alternatives
+  // Bảng ánh xạ các biểu tượng không hợp lệ sang lựa chọn hợp lệ
   const iconMap: Record<string, string> = {
-    // Invalid icons from warnings
+    // Biểu tượng không hợp lệ từ cảnh báo
     "piggy-bank-outline": "piggy-bank",
     noodles: "food",
     "flight-takeoff": "airplane-takeoff",
@@ -19,7 +17,7 @@ export function fixIconName(iconName: string | null | undefined): string {
     "credit-card": "credit-card-outline",
     assignment: "file-document-outline",
 
-    // Additional common mistakes
+    // Một số lỗi thường gặp khác
     "food-variant": "food",
     home: "home-outline",
     shopping: "cart-outline",
@@ -32,14 +30,14 @@ export function fixIconName(iconName: string | null | undefined): string {
     savings: "piggy-bank",
   };
 
-  // Check if icon needs mapping
+  // Kiểm tra xem biểu tượng có cần ánh xạ không
   const mappedName = iconMap[cleanName] || cleanName;
 
   return mappedName;
 }
 
 /**
- * Ensures icon name has mc: prefix for MaterialCommunityIcons
+ * Đảm bảo tên biểu tượng có tiền tố mc: cho MaterialCommunityIcons
  */
 export function ensureIconPrefix(iconName: string | null | undefined): string {
   const fixed = fixIconName(iconName);

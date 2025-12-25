@@ -1,9 +1,3 @@
-/**
- * Transaction Classifier using Lightweight ML
- * AI-powered automatic category prediction based on transaction notes
- * Using TF-IDF + Cosine Similarity (no TensorFlow.js dependency)
- */
-
 import { db, openDb } from "@/db";
 import type { Category } from "@/repos/categoryRepo";
 import {
@@ -29,13 +23,13 @@ interface PredictionResult {
 interface CategoryProfile {
   categoryId: string;
   categoryName: string;
-  vector: number[]; // Average TF-IDF vector for this category
+  vector: number[]; // Vector TF-IDF trung bình cho danh mục này
   sampleCount: number;
 }
 
 const MODEL_STORAGE_KEY = "transaction_classifier_model";
 const VOCAB_STORAGE_KEY = "transaction_classifier_vocab";
-const MIN_TRAINING_SAMPLES = 10; // Minimum samples needed to train
+const MIN_TRAINING_SAMPLES = 10; // Số mẫu tối thiểu để huấn luyện
 
 class TransactionClassifier {
   private vocabulary: Map<string, number> = new Map();
@@ -48,7 +42,7 @@ class TransactionClassifier {
   }
 
   /**
-   * Initialize the classifier - load existing model or prepare for training
+   * Khởi tạo bộ phân loại - tải mô hình hiện có hoặc chuẩn bị cho huấn luyện
    */
   async initialize(): Promise<void> {
     try {
@@ -57,13 +51,13 @@ class TransactionClassifier {
         console.log("No existing model found. Will train on first use.");
       }
     } catch (error) {
-      console.error("Error initializing classifier:", error);
+      console.error("Lỗi khi khởi tạo bộ phân loại:", error);
     }
   }
 
   /**
-   * Fetch training data from database
-   * Priority: User corrections (chosen_category_id) > Transactions
+   * Lấy dữ liệu huấn luyện từ cơ sở dữ liệu
+   * Ưu tiên: Sửa của người dùng (chosen_category_id) > Giao dịch
    */
   private async fetchTrainingData(): Promise<{
     data: TrainingData[];
@@ -72,13 +66,13 @@ class TransactionClassifier {
   }> {
     await openDb();
 
-    // Get all expense and income categories
+    // Lấy tất cả danh mục chi tiêu và thu nhập
     const categories: Category[] = await db.getAllAsync<Category>(
       "SELECT * FROM categories WHERE type = 'expense' OR type = 'income'"
     );
 
-    // Get user corrections (highest priority for learning)
-    // These are explicit user feedback when they fixed wrong predictions
+    // Lấy các sửa của người dùng (ưu tiên cao nhất để học)
+    // Đây là phản hồi rõ ràng khi họ sửa dự đoán sai
     const corrections = await db.getAllAsync<{
       text: string;
       chosen_category_id: string;
@@ -92,10 +86,10 @@ class TransactionClassifier {
       LIMIT 500
     `);
 
-    // Track correction notes for weighted building
+    // Theo dõi ghi chú từ sửa để xây dựng có trọng số
     const correctionNotes = new Set(corrections.map((c) => c.text));
 
-    // Get all transactions with notes (expense or income) as secondary data
+    // Lấy các giao dịch có ghi chú (chi/thu) làm dữ liệu phụ
     const transactions = await db.getAllAsync<{
       note: string;
       category_id: string;
@@ -110,11 +104,11 @@ class TransactionClassifier {
       LIMIT 1000
     `);
 
-    // Combine data: corrections first (user feedback), then transactions
-    // IMPORTANT: Deduplicate to avoid counting same note twice
+    // Kết hợp dữ liệu: sửa trước (phản hồi), rồi giao dịch
+    // QUAN TRỌNG: Khử trùng lặp để tránh đếm một ghi chú hai lần
     const dataMap = new Map<string, TrainingData>();
 
-    // Add corrections first (higher priority)
+    // Thêm sửa trước (ưu tiên cao hơn)
     corrections.forEach((c) => {
       const key = `${c.text}||${c.chosen_category_id}`;
       dataMap.set(key, {
