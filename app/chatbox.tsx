@@ -1500,7 +1500,7 @@ export default function Chatbox() {
     }
   };
 
-  const stopVoice = async () => {
+  const stopVoice = async (opts?: { skipFallback?: boolean }) => {
     try {
       await ExpoSpeechRecognitionModule.stop();
       // Wait briefly for the final result event to be processed
@@ -1525,6 +1525,12 @@ export default function Chatbox() {
 
     // Fallback: if final event doesn't arrive quickly, submit the last interim
     clearFallbackTimer();
+
+    // Khi đã gửi thủ công (ấn ✓), bỏ qua fallback để tránh gửi trùng
+    if (opts?.skipFallback) {
+      return;
+    }
+
     fallbackFinalTimerRef.current = setTimeout(() => {
       fallbackFinalTimerRef.current = null;
 
@@ -3004,14 +3010,14 @@ export default function Chatbox() {
       // don't duplicate — stop recording and let the existing handler finish. Keep buttons disabled.
       if (pendingFinalRef.current || processingSessionRef.current != null) {
         try {
-          await stopVoice();
+          await stopVoice({ skipFallback: true });
         } catch {}
         return;
       }
 
       const text = spokenText.trim();
       if (!text) {
-        await stopVoice();
+        await stopVoice({ skipFallback: true });
         return;
       }
 
@@ -3026,7 +3032,7 @@ export default function Chatbox() {
       lastInterimRef.current = "";
 
       // Stop recording and wait for any pending result to be processed
-      await stopVoice();
+      await stopVoice({ skipFallback: true });
 
       // Push into chat like sending text normally
       setMessages((m) => [...m, { role: "user", text }]);

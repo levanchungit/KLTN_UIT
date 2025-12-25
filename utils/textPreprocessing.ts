@@ -35,7 +35,7 @@ const VIETNAMESE_STOPWORDS = [
 // Định dạng hợp lệ: "500k", "1 triệu 2", "4tr8", "750.000 đồng", "5tr873"
 // Không hợp lệ (quá phức tạp): "5tr873k387d" — để AI xử lý
 const MONEY_PATTERN =
-  /\d+(?:[.,]\d{3})*\s*(?:k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|đồng|dong|đ|d|vnd|vnđ)(?:\s*\d{1,3})?(?!\d)/gi;
+  /\d+(?:[.,]\d{3})*\s*(?:k|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|đồng|dong|đ|₫|d|vnd|vnđ)(?:\s*\d{1,3})?(?!\d)/gi;
 
 // Các mẫu cần loại bỏ khỏi văn bản trước khi phân loại
 const NOISE_PATTERNS = [
@@ -109,7 +109,7 @@ export function parseAmountVN(text: string): number | null {
   // ƯU TIÊN 1: Xử lý số đã định dạng với dấu phân tách hàng nghìn (vd: "750.000", "1,500,000")
   // This must come BEFORE unit-based parsing to avoid confusion
   const formattedMatch = cleaned.match(
-    /(\d{1,3}(?:[.,]\d{3})+)(?:\s*(?:đồng|dong|đ|d|vnd|vnđ))?/i
+    /(\d{1,3}(?:[.,]\d{3})+)(?:\s*(?:đồng|dong|đ|₫|d|vnd|vnđ))?/i
   );
   if (formattedMatch) {
     const numStr = formattedMatch[1].replace(/[.,]/g, ""); // Loại bỏ tất cả dấu phân tách
@@ -207,7 +207,7 @@ export function parseAmountVN(text: string): number | null {
   // ƯU TIÊN 3: Số kèm đơn vị (75k, 500k, 2tr, 750000đ)
   // Match: number + unit (k/tr/đ/etc)
   const unitMatch = cleaned.match(
-    /(\d+(?:[.,]\d+)?)\s*([kdđ]|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|dong|đồng|vnd|vnđ)/i
+    /(\d+(?:[.,]\d+)?)\s*([kdđ₫]|nghìn|ngan|ng|tr|triệu|trieu|m|tỷ|ty|b|dong|đồng|vnd|vnđ)/i
   );
 
   if (unitMatch) {
@@ -232,6 +232,7 @@ export function parseAmountVN(text: string): number | null {
       factor = 1000000000; // tỷ, billion
     } else if (
       unit === "đ" ||
+      unit === "₫" ||
       unit === "d" ||
       unit === "dong" ||
       unit === "đồng" ||
