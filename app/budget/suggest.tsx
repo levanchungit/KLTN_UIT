@@ -174,7 +174,8 @@ export default function BudgetSuggestScreen() {
 
   const volatileMonthSummaries = React.useMemo(() => {
     const months = historicalSummary?.monthlyTotals;
-    if (!months || months.length === 0) return [] as Array<{ label: string; delta: number; total: number }>;
+    if (!months || months.length === 0)
+      return [] as Array<{ label: string; delta: number; total: number }>;
     const avg = months.reduce((s, m) => s + m.total, 0) / months.length;
     return months
       .map((m) => {
@@ -189,14 +190,21 @@ export default function BudgetSuggestScreen() {
 
   const volatileCategorySummaries = React.useMemo(() => {
     const cats = historicalSummary?.categoryVolatility;
-    if (!cats || cats.length === 0) return [] as Array<{ name: string; cv: number; delta: number; avg: number }>;
+    if (!cats || cats.length === 0)
+      return [] as Array<{
+        name: string;
+        cv: number;
+        delta: number;
+        avg: number;
+      }>;
     return [...cats]
       .sort((a, b) => b.cv - a.cv)
       .slice(0, 3)
       .map((c) => ({
         name: c.categoryName,
         cv: Math.round(c.cv * 100),
-        delta: c.avg > 0 ? Math.round(((c.lastAmount - c.avg) / c.avg) * 100) : 0,
+        delta:
+          c.avg > 0 ? Math.round(((c.lastAmount - c.avg) / c.avg) * 100) : 0,
         avg: Math.round(c.avg),
       }));
   }, [historicalSummary]);
@@ -874,7 +882,11 @@ export default function BudgetSuggestScreen() {
                             Độ biến động: {volatilityLabel}
                           </Text>
                           <MaterialCommunityIcons
-                            name={showVolatilityDetail ? "chevron-up" : "chevron-down"}
+                            name={
+                              showVolatilityDetail
+                                ? "chevron-up"
+                                : "chevron-down"
+                            }
                             size={16}
                             color={colors.subText}
                           />
@@ -891,43 +903,53 @@ export default function BudgetSuggestScreen() {
                               },
                             ]}
                           >
-                            {volatilityDetail || "Dữ liệu biến động chưa sẵn sàng."}
+                            {volatilityDetail ||
+                              "Dữ liệu biến động chưa sẵn sàng."}
                           </Text>
                         )}
-                        {showVolatilityDetail && volatileMonthSummaries.length > 0 && (
-                          <View style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}>
-                            {volatileMonthSummaries.map((m, idx) => (
-                              <Text
-                                key={`vm-${idx}`}
-                                style={{
-                                  fontSize: 12,
-                                  color: colors.subText,
-                                  lineHeight: 18,
-                                }}
-                              >
-                                • {m.label}: {m.delta >= 0 ? "+" : ""}
-                                {m.delta}% so với TB ({m.total.toLocaleString("vi-VN")}đ)
-                              </Text>
-                            ))}
-                          </View>
-                        )}
-                        {showVolatilityDetail && volatileCategorySummaries.length > 0 && (
-                          <View style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}>
-                            {volatileCategorySummaries.map((c, idx) => (
-                              <Text
-                                key={`vc-${idx}`}
-                                style={{
-                                  fontSize: 12,
-                                  color: colors.subText,
-                                  lineHeight: 18,
-                                }}
-                              >
-                                • {c.name}: CV ~{c.cv}% | tháng gần nhất {c.delta >= 0 ? "+" : ""}
-                                {c.delta}% vs TB ({c.avg.toLocaleString("vi-VN")}đ)
-                              </Text>
-                            ))}
-                          </View>
-                        )}
+                        {showVolatilityDetail &&
+                          volatileMonthSummaries.length > 0 && (
+                            <View
+                              style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}
+                            >
+                              {volatileMonthSummaries.map((m, idx) => (
+                                <Text
+                                  key={`vm-${idx}`}
+                                  style={{
+                                    fontSize: 12,
+                                    color: colors.subText,
+                                    lineHeight: 18,
+                                  }}
+                                >
+                                  • {m.label}: {m.delta >= 0 ? "+" : ""}
+                                  {m.delta}% so với TB (
+                                  {m.total.toLocaleString("vi-VN")}đ)
+                                </Text>
+                              ))}
+                            </View>
+                          )}
+                        {showVolatilityDetail &&
+                          volatileCategorySummaries.length > 0 && (
+                            <View
+                              style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}
+                            >
+                              {volatileCategorySummaries.map((c, idx) => (
+                                <Text
+                                  key={`vc-${idx}`}
+                                  style={{
+                                    fontSize: 12,
+                                    color: colors.subText,
+                                    lineHeight: 18,
+                                  }}
+                                >
+                                  • {c.name}: CV ~{c.cv}% | tháng gần nhất{" "}
+                                  {c.delta >= 0 ? "+" : ""}
+                                  {c.delta}% vs TB (
+                                  {c.avg.toLocaleString("vi-VN")}đ)
+                                </Text>
+                              ))}
+                            </View>
+                          )}
                       </Pressable>
                       <View
                         style={{
