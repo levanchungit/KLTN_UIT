@@ -104,7 +104,9 @@ export default function AddTransactionScreen() {
       const tx = await getTxById(txId);
       if (tx) {
         setType(tx.type as TransactionType);
-        setAmount(String(tx.amount));
+        // Format amount with thousand separators
+        const formattedAmount = tx.amount.toLocaleString("vi-VN");
+        setAmount(formattedAmount);
         setNote(tx.note || "");
         setSelectedDate(new Date(tx.occurred_at * 1000));
         // Category will be set after loadCategories
@@ -148,7 +150,9 @@ export default function AddTransactionScreen() {
   };
 
   const handleSave = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
+    // Parse formatted amount (remove commas)
+    const parsedAmount = parseFloat(amount.replace(/[^0-9]/g, ""));
+    if (!amount || parsedAmount <= 0) {
       Alert.alert(t("error"), t("enterValidAmount"));
       return;
     }
@@ -175,7 +179,7 @@ export default function AddTransactionScreen() {
           accountId: defaultAccount.id,
           categoryId: selectedCategory.id,
           type,
-          amount: parseFloat(amount),
+          amount: parsedAmount,
           note: note.trim(),
           when: selectedDate,
         });
@@ -184,7 +188,7 @@ export default function AddTransactionScreen() {
         const txData = {
           accountId: defaultAccount.id,
           categoryId: selectedCategory.id,
-          amount: parseFloat(amount),
+          amount: parsedAmount,
           note: note.trim(),
           when: selectedDate,
           updatedAt: new Date(),
@@ -536,7 +540,16 @@ export default function AddTransactionScreen() {
               placeholder={t("enterAmount")}
               placeholderTextColor={colors.subText}
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(text) => {
+                // Format with commas
+                const num = text.replace(/[^0-9]/g, "");
+                if (num) {
+                  const formatted = parseInt(num).toLocaleString("vi-VN");
+                  setAmount(formatted);
+                } else {
+                  setAmount("");
+                }
+              }}
               keyboardType="numeric"
             />
             <Text

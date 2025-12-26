@@ -814,8 +814,12 @@ const parseTransactionWithAI = async (
     let confidence = result.primary?.confidence || 0;
     let alternatives = result.alternatives || [];
     let message = result.message; // Start with TensorFlow's message
+    let mlFailed = false; // Flag to indicate ML completely failed
 
-    if (mlPrediction && mlPrediction.confidence > 0.1) {
+    // Define minimum confidence threshold for auto-creation
+    const MIN_AUTO_CONFIDENCE = 0.5; // 50% - only auto-create if we're reasonably confident
+
+    if (mlPrediction && mlPrediction.confidence > MIN_AUTO_CONFIDENCE) {
       // ML has a good prediction - use it instead!
       categoryId = mlPrediction.categoryId;
       categoryName = mlPrediction.categoryName || result.categoryName;
@@ -837,9 +841,18 @@ const parseTransactionWithAI = async (
 
         message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
       }
-    } else if (mlPrediction) {
     } else {
-      console.warn(`❌ ML prediction failed, using TensorFlow fallback`);
+      // ML prediction is too low or failed - mark for suggestion UI
+      console.warn(
+        `❌ ML prediction failed or too low confidence (${
+          mlPrediction?.confidence
+            ? (mlPrediction.confidence * 100).toFixed(1)
+            : 0
+        }%), using TensorFlow fallback`
+      );
+      mlFailed = true;
+      // Keep TensorFlow's fallback but mark it as unreliable
+      confidence = 0.05; // Set very low confidence to trigger suggestion UI
     }
 
     // Include confidence and alternatives from the parser
@@ -849,6 +862,7 @@ const parseTransactionWithAI = async (
       categoryName,
       confidence,
       message, // Use regenerated message
+      mlFailed, // Flag indicating ML prediction failed
       alternatives: alternatives.map((alt) => ({
         categoryId: alt.categoryId,
         categoryName: alt.categoryName,
@@ -2033,6 +2047,30 @@ export default function Chatbox() {
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editCategoryId, setEditCategoryId] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const spinValue = useRef(new Animated.Value(0)).current;
+
+  // Animate the spinning icon when saving
+  useEffect(() => {
+    if (isSaving) {
+      spinValue.setValue(0);
+      Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
+    }
+  }, [isSaving, spinValue]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   const chooseCategory = async (c: { categoryId: string; name: string }) => {
     if (!pendingPick) return;
@@ -2423,76 +2461,86 @@ export default function Chatbox() {
       }
 
       // Default: CREATE_TRANSACTION
-      // PRIORITY 1: Use categoryId from AI if available
-      let matchedCategory = aiResult.categoryId
-        ? items.find((c) => c.id === aiResult.categoryId)
-        : null;
+      // Define minimum confidence for auto-creation (safety threshold)
+      const MIN_AUTO_CREATE_CONFIDENCE = 0.6; // 60% - balance between automation and accuracy
+      const confidenceValue =
+        (aiResult.confidence ?? 0) * (aiResult.confidence <= 1 ? 1 : 0.01); // Normalize to 0-1
+      const mlFailed = (aiResult as any).mlFailed || false;
 
-      // PRIORITY 2: Fallback to name matching if categoryId not found
-      if (!matchedCategory) {
-        matchedCategory = items.find(
-          (c) =>
-            c.name
-              .toLowerCase()
-              .includes(aiResult.categoryName.toLowerCase()) ||
-            aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
-        );
-      }
-
-      // Check confidence - if low, show alternatives for user to confirm
-      const confidenceThreshold = aiResult.confidence ?? 75;
-      const hasLowConfidence = confidenceThreshold < 75;
-      const hasAlternatives =
-        aiResult.alternatives && aiResult.alternatives.length > 0;
-
-      if (matchedCategory && (!hasLowConfidence || !hasAlternatives)) {
-        // High confidence or no alternatives - auto-create
-        await autoCreateTransactionDirect(aiResult, matchedCategory.id);
-      } else if (matchedCategory && hasLowConfidence && hasAlternatives) {
-        // Low confidence with alternatives - show suggestion UI
+      // CASE 1: ML prediction completely failed - always show suggestions
+      if (mlFailed) {
+        console.log("🔍 ML failed - showing category suggestions");
+        const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
         setMessages((m) => [
           ...m.slice(0, -1),
           {
             role: "bot",
-            text: `⚠️ Không chắc chắn ${confidenceThreshold}%. Bạn muốn phân loại vào:`,
+            text: `⚠️ Không thể xác định danh mục chính xác. Bạn muốn phân loại vào:`,
           },
         ]);
-
-        // Build choice list from primary + alternatives
-        const choices = [
-          {
-            categoryId: matchedCategory.id,
-            name: matchedCategory.name,
-            score: (confidenceThreshold / 100) * 0.95,
-          },
-          ...(aiResult.alternatives || []).map((alt) => ({
-            categoryId: alt.categoryId,
-            name: alt.categoryName,
-            score: alt.confidence / 100,
-          })),
-        ];
-
         setPendingPick({
           text: aiResult.note,
           amount: aiResult.amount,
           io: aiResult.io,
-          choices: choices.slice(0, 3), // Top 3 suggestions
+          choices: ranked?.slice(0, 3) || [],
+          date: aiResult.date,
         });
-      } else {
-        // No match - use fallback classification
-        const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
-        if (ranked && ranked.length > 0 && ranked[0].score >= 0.6) {
-          await autoCreateTransactionDirect(aiResult, ranked[0].categoryId);
-        } else {
-          setMessages((m) => m.slice(0, -1));
-          setPendingPick({
-            text: aiResult.note,
-            amount: aiResult.amount,
-            io: aiResult.io,
-            choices: ranked?.slice(0, 3) || [],
-          });
+        return;
+      }
+
+      // CASE 2: High confidence (>= 60%) - auto-create transaction
+      if (confidenceValue >= MIN_AUTO_CREATE_CONFIDENCE) {
+        console.log(
+          `✅ High confidence (${(confidenceValue * 100).toFixed(
+            1
+          )}%) - auto-creating transaction`
+        );
+        let matchedCategory = aiResult.categoryId
+          ? items.find((c) => c.id === aiResult.categoryId)
+          : null;
+
+        // Fallback to name matching if categoryId not found
+        if (!matchedCategory) {
+          matchedCategory = items.find(
+            (c) =>
+              c.name
+                .toLowerCase()
+                .includes(aiResult.categoryName.toLowerCase()) ||
+              aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
+          );
+        }
+
+        if (matchedCategory) {
+          await autoCreateTransactionDirect(aiResult, matchedCategory.id);
+          return;
         }
       }
+
+      // CASE 3: Low confidence (< 60%) - show suggestions for user to confirm
+      console.log(
+        `⚠️ Low confidence (${(confidenceValue * 100).toFixed(
+          1
+        )}%) - showing suggestions`
+      );
+      const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
+
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        {
+          role: "bot",
+          text: `⚠️ Độ tin cậy thấp (${(confidenceValue * 100).toFixed(
+            0
+          )}%). Bạn muốn phân loại vào:`,
+        },
+      ]);
+
+      setPendingPick({
+        text: aiResult.note,
+        amount: aiResult.amount,
+        io: aiResult.io,
+        choices: ranked?.slice(0, 3) || [],
+        date: aiResult.date,
+      });
     } finally {
       processingTextRef.current = false;
     }
@@ -2686,14 +2734,17 @@ export default function Chatbox() {
       note: item.note,
       when: new Date(),
     });
-    setEditAmount(String(item.amount || 0));
+    // Format amount with thousand separators
+    const formattedAmount = (item.amount || 0).toLocaleString("vi-VN");
+    setEditAmount(formattedAmount);
     setEditNote(item.note);
     setEditCategoryId(item.categoryId);
   };
 
   const handleSaveEdit = async () => {
     if (!editingTx) return;
-    const newAmount = parseFloat(editAmount);
+    // Parse formatted amount (remove commas)
+    const newAmount = parseFloat(editAmount.replace(/[^0-9]/g, ""));
     if (!newAmount || newAmount <= 0) {
       alert("Số tiền không hợp lệ");
       return;
@@ -2704,6 +2755,7 @@ export default function Chatbox() {
       return;
     }
 
+    setIsSaving(true);
     try {
       // Check if category changed (user corrected AI prediction)
       const oldCategoryId = editingTx.categoryId;
@@ -2777,6 +2829,8 @@ export default function Chatbox() {
       setEditCategoryId("");
     } catch (e: any) {
       alert("Không thể cập nhật: " + (e?.message || "Lỗi"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -3583,7 +3637,16 @@ export default function Chatbox() {
                   </Text>
                   <TextInput
                     value={editAmount}
-                    onChangeText={setEditAmount}
+                    onChangeText={(text) => {
+                      // Format with commas
+                      const num = text.replace(/[^0-9]/g, "");
+                      if (num) {
+                        const formatted = parseInt(num).toLocaleString("vi-VN");
+                        setEditAmount(formatted);
+                      } else {
+                        setEditAmount("");
+                      }
+                    }}
                     keyboardType="numeric"
                     placeholderTextColor={colors.subText}
                     style={{
@@ -3699,18 +3762,32 @@ export default function Chatbox() {
               {/* Save button */}
               <TouchableOpacity
                 onPress={handleSaveEdit}
+                disabled={isSaving}
                 style={{
-                  backgroundColor: "#10B981",
+                  backgroundColor: isSaving ? "#9CA3AF" : "#10B981",
                   padding: 14,
                   borderRadius: 10,
                   alignItems: "center",
                   marginTop: 8,
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  opacity: isSaving ? 0.7 : 1,
                 }}
               >
+                {isSaving && (
+                  <Animated.View
+                    style={{
+                      marginRight: 8,
+                      transform: [{ rotate: spin }],
+                    }}
+                  >
+                    <Ionicons name="sync" size={20} color="#fff" />
+                  </Animated.View>
+                )}
                 <Text
                   style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}
                 >
-                  {t("saveChanges")}
+                  {isSaving ? t("saving") || "Đang lưu..." : t("saveChanges")}
                 </Text>
               </TouchableOpacity>
             </SafeAreaView>
