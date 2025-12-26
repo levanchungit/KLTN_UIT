@@ -13,8 +13,16 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,8 +34,12 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-function groupByDate(notifications: AppNotification[]) {
-  const groups: { [key: string]: AppNotification[] } = {};
+interface GroupedNotifications {
+  [key: string]: AppNotification[];
+}
+
+function groupByDate(notifications: AppNotification[]): GroupedNotifications {
+  const groups: GroupedNotifications = {};
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today);
@@ -64,50 +76,106 @@ export default function NotificationsScreen() {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const [allDataLoaded, setAllDataLoaded] = useState(false);
+
+  const PAGE_SIZE = 20; // Load 20 notifications per page
+  const loadingMoreRef = useRef(false);
 
   // Ask permissions once when screen mounts
   useEffect(() => {
     requestNotificationPermissions().catch(() => undefined);
   }, []);
 
-  const load = useCallback(async () => {
-    const items = await getAllNotifications();
-    setNotifications(items);
+  // Load initial data
+  const loadInitial = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const items = await getAllNotifications();
+      // Sort by date descending (newest first)
+      items.sort((a, b) => b.date.getTime() - a.date.getTime());
+      // Set initial page
+      setNotifications(items.slice(0, PAGE_SIZE));
+      setLoadedCount(Math.min(PAGE_SIZE, items.length));
+      setAllDataLoaded(items.length <= PAGE_SIZE);
+    } catch (e) {
+      console.warn("Load notifications error:", e);
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      loadInitial();
       const unsub = subscribeToNotifications(() => {
-        load();
+        loadInitial();
       });
       return () => unsub();
-    }, [load])
+    }, [loadInitial])
   );
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Load more notifications (infinite scroll)
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || allDataLoaded) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
 
-  const onMarkOne = async (id: string) => {
+    try {
+      const allItems = await getAllNotifications();
+      // Sort by date descending
+      allItems.sort((a, b) => b.date.getTime() - a.date.getTime());
+      const newCount = loadedCount + PAGE_SIZE;
+      setNotifications(allItems.slice(0, newCount));
+      setLoadedCount(newCount);
+      setAllDataLoaded(newCount >= allItems.length);
+    } catch (e) {
+      console.warn("Load more error:", e);
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [loadedCount, allDataLoaded]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications]
+  );
+
+  const onMarkOne = useCallback(async (id: string) => {
     await markAsRead(id);
-    await load();
-  };
+    // Update local state instead of reloading everything
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  }, []);
 
-  const onMarkAll = async () => {
+  const onMarkAll = useCallback(async () => {
     await markAllAsRead();
-    await load();
-  };
+    // Update all notifications to read
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  }, []);
 
-  const onDeleteOne = async (id: string) => {
+  const onDeleteOne = useCallback(async (id: string) => {
     await deleteNotification(id);
-    await load();
-  };
+    // Remove from local state
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
 
-  const onClearAll = async () => {
+  const onClearAll = useCallback(async () => {
     await clearAllNotifications();
-    await load();
-  };
+    setNotifications([]);
+    setLoadedCount(0);
+    setAllDataLoaded(true);
+  }, []);
 
-  const groupedNotifications = groupByDate(notifications);
+  // Memoize grouped notifications to prevent recalculation on every render
+  const groupedNotifications = useMemo(
+    () => groupByDate(notifications),
+    [notifications]
+  );
 
   const getIcon = (type: AppNotification["type"]) => {
     switch (type) {
@@ -162,6 +230,8 @@ export default function NotificationsScreen() {
     container: {
       flex: 1,
       backgroundColor: colors.background,
+      // Padding for safe area
+      paddingBottom: insets.bottom,
     },
     header: {
       flexDirection: "row",
@@ -301,9 +371,7 @@ export default function NotificationsScreen() {
             <Ionicons name="arrow-back" size={20} color={colors.icon} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
-            {unreadCount > 0
-              ? `${t("notifications")} (${unreadCount})`
-              : t("notifications")}
+            {unreadCount > 0 ? `${t("notifications")}` : t("notifications")}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -347,7 +415,30 @@ export default function NotificationsScreen() {
           <Text style={styles.emptyText}>{t("noNotificationsDesc")}</Text>
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={loadInitial}
+              tintColor={colors.icon}
+              progressBackgroundColor={colors.card}
+              colors={[colors.icon]}
+            />
+          }
+          onScroll={(e) => {
+            const { contentOffset, contentSize, layoutMeasurement } =
+              e.nativeEvent;
+            const isAtBottom =
+              contentOffset.y + layoutMeasurement.height >=
+              contentSize.height - 100;
+            if (isAtBottom && !allDataLoaded && !loadingMore) {
+              loadMore();
+            }
+          }}
+        >
           {Object.entries(groupedNotifications).map(([dateLabel, notifs]) => (
             <View key={dateLabel}>
               <View style={styles.sectionHeader}>
@@ -394,6 +485,31 @@ export default function NotificationsScreen() {
               ))}
             </View>
           ))}
+
+          {/* Loading indicator for infinite scroll */}
+          {loadingMore && (
+            <View style={{ paddingVertical: 16, alignItems: "center" }}>
+              <ActivityIndicator
+                size="small"
+                color={colors.icon}
+                style={{ marginVertical: 8 }}
+              />
+            </View>
+          )}
+
+          {/* End of list indicator */}
+          {allDataLoaded && notifications.length > PAGE_SIZE && (
+            <View
+              style={{
+                paddingVertical: 24,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.subText }}>
+                Đã tải tất cả thông báo
+              </Text>
+            </View>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
