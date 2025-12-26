@@ -19,6 +19,16 @@ export interface HistoricalAnalysisResult {
   volatility: number;
   monthsAnalyzed: number;
   categoryCount: number;
+  monthlyTotals?: Array<{ month: string; total: number }>;
+  categoryVolatility?: Array<{
+    categoryId: string;
+    categoryName: string;
+    cv: number;
+    avg: number;
+    stdDev: number;
+    lastAmount: number;
+    trendDirection: "increasing" | "stable" | "decreasing";
+  }>;
 }
 
 export interface CategoryPrediction {
@@ -279,16 +289,30 @@ export class HistoricalAnalyzer {
 
       // Nhóm theo danh mục
       const categoryMap = new Map<string, any[]>();
+      const monthTotalsMap = new Map<string, number>();
 
       transactions.forEach((txn: any) => {
         if (!categoryMap.has(txn.category_id)) {
           categoryMap.set(txn.category_id, []);
         }
         categoryMap.get(txn.category_id)!.push(txn);
+
+        // Tính tổng theo tháng (toàn bộ danh mục)
+        monthTotalsMap.set(
+          txn.month,
+          (monthTotalsMap.get(txn.month) || 0) + txn.total_amount
+        );
       });
+
+      const monthlyTotals = Array.from(monthTotalsMap.entries())
+        .map(([month, total]) => ({ month, total }))
+        .sort((a, b) => (a.month < b.month ? 1 : -1));
 
       // Phân tích từng danh mục
       const patterns: SpendingPattern[] = [];
+      const categoryVolatility: NonNullable<
+        HistoricalAnalysisResult["categoryVolatility"]
+      > = [];
 
       for (const [categoryId, monthlyData] of categoryMap.entries()) {
         const amounts = monthlyData.map((d) => d.total_amount);
@@ -326,6 +350,16 @@ export class HistoricalAnalyzer {
           priority,
           frequency: Math.round(avgFrequency),
           lastAmount: monthlyData[0].total_amount,
+        });
+
+        categoryVolatility.push({
+          categoryId,
+          categoryName: monthlyData[0].category_name,
+          cv,
+          avg: avgSpend,
+          stdDev,
+          lastAmount: monthlyData[0].total_amount,
+          trendDirection: trend,
         });
       }
 
@@ -391,6 +425,8 @@ export class HistoricalAnalyzer {
         volatility,
         monthsAnalyzed: months,
         categoryCount: patterns.length,
+        monthlyTotals,
+        categoryVolatility,
       };
     } catch (error) {
       console.error("[HistoricalAnalyzer] Lỗi:", error);

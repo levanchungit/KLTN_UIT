@@ -4,6 +4,7 @@ import {
   HistoricalAnalyzer,
   textEncoder,
   tfliteModel,
+  type HistoricalAnalysisResult,
 } from "@/services/budgetAIService";
 import { getCurrentUserId } from "@/utils/auth";
 
@@ -74,6 +75,17 @@ export type SmartBudgetResult = {
     historicalAccuracy?: number;
     riskScore?: number;
     deviation?: number;
+    historicalSummary?: Pick<
+      HistoricalAnalysisResult,
+      | "avgIncome"
+      | "totalSpending"
+      | "savingsRate"
+      | "volatility"
+      | "monthsAnalyzed"
+      | "categoryCount"
+      | "monthlyTotals"
+      | "categoryVolatility"
+    >;
   };
 };
 
@@ -319,10 +331,44 @@ async function buildTemplateAllocations(
     }));
 
   return [
-    ...make(needsItems, "needs"),
-    ...make(wantsItems, "wants"),
-    ...make(savingsItems, "savings"),
+    ...normalizeAllocations(make(needsItems, "needs"), needsBudget),
+    ...normalizeAllocations(make(wantsItems, "wants"), wantsBudget),
+    ...normalizeAllocations(make(savingsItems, "savings"), savingsBudget),
   ];
+}
+
+// Round to nearest 1,000đ and rebalance so the sum matches the intended budget
+function normalizeAllocations(
+  items: CategoryScoring[],
+  budget: number
+): CategoryScoring[] {
+  if (items.length === 0) return items;
+
+  const targetBudget = Math.round(budget / 1000) * 1000;
+
+  const rounded = items.map((a) => ({
+    ...a,
+    allocatedAmount: Math.max(0, Math.round(a.allocatedAmount / 1000) * 1000),
+  }));
+
+  const diff =
+    targetBudget - rounded.reduce((s, a) => s + a.allocatedAmount, 0);
+
+  if (diff !== 0) {
+    // Adjust the largest bucket to absorb the rounding difference
+    let idxMax = 0;
+    for (let i = 1; i < rounded.length; i++) {
+      if (rounded[i].allocatedAmount > rounded[idxMax].allocatedAmount) {
+        idxMax = i;
+      }
+    }
+    rounded[idxMax] = {
+      ...rounded[idxMax],
+      allocatedAmount: Math.max(0, rounded[idxMax].allocatedAmount + diff),
+    };
+  }
+
+  return rounded;
 }
 
 async function buildHistoricalAllocations(
@@ -362,18 +408,18 @@ async function buildHistoricalAllocations(
     const total =
       sorted.reduce((s, x) => s + Math.max(0, x.avgMonthlySpend), 0) || 1;
 
-    return sorted.map((p) => ({
+    const allocations = sorted.map((p) => ({
       categoryId: p.categoryId,
       categoryName: p.categoryName,
       groupType,
       categoryIcon: undefined,
       categoryColor: undefined,
       score: p.avgMonthlySpend / total,
-      allocatedAmount: Math.round(
-        (Math.max(0, p.avgMonthlySpend) / total) * budget
-      ),
+      allocatedAmount: (Math.max(0, p.avgMonthlySpend) / total) * budget,
       reason: "Phân bổ theo lịch sử chi tiêu 3 tháng gần nhất",
     }));
+
+    return normalizeAllocations(allocations, budget);
   };
 
   const needsAlloc = toAllocations(needs, needsBudget, "needs");
@@ -454,7 +500,11 @@ async function buildHistoricalAllocations(
     });
   }
 
-  return [...needsAlloc, ...wantsAlloc, ...savingsAlloc];
+  const normalizedNeeds = normalizeAllocations(needsAlloc, needsBudget);
+  const normalizedWants = normalizeAllocations(wantsAlloc, wantsBudget);
+  const normalizedSavings = normalizeAllocations(savingsAlloc, savingsBudget);
+
+  return [...normalizedNeeds, ...normalizedWants, ...normalizedSavings];
 }
 // ============ Helper Functions ============
 
@@ -796,19 +846,25 @@ export function allocateToCategories(
 
     if (sorted.length === 1) {
       // Only 1 category: get all budget
-      return [
-        {
-          ...sorted[0],
-          allocatedAmount: budget,
-        },
-      ];
+      return normalizeAllocations(
+        [
+          {
+            ...sorted[0],
+            allocatedAmount: budget,
+          },
+        ],
+        budget
+      );
     } else if (sorted.length === 2) {
       // 2 categories: 60/40 split by score
       const totalScore = sorted.reduce((s, c) => s + c.score, 0);
-      return sorted.map((c) => ({
-        ...c,
-        allocatedAmount: Math.round((c.score / totalScore) * budget),
-      }));
+      return normalizeAllocations(
+        sorted.map((c) => ({
+          ...c,
+          allocatedAmount: (c.score / totalScore) * budget,
+        })),
+        budget
+      );
     } else {
       // 3+ categories: prioritize top 3, distribute rest evenly
       const top3 = sorted.slice(0, 3);
@@ -821,11 +877,11 @@ export function allocateToCategories(
       const top3Score = top3.reduce((s, c) => s + c.score, 0);
       allocations = top3.map((c) => ({
         ...c,
-        allocatedAmount: Math.round((c.score / top3Score) * top3Budget),
+        allocatedAmount: (c.score / top3Score) * top3Budget,
       }));
 
       if (rest.length > 0) {
-        const perCategory = Math.round(restBudget / rest.length);
+        const perCategory = restBudget / rest.length;
         allocations.push(
           ...rest.map((c) => ({
             ...c,
@@ -834,7 +890,7 @@ export function allocateToCategories(
         );
       }
 
-      return allocations;
+      return normalizeAllocations(allocations, budget);
     }
   };
 
@@ -1245,6 +1301,39 @@ export async function generateSmartBudget(
       confidence = 0.75;
     }
 
+    // Prepare historical summary for UI (only key metrics, no raw patterns)
+    const historicalSummary:
+      | Pick<
+          HistoricalAnalysisResult,
+          | "avgIncome"
+          | "totalSpending"
+          | "savingsRate"
+          | "volatility"
+          | "monthsAnalyzed"
+          | "categoryCount"
+        >
+      | undefined = historicalData
+      ? {
+          avgIncome: Math.round(historicalData.avgIncome || 0),
+          totalSpending: Math.round(
+            historicalData.totalSpending ??
+              (historicalData.patterns || []).reduce(
+                (sum: number, p: any) => sum + (p.avgMonthlySpend || 0),
+                0
+              )
+          ),
+          savingsRate: historicalData.savingsRate ?? 0,
+          volatility: historicalData.volatility ?? 0,
+          monthsAnalyzed:
+            historicalData.monthsAnalyzed ?? historicalData.months ?? 0,
+          categoryCount:
+            historicalData.categoryCount ??
+            (historicalData.patterns ? historicalData.patterns.length : 0),
+          monthlyTotals: historicalData.monthlyTotals,
+          categoryVolatility: historicalData.categoryVolatility,
+        }
+      : undefined;
+
     // === PHASE 8: ALTERNATIVES ===
     const alternatives: BudgetRatio[] = [
       { needs: 0.5, wants: 0.3, savings: 0.2 }, // Classic 50/30/20
@@ -1273,6 +1362,7 @@ export async function generateSmartBudget(
           : undefined,
         riskScore: mlPrediction?.riskScore,
         deviation,
+        historicalSummary,
       },
     };
   } catch (error) {

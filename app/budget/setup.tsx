@@ -206,7 +206,7 @@ const makeStyles = (
       borderBottomColor: c.divider,
     },
     headerTitle: { fontSize: 18, fontWeight: "700", color: c.text },
-    content: { padding: 16, paddingBottom: Math.max(bottomInset, 16) + 80 },
+    content: { padding: 16 },
     infoCard: {
       backgroundColor: c.card,
       padding: 12,
@@ -214,7 +214,6 @@ const makeStyles = (
       fontSize: 13,
       lineHeight: 20,
       color: c.text,
-      marginBottom: 16,
     },
     label: {
       fontSize: 14,
@@ -287,7 +286,6 @@ const makeStyles = (
       backgroundColor: "#16A34A",
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 32,
     },
     createButtonDisabled: {
       opacity: 0.5,

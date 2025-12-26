@@ -11,6 +11,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -63,6 +64,8 @@ export default function BudgetSuggestScreen() {
   const [mlModelUsed, setMlModelUsed] = useState(false);
   const [modelConfidence, setModelConfidence] = useState(0);
   const [modelVersion, setModelVersion] = useState("none");
+  const [showHistoricalModal, setShowHistoricalModal] = useState(false);
+  const [showVolatilityDetail, setShowVolatilityDetail] = useState(false);
 
   // Derived insights to keep the summary aligned with actual allocations + user description
   const derivedInsights = React.useMemo(() => {
@@ -127,6 +130,76 @@ export default function BudgetSuggestScreen() {
 
   // AI suggestion không cần thiết nữa vì generateSmartBudget() đã xử lý
   const aiSuggestion = null;
+
+  const historicalSummary = aiMetadata?.historicalSummary;
+
+  const volatilityLabel = React.useMemo(() => {
+    if (!historicalSummary) return "-";
+    const v = historicalSummary.volatility ?? 0;
+    if (v >= 0.6) return "Cao (dao động mạnh)";
+    if (v >= 0.3) return "Trung bình";
+    return "Thấp (ổn định)";
+  }, [historicalSummary]);
+
+  const savingsRateLabel = React.useMemo(() => {
+    if (!historicalSummary || historicalSummary.savingsRate == null) return "-";
+    const pct = Math.round(historicalSummary.savingsRate * 100);
+    if (pct >= 20) return `${pct}% (tốt)`;
+    if (pct >= 10) return `${pct}% (ổn)`;
+    return `${pct}% (thấp)`;
+  }, [historicalSummary]);
+
+  const analyzedMonthsLabel = React.useMemo(() => {
+    if (!historicalSummary || !historicalSummary.monthsAnalyzed) return "-";
+    const count = historicalSummary.monthsAnalyzed;
+    const labels: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < count; i++) {
+      const d = new Date(now);
+      d.setMonth(d.getMonth() - i);
+      labels.push(`T${d.getMonth() + 1}`);
+    }
+    return `${count} (${labels.reverse().join(",")})`;
+  }, [historicalSummary]);
+
+  const volatilityDetail = React.useMemo(() => {
+    if (!historicalSummary) return "";
+    const v = Math.round((historicalSummary.volatility ?? 0) * 100);
+    if (v >= 60)
+      return `Chi tiêu các tháng gần đây dao động mạnh (±${v}% quanh mức trung bình). Hãy kiểm soát những tháng chi cao bất thường.`;
+    if (v >= 30)
+      return `Chi tiêu biến động vừa (±${v}% quanh mức trung bình). Nên theo dõi các khoản lớn để tránh vượt trần.`;
+    return `Chi tiêu khá ổn định (dao động khoảng ±${v}% mỗi tháng).`;
+  }, [historicalSummary]);
+
+  const volatileMonthSummaries = React.useMemo(() => {
+    const months = historicalSummary?.monthlyTotals;
+    if (!months || months.length === 0) return [] as Array<{ label: string; delta: number; total: number }>;
+    const avg = months.reduce((s, m) => s + m.total, 0) / months.length;
+    return months
+      .map((m) => {
+        const delta = avg > 0 ? Math.round(((m.total - avg) / avg) * 100) : 0;
+        const [year, month] = m.month.split("-");
+        const label = `T${parseInt(month, 10)}/${year}`;
+        return { label, delta, total: Math.round(m.total) };
+      })
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      .slice(0, 3);
+  }, [historicalSummary]);
+
+  const volatileCategorySummaries = React.useMemo(() => {
+    const cats = historicalSummary?.categoryVolatility;
+    if (!cats || cats.length === 0) return [] as Array<{ name: string; cv: number; delta: number; avg: number }>;
+    return [...cats]
+      .sort((a, b) => b.cv - a.cv)
+      .slice(0, 3)
+      .map((c) => ({
+        name: c.categoryName,
+        cv: Math.round(c.cv * 100),
+        delta: c.avg > 0 ? Math.round(((c.lastAmount - c.avg) / c.avg) * 100) : 0,
+        avg: Math.round(c.avg),
+      }));
+  }, [historicalSummary]);
 
   useEffect(() => {
     loadSuggestion();
@@ -617,6 +690,281 @@ export default function BudgetSuggestScreen() {
               >
                 Mô tả lối sống: "{lifestyleDesc.trim()}"
               </Text>
+            )}
+
+            {/* Historical summary (tap to open modal) */}
+            {historicalSummary && (
+              <>
+                <Pressable
+                  onPress={() => setShowHistoricalModal(true)}
+                  style={{
+                    marginTop: 12,
+                    padding: 10,
+                    borderRadius: 10,
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="history"
+                      size={18}
+                      color={colors.text}
+                    />
+                    <View>
+                      <Text style={[styles.infoText, { fontWeight: "600" }]}>
+                        Tóm tắt lịch sử
+                      </Text>
+                      <Text
+                        style={[
+                          styles.infoText,
+                          { color: colors.subText, fontSize: 12 },
+                        ]}
+                      >
+                        Nhấn để xem chi tiết phân tích
+                      </Text>
+                    </View>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={20}
+                    color={colors.subText}
+                  />
+                </Pressable>
+
+                <Modal
+                  visible={showHistoricalModal}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setShowHistoricalModal(false)}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      backgroundColor: "rgba(0,0,0,0.35)",
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Pressable
+                      style={{ flex: 1 }}
+                      onPress={() => setShowHistoricalModal(false)}
+                    />
+                    <View
+                      style={{
+                        backgroundColor: colors.background,
+                        borderTopLeftRadius: 16,
+                        borderTopRightRadius: 16,
+                        padding: 16,
+                        paddingBottom: 16 + (insets.bottom || 0),
+                        gap: 8,
+                        borderWidth: 1,
+                        borderColor: colors.divider,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontWeight: "700",
+                            fontSize: 16,
+                            color: colors.text,
+                          }}
+                        >
+                          Tóm tắt lịch sử
+                        </Text>
+                        <Pressable
+                          onPress={() => setShowHistoricalModal(false)}
+                        >
+                          <MaterialCommunityIcons
+                            name="close"
+                            size={20}
+                            color={colors.text}
+                          />
+                        </Pressable>
+                      </View>
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="cash"
+                          size={18}
+                          color={colors.text}
+                        />
+                        <Text style={styles.infoText}>
+                          Thu nhập TB:{" "}
+                          {historicalSummary.avgIncome.toLocaleString("vi-VN")}đ
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="wallet"
+                          size={18}
+                          color={colors.text}
+                        />
+                        <Text style={styles.infoText}>
+                          Chi tiêu TB:{" "}
+                          {historicalSummary.totalSpending.toLocaleString(
+                            "vi-VN"
+                          )}
+                          đ
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="piggy-bank"
+                          size={18}
+                          color={colors.text}
+                        />
+                        <Text style={styles.infoText}>
+                          Tỷ lệ tiết kiệm: {savingsRateLabel}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => setShowVolatilityDetail((p) => !p)}
+                        style={{
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="chart-areaspline"
+                            size={18}
+                            color={colors.text}
+                          />
+                          <Text style={styles.infoText}>
+                            Độ biến động: {volatilityLabel}
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={showVolatilityDetail ? "chevron-up" : "chevron-down"}
+                            size={16}
+                            color={colors.subText}
+                          />
+                        </View>
+                        {showVolatilityDetail && (
+                          <Text
+                            style={[
+                              styles.infoText,
+                              {
+                                color: colors.subText,
+                                fontSize: 12,
+                                lineHeight: 18,
+                                paddingLeft: 26,
+                              },
+                            ]}
+                          >
+                            {volatilityDetail || "Dữ liệu biến động chưa sẵn sàng."}
+                          </Text>
+                        )}
+                        {showVolatilityDetail && volatileMonthSummaries.length > 0 && (
+                          <View style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}>
+                            {volatileMonthSummaries.map((m, idx) => (
+                              <Text
+                                key={`vm-${idx}`}
+                                style={{
+                                  fontSize: 12,
+                                  color: colors.subText,
+                                  lineHeight: 18,
+                                }}
+                              >
+                                • {m.label}: {m.delta >= 0 ? "+" : ""}
+                                {m.delta}% so với TB ({m.total.toLocaleString("vi-VN")}đ)
+                              </Text>
+                            ))}
+                          </View>
+                        )}
+                        {showVolatilityDetail && volatileCategorySummaries.length > 0 && (
+                          <View style={{ gap: 2, paddingLeft: 26, marginTop: 4 }}>
+                            {volatileCategorySummaries.map((c, idx) => (
+                              <Text
+                                key={`vc-${idx}`}
+                                style={{
+                                  fontSize: 12,
+                                  color: colors.subText,
+                                  lineHeight: 18,
+                                }}
+                              >
+                                • {c.name}: CV ~{c.cv}% | tháng gần nhất {c.delta >= 0 ? "+" : ""}
+                                {c.delta}% vs TB ({c.avg.toLocaleString("vi-VN")}đ)
+                              </Text>
+                            ))}
+                          </View>
+                        )}
+                      </Pressable>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="calendar-range"
+                          size={18}
+                          color={colors.text}
+                        />
+                        <Text style={styles.infoText}>
+                          Tháng phân tích: {analyzedMonthsLabel}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="format-list-bulleted"
+                          size={18}
+                          color={colors.text}
+                        />
+                        <Text style={styles.infoText}>
+                          Số danh mục: {historicalSummary.categoryCount}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </Modal>
+              </>
             )}
 
             {/* AI + Derived Insights (deduped & trimmed) */}
