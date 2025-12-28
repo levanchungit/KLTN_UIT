@@ -1136,7 +1136,10 @@ export default function DashboardScreen() {
                     <Text style={styles.netChangePeriod}> {t("inPeriod")}</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.walletIconButton}>
+                <TouchableOpacity
+                  style={styles.walletIconButton}
+                  onPress={() => router.push("/setting/wallets")}
+                >
                   <Ionicons name="wallet-outline" size={28} color="#fff" />
                 </TouchableOpacity>
               </View>

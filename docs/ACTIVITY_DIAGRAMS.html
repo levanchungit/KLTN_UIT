@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ACTIVITY_DIAGRAMS.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="c%C3%A1c-activity-ch%C3%ADnh-b%E1%BA%A3n-r%C3%BAt-g%E1%BB%8Dn-b%C3%A1m-code-hi%E1%BB%87n-t%E1%BA%A1i">Các Activity Chính (Bản rút gọn, bám code hiện tại)</h1>
+<hr>
+<h2 id="4321-activity-x%C3%A1c-th%E1%BB%B1c-ng%C6%B0%E1%BB%9Di-d%C3%B9ng">4.3.2.1. Activity: Xác thực người dùng</h2>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    A([Start]) --> B{Có session đã lưu?}
+    B -->|Có| H([Vào Home])
+    B -->|Không| C[Chọn phương thức: Password / Google / Biometric]
+    C --> D{Xác thực thành công?}
+    D -->|Không| E[Thông báo lỗi]
+    E --> C
+    D -->|Có| F[Lưu token vào AsyncStorage/SecureStore + set UserContext]
+    F --> G{Đã onboarding?}
+    G -->|Chưa| I[Đi Onboarding]
+    G -->|Rồi| H
+    I --> H([End])
+
+    style A fill:#90EE90
+    style H fill:#FFB6C6
+    style B fill:#87CEEB
+    style D fill:#87CEEB
+    style E fill:#FFD700
+</div></code></pre>
+<p><strong>Các bước chính:</strong></p>
+<ol>
+<li>Mở app, kiểm tra session/token đã lưu.</li>
+<li>Nếu có session hợp lệ → vào Home.</li>
+<li>Nếu chưa, người dùng chọn phương thức (Password/Google/Biometric).</li>
+<li>Thực hiện xác thực; nếu lỗi hiển thị thông báo và yêu cầu thử lại.</li>
+<li>Thành công → lưu token vào AsyncStorage/SecureStore và cập nhật UserContext.</li>
+<li>Kiểm tra Onboarding; nếu chưa xong thì chuyển qua Onboarding, nếu rồi thì vào Home.</li>
+</ol>
+<p><strong>Khớp code:</strong></p>
+<ul>
+<li>Màn hình: <a href="app/auth/login.tsx">app/auth/login.tsx</a> (Google Sign-in, password, toggle login/register, lưu vào AsyncStorage)</li>
+<li>Repo: <a href="repos/authRepo.ts">repos/authRepo.ts</a> (hash mật khẩu, tạo người dùng, login)</li>
+<li>Context: <a href="context/userContext.tsx">context/userContext.tsx</a> (loginSet, lưu user)</li>
+<li>Onboarding: <a href="app/onboarding">app/onboarding/*</a> (chạy khi chưa hoàn tất thiết lập)</li>
+</ul>
+<hr>
+<h2 id="4322-activity-th%C3%AAm-giao-d%E1%BB%8Bch">4.3.2.2. Activity: Thêm giao dịch</h2>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    A([Start]) --> B[Hiển thị form giao dịch]
+    B --> C{Nhập dữ liệu
+    (thủ công hoặc giọng nói)}
+    C --> D{Hợp lệ?}
+    D -->|Không| E[Hiển thị lỗi]
+    E --> C
+    D -->|Có| F[Lưu vào SQLite (addExpense/addIncome)]
+    F --> G[Cập nhật số dư ví]
+    G --> H[Đánh dấu cần sync (scheduleSyncDebounced)]
+    H --> I([End - quay lại danh sách])
+
+    style A fill:#90EE90
+    style I fill:#FFB6C6
+    style D fill:#87CEEB
+    style E fill:#FFD700
+</div></code></pre>
+<p><strong>Các bước chính:</strong></p>
+<ol>
+<li>Mở form thêm giao dịch.</li>
+<li>Nhập dữ liệu thủ công hoặc từ giọng nói (AI parser).</li>
+<li>Kiểm tra hợp lệ; nếu lỗi, báo và cho nhập lại.</li>
+<li>Lưu vào SQLite (addExpense/addIncome/updateTx).</li>
+<li>Cập nhật số dư ví.</li>
+<li>Đánh dấu cần đồng bộ (scheduleSyncDebounced).</li>
+<li>Đóng form/quay lại danh sách.</li>
+</ol>
+<p><strong>Khớp code:</strong></p>
+<ul>
+<li>Form: <a href="app/add-transaction.tsx">app/add-transaction.tsx</a> (chọn loại, danh mục, ví, ngày; có hỗ trợ ghi âm/AI)</li>
+<li>Repo: <a href="repos/transactionRepo.ts">repos/transactionRepo.ts</a> (addExpense/addIncome/updateTx, thường gọi scheduleSyncDebounced)</li>
+<li>Voice/AI: <a href="services/tensorflowTransactionParser.ts">services/tensorflowTransactionParser.ts</a> (parse câu lệnh giọng nói)</li>
+</ul>
+<hr>
+<h2 id="4323-activity-l%E1%BA%ADp-k%E1%BA%BF-ho%E1%BA%A1ch-ng%C3%A2n-s%C3%A1ch">4.3.2.3. Activity: Lập kế hoạch ngân sách</h2>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    A([Start]) --> B[Nhập thu nhập + chu kỳ tại setup]
+    B --> C[Nhận gợi ý AI 50/30/20 (generateSmartBudget)]
+    C --> D{Người dùng duyệt / chỉnh sửa phân bổ}
+    D --> E[Lưu budget + allocations vào SQLite]
+    E --> F[Trigger sync (scheduleSyncDebounced)]
+    F --> G([End - quay lại danh sách ngân sách])
+
+    style A fill:#90EE90
+    style G fill:#FFB6C6
+    style D fill:#87CEEB
+</div></code></pre>
+<p><strong>Các bước chính:</strong></p>
+<ol>
+<li>Nhập thu nhập, chu kỳ, mô tả tại màn hình setup.</li>
+<li>Nhận gợi ý AI 50/30/20 (generateSmartBudget).</li>
+<li>Người dùng duyệt/chỉnh sửa phân bổ.</li>
+<li>Lưu budget + allocations vào SQLite (createBudget).</li>
+<li>Trigger sync (scheduleSyncDebounced) và quay lại danh sách ngân sách.</li>
+</ol>
+<p><strong>Khớp code:</strong></p>
+<ul>
+<li>Nhập đầu vào: <a href="app/budget/setup.tsx">app/budget/setup.tsx</a></li>
+<li>Gợi ý + chỉnh sửa + lưu: <a href="app/budget/suggest.tsx">app/budget/suggest.tsx</a> (gọi generateSmartBudget, createBudget)</li>
+<li>Repo: <a href="repos/budgetRepo.ts">repos/budgetRepo.ts</a> (createBudget, lưu allocations, trigger sync + alert)</li>
+<li>AI logic: <a href="services/budgetAI.ts">services/budgetAI.ts</a> và <a href="services/budgetAIService.ts">services/budgetAIService.ts</a></li>
+</ul>
+<hr>
+<h2 id="4324-activity-%C4%91%E1%BB%93ng-b%E1%BB%99-d%E1%BB%AF-li%E1%BB%87u-ng%E1%BA%A7m">4.3.2.4. Activity: Đồng bộ dữ liệu (ngầm)</h2>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    A([Trigger: thay đổi dữ liệu / timer / app resume]) --> B[Debounce + rate-limit (syncTrigger)]
+    B --> C{Online? và Firebase signed-in?}
+    C -->|Không| I[Backoff + chờ lần sau]
+    C -->|Có| D[Pull incremental theo updated_at]
+    D --> E{Merge xung đột (last-write-wins)}
+    E --> F[Push các bản ghi local bẩn]
+    F --> G{Thành công?}
+    G -->|Không| H[Cập nhật syncState(error) + retry queue]
+    G -->|Có| J[Cập nhật lastSyncedAt + syncState(idle)]
+    H --> I([End])
+    J --> I([End])
+
+    style A fill:#90EE90
+    style I fill:#FFB6C6
+    style C fill:#87CEEB
+    style E fill:#87CEEB
+    style G fill:#87CEEB
+    style H fill:#FFD700
+</div></code></pre>
+<p><strong>Các bước chính:</strong></p>
+<ol>
+<li>Sự kiện thay đổi dữ liệu/timer/app resume kích hoạt syncTrigger (debounce + rate-limit).</li>
+<li>Kiểm tra online và Firebase signed-in; nếu offline thì backoff chờ.</li>
+<li>Pull incremental từ Firestore theo updated_at.</li>
+<li>Merge xung đột (last-write-wins) và lưu local.</li>
+<li>Push các bản ghi local bẩn lên Firestore.</li>
+<li>Nếu push lỗi, cập nhật syncState(error) và đưa vào retry queue; nếu thành công, cập nhật lastSyncedAt + syncState(idle).</li>
+<li>Kết thúc chu kỳ, chờ lần trigger tiếp theo.</li>
+</ol>
+<p><strong>Khớp code:</strong></p>
+<ul>
+<li>Trigger/Backoff: <a href="services/syncTrigger.ts">services/syncTrigger.ts</a> (debounce, NetInfo, Firebase sign-in check)</li>
+<li>Orchestrator: <a href="services/syncService.ts">services/syncService.ts</a> (coalesce, set syncState)</li>
+<li>Sync logic: <a href="services/firestoreSync.ts">services/firestoreSync.ts</a> (incremental by updated_at, last-write-wins, push/pull)</li>
+<li>Trạng thái: <a href="services/syncState.ts">services/syncState.ts</a> (status, lastSyncedAt)</li>
+<li>DB local: <a href="db/index.ts">db/index.ts</a></li>
+</ul>
+<hr>
+<h2 id="t%C3%B3m-t%E1%BA%AFt-nhanh">Tóm tắt nhanh</h2>
+<table>
+<thead>
+<tr>
+<th>Activity</th>
+<th>Mục đích</th>
+<th>Điểm chốt quan trọng</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Xác thực người dùng</td>
+<td>Vào app với phiên hợp lệ</td>
+<td>Password/Google/Biometric, lưu token, qua Onboarding nếu cần</td>
+</tr>
+<tr>
+<td>Thêm giao dịch</td>
+<td>Ghi nhận thu/chi</td>
+<td>Form thủ công hoặc giọng nói, lưu SQLite, cập nhật số dư, trigger sync</td>
+</tr>
+<tr>
+<td>Lập kế hoạch ngân sách</td>
+<td>Thiết lập và lưu phân bổ</td>
+<td>Nhập income/period, AI gợi ý 50/30/20, chỉnh sửa, lưu allocations, trigger sync</td>
+</tr>
+<tr>
+<td>Đồng bộ dữ liệu</td>
+<td>Giữ nhất quán local-cloud</td>
+<td>Debounce + online/Firebase check, pull/push incremental, last-write-wins, cập nhật syncState</td>
+</tr>
+</tbody>
+</table>
+
+</body>
+</html>
