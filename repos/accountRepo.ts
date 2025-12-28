@@ -18,8 +18,8 @@ export async function listAccounts(): Promise<Account[]> {
   const db = await openDb();
   const userId = await getCurrentUserId();
   return db.getAllAsync<Account>(
-    `SELECT id,name,icon,color,balance_cached,include_in_total,created_at
-     FROM accounts WHERE user_id=? ORDER BY created_at ASC`,
+    `SELECT id,name,icon,color,balance_cached,include_in_total
+     FROM accounts WHERE user_id=? ORDER BY updated_at DESC NULLS LAST, name ASC`,
     [userId]
   );
 }

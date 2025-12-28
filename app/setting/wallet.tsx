@@ -92,69 +92,64 @@ export default function WalletSettingsScreen() {
         style={styles.content}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        {/* Quản lý ví */}
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => router.push("/setting/wallets")}
-        >
-          <MaterialCommunityIcons
-            name="wallet"
-            size={24}
-            color={colors.text}
-            style={{ marginRight: 12 }}
-          />
-          <Text style={styles.cardValue}>{t("manageWallets")}</Text>
-        </TouchableOpacity>
-
         {/* Quản lý danh mục */}
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => router.push("/setting/categories")}
-        >
-          <MaterialCommunityIcons
-            name="format-list-bulleted"
-            size={24}
-            color={colors.text}
-            style={{ marginRight: 12 }}
-          />
-          <Text style={styles.cardValue}>{t("manageCategories")}</Text>
-        </TouchableOpacity>
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push("/setting/categories")}
+          >
+            <MaterialCommunityIcons
+              name="format-list-bulleted"
+              size={24}
+              color={colors.text}
+              style={{ marginRight: 12 }}
+            />
+            <Text style={styles.cardValue}>{t("manageCategories")}</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Biometric unlock (localized) */}
         {biometricSupported && (
-          <View style={styles.switchCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.switchLabel}>
-                {t("biometricUnlock", {
-                  type: getLocalizedBiometricType(biometricType),
-                })}
-              </Text>
-              <Text style={styles.switchDesc}>{t("biometricUnlockDesc")}</Text>
-            </View>
-            <Switch
-              value={biometricEnabled}
-              onValueChange={async (value) => {
-                if (value) {
-                  // Require authentication before enabling
-                  const success = await authenticateWithBiometric(
-                    t("biometricRegister", { type: biometricType })
-                  );
-                  if (success) {
-                    setBiometricEnabled(true);
-                    await saveBiometricEnabled(true);
-                    // Biometric enabled — no success alert shown (silently enable)
+          <View style={styles.section}>
+            <View style={styles.switchCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>
+                  {t("biometricUnlock", {
+                    type: getLocalizedBiometricType(biometricType),
+                  })}
+                </Text>
+                <Text style={styles.switchDesc}>
+                  {t("biometricUnlockDesc")}
+                </Text>
+              </View>
+              <Switch
+                value={biometricEnabled}
+                onValueChange={async (value) => {
+                  if (value) {
+                    // Require authentication before enabling
+                    const success = await authenticateWithBiometric(
+                      t("biometricRegister", { type: biometricType })
+                    );
+                    if (success) {
+                      setBiometricEnabled(true);
+                      await saveBiometricEnabled(true);
+                      // Biometric enabled — no success alert shown (silently enable)
+                    } else {
+                      Alert.alert(
+                        t("biometricFailed"),
+                        t("biometricFailedDesc")
+                      );
+                    }
                   } else {
-                    Alert.alert(t("biometricFailed"), t("biometricFailedDesc"));
+                    // Disable without authentication
+                    setBiometricEnabled(false);
+                    await saveBiometricEnabled(false);
                   }
-                } else {
-                  // Disable without authentication
-                  setBiometricEnabled(false);
-                  await saveBiometricEnabled(false);
-                }
-              }}
-              trackColor={{ false: colors.divider, true: "#34C759" }}
-              thumbColor="#fff"
-            />
+                }}
+                trackColor={{ false: colors.divider, true: "#34C759" }}
+                thumbColor="#fff"
+              />
+            </View>
           </View>
         )}
       </ScrollView>
@@ -184,6 +179,9 @@ const makeStyles = (c: {
     backBtn: { padding: 4 },
     headerTitle: { fontSize: 18, fontWeight: "700", color: c.text },
     content: { flex: 1, paddingHorizontal: 16 },
+    section: {
+      marginBottom: 16,
+    },
     sectionLabel: {
       fontSize: 14,
       color: c.subText,
@@ -222,7 +220,6 @@ const makeStyles = (c: {
       backgroundColor: c.card,
       borderRadius: 16,
       padding: 20,
-      marginTop: 16,
       flexDirection: "row",
       alignItems: "center",
       shadowColor: "#000",
