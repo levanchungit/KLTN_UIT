@@ -12,10 +12,6 @@ import Svg, { Path } from "react-native-svg";
 import Tooltip from "react-native-walkthrough-tooltip";
 import AIBotIcon from "./AIBotIcon";
 
-const BAR_BG = "#ffffff";
-const ACTIVE = "#1D4ED8";
-const INACTIVE = "#6B7280";
-
 export default function VenmoTabBar({
   state,
   descriptors,
@@ -23,7 +19,12 @@ export default function VenmoTabBar({
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = Dimensions.get("window");
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
+
+  // Màu động cho tab bar
+  const BAR_BG = colors.card;
+  const ACTIVE = mode === "dark" ? "#60A5FA" : "#1D4ED8";
+  const INACTIVE = mode === "dark" ? "#9CA3AF" : "#6B7280";
   const { t } = useI18n();
   const { shouldShowTour, currentStep, nextStep } = useAppTour();
   const [showMenu, setShowMenu] = useState(false);
@@ -269,12 +270,12 @@ export default function VenmoTabBar({
                 fontSize: 16,
                 fontWeight: "700",
                 color: "#111",
-                marginBottom: 8,
+                marginBottom: 4,
               }}
             >
               🤖 Trợ lý AI
             </Text>
-            <Text style={{ fontSize: 14, color: "#666", marginBottom: 12 }}>
+            <Text style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
               Nhấn vào đây để mở menu AI. Bạn có thể chat với AI hoặc tạo giao
               dịch thủ công.
             </Text>
@@ -299,7 +300,7 @@ export default function VenmoTabBar({
         onClose={() => nextStep()}
         contentStyle={{
           position: "absolute",
-          bottom: 0,
+          bottom: -20,
           backgroundColor: "#fff",
           borderRadius: 12,
           shadowColor: "#000",
@@ -308,7 +309,6 @@ export default function VenmoTabBar({
           shadowRadius: 8,
           elevation: 5,
         }}
-        tooltipStyle={{ maxWidth: 280 }}
       >
         <TouchableOpacity
           ref={aiBotRef}

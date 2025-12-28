@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -426,10 +427,10 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <MaterialCommunityIcons
-            name="wallet-outline"
-            size={80}
-            color="#007AFF"
+          <Image
+            source={require("../../assets/images/adaptive-icon.png")}
+            style={{ width: 150, height: 150, borderRadius: 20 }}
+            resizeMode="contain"
           />
           <Text style={styles.title}>HugoKeeper</Text>
           <Text style={styles.subtitle}>Quản lý tài chính cá nhân</Text>
