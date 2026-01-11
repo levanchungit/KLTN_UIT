@@ -2,7 +2,6 @@ import { useTheme } from "@/app/providers/ThemeProvider";
 import { useAppTour } from "@/context/appTourContext";
 import { db } from "@/db";
 import { useI18n } from "@/i18n/I18nProvider";
-import { listAccounts } from "@/repos/accountRepo";
 import {
   listCategories,
   seedCategoryDefaults,
@@ -788,6 +787,7 @@ const parseTransactionWithAI = async (
   date: Date;
   message: string;
   confidence?: number;
+  mlFailed?: boolean;
   alternatives?: Array<{
     categoryId: string;
     categoryName: string;
@@ -805,22 +805,31 @@ const parseTransactionWithAI = async (
       return null;
     }
 
+    // Try ML prediction with amount context (fast - returns null if model not ready)
     const mlPrediction = await transactionClassifier.predictCategory(
-      result.note
+      result.note,
+      result.amount
     );
 
-    let categoryId = result.categoryId; // Fallback to TensorFlow's prediction
+    let categoryId = result.categoryId;
     let categoryName = result.categoryName;
     let confidence = result.primary?.confidence || 0;
     let alternatives = result.alternatives || [];
-    let message = result.message; // Start with TensorFlow's message
-    let mlFailed = false; // Flag to indicate ML completely failed
+    let message = result.message;
+    let mlFailed = !mlPrediction; // Model not ready or prediction failed
 
     // Define minimum confidence threshold for auto-creation
-    const MIN_AUTO_CONFIDENCE = 0.5; // 50% - only auto-create if we're reasonably confident
+    // Raised to 60% to ensure high accuracy and reduce wrong classifications
+    // User can still correct via suggestions if confidence is lower
+    const MIN_AUTO_CONFIDENCE = 0.6;
 
     if (mlPrediction && mlPrediction.confidence > MIN_AUTO_CONFIDENCE) {
       // ML has a good prediction - use it instead!
+      console.log(
+        `✅ Auto-creating with ${(mlPrediction.confidence * 100).toFixed(
+          1
+        )}% confidence`
+      );
       categoryId = mlPrediction.categoryId;
       categoryName = mlPrediction.categoryName || result.categoryName;
       confidence = mlPrediction.confidence;
@@ -842,18 +851,24 @@ const parseTransactionWithAI = async (
         message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
       }
     } else {
-      // ML prediction is too low or failed - mark for suggestion UI
-      console.warn(
-        `❌ ML prediction failed or too low confidence (${
-          mlPrediction?.confidence
-            ? (mlPrediction.confidence * 100).toFixed(1)
-            : 0
-        }%), using TensorFlow fallback`
+      // ML prediction is too low or model not ready - will show suggestion UI
+      console.log(
+        `⚠️ Low confidence (${
+          mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
+        }%) - showing suggestions`
       );
       mlFailed = true;
-      // Keep TensorFlow's fallback but mark it as unreliable
-      confidence = 0.05; // Set very low confidence to trigger suggestion UI
+      confidence = 0.05; // Trigger suggestion UI
     }
+
+    // Derive IO from the resolved category type (AI-first, no keyword rules)
+    const resolvedCategory = userCategories.find((c) => c.id === categoryId);
+    const resolvedIo: "IN" | "OUT" =
+      resolvedCategory?.type === "income"
+        ? "IN"
+        : resolvedCategory?.type === "expense"
+        ? "OUT"
+        : result.io;
 
     // Include confidence and alternatives from the parser
     return {
@@ -863,6 +878,7 @@ const parseTransactionWithAI = async (
       confidence,
       message, // Use regenerated message
       mlFailed, // Flag indicating ML prediction failed
+      io: resolvedIo,
       alternatives: alternatives.map((alt) => ({
         categoryId: alt.categoryId,
         categoryName: alt.categoryName,
@@ -875,11 +891,7 @@ const parseTransactionWithAI = async (
   }
 };
 
-const detectInOut = (text: string): "IN" | "OUT" => {
-  const t = text.toLowerCase();
-  if (/(lương|thu nhập|refund|hoàn tiền|chuyển vào)/.test(t)) return "IN";
-  return "OUT";
-};
+// IO is derived from the resolved category type (income/expense)
 
 /* ---------------- Small NLP utils (for mapping ML → user's categories) ---------------- */
 const normalizeVN = (s: string) =>
@@ -1184,9 +1196,9 @@ async function createTransaction(draft: {
   }
 
   // chọn account mặc định: ưu tiên include_in_total=1 rồi đến account đầu tiên
-  const accounts = await listAccounts().catch(() => []);
-  const acc =
-    accounts.find((a: any) => a.include_in_total === 1) || accounts[0] || null;
+  // Use cached default account for better performance
+  const { getCachedDefaultAccount } = await import("@/services/cacheService");
+  const acc = await getCachedDefaultAccount();
   if (!acc?.id) throw new Error("Chưa có tài khoản để ghi giao dịch.");
 
   const common = {
@@ -1634,92 +1646,89 @@ export default function Chatbox() {
 
   const load = useCallback(async () => {
     await seedCategoryDefaults();
-    const rows = await listCategories();
+    // ⚡ PERFORMANCE: Use cached categories for faster loading
+    const { getCachedCategories } = await import("@/services/cacheService");
+    const rows = await getCachedCategories();
     setItems(rows);
 
-    // Auto-train AI silently in background if needed
-    transactionClassifier.trainModel(false).catch((err: any) => {
-      // Ignore background training errors
+    // Defer model training to background (after UI loads)
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        console.log("🚀 Starting background model training...");
+        transactionClassifier
+          .trainModel(false)
+          .then((result) => {
+            if (result.success) {
+              console.log(
+                `✅ Background training complete: ${
+                  result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
+                }% accuracy`
+              );
+            } else {
+              console.warn(
+                `⚠️ Background training skipped/failed: ${result.message}`
+              );
+            }
+          })
+          .catch((err) => {
+            console.error("❌ Background training error:", err);
+          });
+      }, 2000);
     });
   }, []);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  // 🎓 AUTO-TRAIN ML MODEL with existing transaction history when opening chatbox
+  // Build simple category priors from user's history - deferred to background
   useEffect(() => {
-    (async () => {
-      try {
-        const result = await transactionClassifier.trainModel(true);
-        if (result.success) {
-        } else {
-          console.warn("⚠️ Model training failed:", result.message);
-        }
-      } catch (error) {
-        console.warn("❌ Error training model on startup:", error);
-      }
-    })();
-  }, []); // Run once on mount
-
-  // Build simple category priors from user's history (last 90 days), separated by IN/OUT
-  useEffect(() => {
-    (async () => {
-      try {
-        const userId = await getCurrentUserId();
-        const nowSec = Math.floor(Date.now() / 1000);
-        const fromSec = nowSec - 90 * 86400;
-        const rows = await db.getAllAsync<{
-          category_id: string | null;
-          type: string;
-          cnt: number;
-        }>(
-          `SELECT category_id, type, COUNT(*) as cnt
-           FROM transactions
-           WHERE user_id=? AND occurred_at>=? AND occurred_at<=?
-           GROUP BY category_id, type`,
-          [Number(userId || 0), fromSec, nowSec] as any
-        );
-        const outP: Record<string, number> = {};
-        const inP: Record<string, number> = {};
-        let sumOut = 0,
-          sumIn = 0;
-        for (const r of rows) {
-          const id = r.category_id || "__null__";
-          if (r.type === "expense") {
-            outP[id] = (outP[id] || 0) + (r.cnt || 0);
-            sumOut += r.cnt || 0;
-          } else {
-            inP[id] = (inP[id] || 0) + (r.cnt || 0);
-            sumIn += r.cnt || 0;
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(async () => {
+        try {
+          const userId = await getCurrentUserId();
+          const nowSec = Math.floor(Date.now() / 1000);
+          const fromSec = nowSec - 90 * 86400;
+          const rows = await db.getAllAsync<{
+            category_id: string | null;
+            type: string;
+            cnt: number;
+          }>(
+            `SELECT category_id, type, COUNT(*) as cnt
+             FROM transactions
+             WHERE user_id=? AND occurred_at>=? AND occurred_at<=?
+             GROUP BY category_id, type`,
+            [Number(userId || 0), fromSec, nowSec] as any
+          );
+          const outP: Record<string, number> = {};
+          const inP: Record<string, number> = {};
+          let sumOut = 0,
+            sumIn = 0;
+          for (const r of rows) {
+            const id = r.category_id || "__null__";
+            if (r.type === "expense") {
+              outP[id] = (outP[id] || 0) + (r.cnt || 0);
+              sumOut += r.cnt || 0;
+            } else {
+              inP[id] = (inP[id] || 0) + (r.cnt || 0);
+              sumIn += r.cnt || 0;
+            }
           }
-        }
-        // Normalize and apply small smoothing
-        const norm = (m: Record<string, number>, sum: number) => {
-          const out: Record<string, number> = {};
-          const denom = sum + 1e-6;
-          Object.entries(m).forEach(([k, v]) => {
-            out[k] = v / denom;
-          });
-          return out;
-        };
-        setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
-      } catch (e) {
-        // ignore priors if query fails
-      }
-    })();
+          const norm = (m: Record<string, number>, sum: number) => {
+            const out: Record<string, number> = {};
+            const denom = sum + 1e-6;
+            Object.entries(m).forEach(([k, v]) => {
+              out[k] = v / denom;
+            });
+            return out;
+          };
+          setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
+        } catch (e) {}
+      }, 1500);
+    });
   }, []);
 
-  // Initialize PhoBERT Amount Extractor
-  useEffect(() => {
-    (async () => {
-      try {
-        await phobertExtractor.initialize();
-        const info = phobertExtractor.getModelInfo();
-      } catch (err) {
-        console.warn("❌ PhoBERT initialization failed:", err);
-      }
-    })();
-  }, []);
+  // PhoBERT initializes lazily on first use (no need to block here)
 
   useFocusEffect(
     useCallback(() => {
@@ -1850,152 +1859,91 @@ export default function Chatbox() {
       flatRef.current?.scrollToEnd({ animated: true })
     );
 
-  // Core: classify to user's categories with AI
-  async function classifyToUserCategoriesAI(text: string) {
-    const io = detectInOut(text);
+  // Core: classify to user's categories with AI (memoized to avoid recalculation)
+  const classifyToUserCategoriesAI = useCallback(
+    async (text: string, expectedIO?: "IN" | "OUT") => {
+      // PRIORITY 1: Neural on-device model (learned from user's history)
+      try {
+        const pred =
+          await transactionClassifier.predictCategoryWithAlternatives(text);
 
-    // Filter categories by io type using the 'type' field
-    const filteredItems = items.filter((c) => {
-      // Match category type with transaction type
-      if (io === "IN") {
-        return c.type === "income";
-      } else {
-        return c.type === "expense";
-      }
-    });
+        const candidates = [pred.primary, ...pred.alternatives]
+          .filter((p) => p && p.categoryId)
+          .map((p) => {
+            const cat = items.find((c) => c.id === p.categoryId);
+            return {
+              categoryId: p.categoryId,
+              name: cat?.name || p.categoryName || "",
+              score: p.confidence,
+              io: cat?.type === "income" ? ("IN" as const) : ("OUT" as const),
+            };
+          })
+          .filter((x) => x.name)
+          // Filter by expected IO type if provided
+          .filter((x) => !expectedIO || x.io === expectedIO);
 
-    // If no filtered items, use all items as fallback
-    const relevantItems = filteredItems.length > 0 ? filteredItems : items;
-
-    // PRIORITY 1: Try on-device ML model (learned from user's history)
-    try {
-      const mlPrediction = await transactionClassifier.predictCategory(text);
-
-      // LOWERED threshold from 0.15 to 0.10 to give ML more chances
-      if (mlPrediction && mlPrediction.confidence > 0.1) {
-        // ML model has learned from user's history - PRIORITIZE THIS
-        const mlCategory = relevantItems.find(
-          (c) => c.id === mlPrediction.categoryId
-        );
-
-        if (mlCategory) {
-          // Calculate scores for ALL categories, giving HIGH weight to ML prediction
-          const allScores = relevantItems.map((c) => {
-            const heuristicBase = heuristicScore(text, c, io);
-            const priorMap = io === "IN" ? priors.IN : priors.OUT;
-            const prior = priorMap[c.id] || 0;
-
-            if (c.id === mlCategory.id) {
-              // For ML-predicted category: Use full heuristic + prior
-              const heuristicFinal = 0.8 * heuristicBase + 0.2 * prior;
-              // PRIORITIZE ML (90% weight)
-              // This ensures user's history patterns are strongly respected
-              const blendedScore =
-                0.9 * mlPrediction.confidence + 0.1 * heuristicFinal;
-              return {
-                categoryId: c.id,
-                name: c.name,
-                score: Math.min(1.0, blendedScore * 1.3), // Boost by 30%
-                isFromML: true, // Mark that this is from ML model
-                mlConfidence: mlPrediction.confidence, // Store original ML confidence
-              };
-            } else {
-              // For other categories: IGNORE priors, only use base heuristic
-              // This prevents categories with high historical usage from winning
-              return {
-                categoryId: c.id,
-                name: c.name,
-                score: heuristicBase * 0.3, // Use ONLY base heuristic, no priors!
-                isFromML: false,
-              };
-            }
-          });
-
-          // Sort all scores and take top results
-          const ranked = allScores
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 6);
-          return { io, ranked };
-        }
-      } else if (mlPrediction) {
-        console.warn(
-          `⚠️ ML confidence too low: ${(mlPrediction.confidence * 100).toFixed(
-            1
-          )}%`
-        );
-      }
-    } catch (error) {
-      console.warn("ML prediction failed, falling back to heuristic:", error);
-    }
-
-    // PRIORITY 2: Fallback to existing static ML or heuristic
-    // 1) Nếu có ML: lấy top labels → map sang danh mục user → rerank
-    if (model) {
-      const mlRank = lrPredict(text, model); // [{label, p} ...]
-      const mapped = mlRank
-        .slice(0, 6) // lấy ~6 nhãn đầu
-        .map((r) => {
-          const m = mapMLToUserCategory(r.label, relevantItems);
-          if (!m) return null;
-          // Kết hợp điểm ML và độ giống tên danh mục
-          let score = 0.8 * r.p + 0.2 * m.sim;
-          // Áp dụng prior từ lịch sử người dùng
-          const priorMap = io === "IN" ? priors.IN : priors.OUT;
-          const prior = priorMap[m.category.id] || 0;
-          score = 0.85 * score + 0.15 * prior;
-          return { categoryId: m.category.id, name: m.category.name, score };
-        })
-        .filter(Boolean) as {
-        categoryId: string;
-        name: string;
-        score: number;
-      }[];
-
-      // Nếu mapping trùng id, giữ điểm cao nhất
-      const byId = new Map<
-        string,
-        { categoryId: string; name: string; score: number }
-      >();
-      for (const r of mapped) {
-        const prev = byId.get(r.categoryId);
-        if (!prev || r.score > prev.score) byId.set(r.categoryId, r);
-      }
-      const tmp: { categoryId: string; name: string; score: number }[] = [];
-      byId.forEach((v) => tmp.push(v));
-      const arr = tmp.sort((a, b) => b.score - a.score);
-
-      // Nếu mỏng quá (ít khớp), trộn thêm heuristic để an toàn
-      if (arr.length < 2) {
-        const hs = relevantItems.map((c) => {
-          const base = heuristicScore(text, c, io);
-          const priorMap = io === "IN" ? priors.IN : priors.OUT;
-          const prior = priorMap[c.id] || 0;
+        if (candidates.length > 0) {
+          // Ensure unique ids, keep highest score
+          const byId = new Map<string, (typeof candidates)[number]>();
+          for (const c of candidates) {
+            const prev = byId.get(c.categoryId);
+            if (!prev || c.score > prev.score) byId.set(c.categoryId, c);
+          }
+          const ranked = Array.from(byId.values()).sort(
+            (a, b) => b.score - a.score
+          );
+          const topIo = expectedIO || ranked[0]?.io || "OUT";
           return {
+            io: topIo,
+            ranked: ranked.map(({ io: _io, ...rest }) => rest),
+          };
+        }
+      } catch (error) {
+        console.warn(
+          "Neural classification failed, falling back to priors:",
+          error
+        );
+      }
+
+      // PRIORITY 2: Priors-only fallback (no keyword/regex scoring)
+      const actualIO = expectedIO || "OUT";
+      const ranked = [...items]
+        .filter(
+          (c) =>
+            !expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO
+        )
+        .map((c) => ({
+          categoryId: c.id,
+          name: c.name,
+          score: (priors.IN[c.id] ?? priors.OUT[c.id] ?? 0) as number,
+          io: c.type === "income" ? ("IN" as const) : ("OUT" as const),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      // If priors are empty (new user), just return first few categories matching IO type
+      if ((ranked[0]?.score || 0) <= 0) {
+        const matchingCategories = items.filter(
+          (c) =>
+            !expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO
+        );
+        return {
+          io: actualIO,
+          ranked: matchingCategories.slice(0, 6).map((c) => ({
             categoryId: c.id,
             name: c.name,
-            score: 0.9 * base + 0.1 * prior,
-          };
-        });
-        hs.sort((a, b) => b.score - a.score);
-        return { io, ranked: [...arr, ...hs].slice(0, 5) };
+            score: 0.01,
+          })),
+        };
       }
-      return { io, ranked: arr };
-    }
 
-    // 2) Fallback: heuristic thuần
-    const hs = relevantItems.map((c) => {
-      const base = heuristicScore(text, c, io);
-      const priorMap = io === "IN" ? priors.IN : priors.OUT;
-      const prior = priorMap[c.id] || 0;
+      const topIo = ranked[0]?.io || "OUT";
       return {
-        categoryId: c.id,
-        name: c.name,
-        score: 0.9 * base + 0.1 * prior,
+        io: topIo,
+        ranked: ranked.slice(0, 6).map(({ io: _io, ...rest }) => rest),
       };
-    });
-    hs.sort((a, b) => b.score - a.score);
-    return { io, ranked: hs };
-  }
+    },
+    [items, priors]
+  );
 
   // ⬇️ Trong handleSend, đổi phần “tạo giao dịch” để fallback sang pendingPick khi chưa chắc danh mục:
   const handleSend = async () => {
@@ -2022,6 +1970,7 @@ export default function Chatbox() {
     amount: number | null;
     io: "IN" | "OUT";
     choices: { categoryId: string; name: string; score: number }[];
+    date?: Date;
   } | null>(null);
   // Animation for suggestion appearance
   const suggestAnim = useRef(new Animated.Value(pendingPick ? 1 : 0)).current;
@@ -2127,11 +2076,14 @@ export default function Chatbox() {
             });
           }
 
-          // Now retrain with the correction in the database
-          await transactionClassifier.learnFromCorrection(
-            pendingPick.text,
-            c.categoryId
-          );
+          // Defer training to background (after UI interactions complete)
+          InteractionManager.runAfterInteractions(() => {
+            transactionClassifier
+              .learnFromCorrection(pendingPick.text, c.categoryId)
+              .catch((err) =>
+                console.warn("⚠️ Background training failed:", err)
+              );
+          });
         } else if (topSuggestion && topSuggestion.categoryId === c.categoryId) {
           // Still log as a positive example (user confirmed the prediction was correct)
           await logPrediction({
@@ -2336,148 +2288,214 @@ export default function Chatbox() {
 
   // ----- Process text input (shared by voice, image, and text) -----
   const processingTextRef = useRef(false);
-  const processTextInput = async (text: string) => {
-    const userText = text.trim();
-    if (!userText) return;
+  const processTextInput = useCallback(
+    async (text: string) => {
+      const userText = text.trim();
+      if (!userText) return;
 
-    // Prevent concurrent processing (avoid duplicate responses)
-    if (processingTextRef.current) return;
-    processingTextRef.current = true;
+      // Prevent concurrent processing (avoid duplicate responses)
+      if (processingTextRef.current) return;
+      processingTextRef.current = true;
 
-    try {
-      // Add typing indicator only if not already present
-      setMessages((m) => {
-        const last = m[m.length - 1];
-        if (last && last.role === "typing") return m;
-        return [...m, { role: "typing" }];
-      });
-      scrollToEnd();
+      try {
+        // Add typing indicator only if not already present
+        setMessages((m) => {
+          const last = m[m.length - 1];
+          if (last && last.role === "typing") return m;
+          return [...m, { role: "typing" }];
+        });
+        scrollToEnd();
 
-      const aiResult = await parseTransactionWithAI(userText, items);
+        const aiResult = await parseTransactionWithAI(userText, items);
 
-      if (!aiResult) {
-        let amountFromOriginal: number | null = null;
-        try {
-          const phobertResult = await phobertExtractor.extractAmount(userText);
-          if (phobertResult.amount && phobertResult.confidence > 0.5) {
-            amountFromOriginal = phobertResult.amount;
-          } else {
-            // Low confidence, fallback to regex
+        if (!aiResult) {
+          let amountFromOriginal: number | null = null;
+          try {
+            const phobertResult = await phobertExtractor.extractAmount(
+              userText
+            );
+            if (phobertResult.amount && phobertResult.confidence > 0.5) {
+              amountFromOriginal = phobertResult.amount;
+            } else {
+              // Low confidence, fallback to regex
+              amountFromOriginal = parseAmountVN(userText);
+            }
+          } catch (error) {
+            console.warn("❌ PhoBERT failed, using regex:", error);
             amountFromOriginal = parseAmountVN(userText);
           }
-        } catch (error) {
-          console.warn("❌ PhoBERT failed, using regex:", error);
-          amountFromOriginal = parseAmountVN(userText);
-        }
 
-        // Clean text for category prediction
-        const parsed = parseTransactionText(userText);
-        const cleanNote = parsed.note || userText;
-        const amt = amountFromOriginal || parsed.amount;
+          // Clean text for category prediction
+          const parsed = parseTransactionText(userText);
+          const cleanNote = parsed.note || userText;
+          const amt = amountFromOriginal || parsed.amount;
 
-        // Use ML to predict category
-        const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
+          // Use ML to predict category
+          const { io, ranked } = await classifyToUserCategoriesAI(cleanNote);
 
-        if (!ranked || ranked.length === 0) {
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            { role: "bot", text: t("askAmount") },
-          ]);
+          if (!ranked || ranked.length === 0) {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              { role: "bot", text: t("askAmount") },
+            ]);
+            return;
+          }
+
+          const topPred = ranked[0];
+          await autoCreateTransaction(
+            cleanNote,
+            amt,
+            io,
+            topPred.categoryId,
+            userText
+          );
           return;
         }
 
-        const topPred = ranked[0];
-        await autoCreateTransaction(
-          cleanNote,
-          amt,
-          io,
-          topPred.categoryId,
-          userText
+        // Use AI parsed result
+
+        if (aiResult.action === "VIEW_STATS") {
+          // User wants to see statistics - direct them to Charts tab
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `📊 ${aiResult.message}\n\nĐể xem thống kê chi tiết, vui lòng vào tab "Biểu đồ" ở thanh điều hướng bên dưới. 📈`,
+            },
+          ]);
+          scrollToEnd();
+          return;
+        }
+
+        if (aiResult.action === "EDIT_TRANSACTION") {
+          // User wants to edit transaction - show last transaction with edit option
+          const lastCard = messages.findLast((m) => m.role === "card");
+          if (lastCard && lastCard.role === "card") {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `✏️ ${aiResult.message}\n\nBạn có thể nhấn nút "Sửa" ở giao dịch bên dưới để chỉnh sửa.`,
+              },
+            ]);
+          } else {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Không tìm thấy giao dịch nào để sửa.\n\nVui lòng tạo giao dịch mới hoặc xem danh sách giao dịch ở tab "Giao dịch".`,
+              },
+            ]);
+          }
+          scrollToEnd();
+          return;
+        }
+
+        if (aiResult.action === "DELETE_TRANSACTION") {
+          // User wants to delete transaction - show last transaction with delete option
+          const lastCard = messages.findLast((m) => m.role === "card");
+          if (lastCard && lastCard.role === "card") {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `🗑️ ${aiResult.message}\n\nBạn có thể nhấn nút "Xóa" ở giao dịch bên dưới để xóa.`,
+              },
+            ]);
+          } else {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Không tìm thấy giao dịch nào để xóa.\n\nVui lòng xem danh sách giao dịch ở tab "Giao dịch".`,
+              },
+            ]);
+          }
+          scrollToEnd();
+          return;
+        }
+
+        // Default: CREATE_TRANSACTION
+        // Define minimum confidence for auto-creation (safety threshold)
+        const MIN_AUTO_CREATE_CONFIDENCE = 0.6; // 60% - balance between automation and accuracy
+        const rawConfidence = aiResult.confidence ?? 0;
+        const confidenceValue = rawConfidence * (rawConfidence <= 1 ? 1 : 0.01); // Normalize to 0-1
+        const mlFailed = (aiResult as any).mlFailed || false;
+
+        // CASE 1: ML prediction completely failed - always show suggestions
+        if (mlFailed) {
+          console.log("🔍 ML failed - showing category suggestions");
+          const { io, ranked } = await classifyToUserCategoriesAI(
+            aiResult.note
+          );
+          setMessages((m) => [
+            ...m.slice(0, -1),
+            {
+              role: "bot",
+              text: `⚠️ Không thể xác định danh mục chính xác. Bạn muốn phân loại vào:`,
+            },
+          ]);
+          setPendingPick({
+            text: aiResult.note,
+            amount: aiResult.amount,
+            io: aiResult.io,
+            choices: ranked?.slice(0, 3) || [],
+            date: aiResult.date,
+          });
+          return;
+        }
+
+        // CASE 2: High confidence (>= 60%) - auto-create transaction
+        if (confidenceValue >= MIN_AUTO_CREATE_CONFIDENCE) {
+          console.log(
+            `✅ High confidence (${(confidenceValue * 100).toFixed(
+              1
+            )}%) - auto-creating transaction`
+          );
+          let matchedCategory = aiResult.categoryId
+            ? items.find((c) => c.id === aiResult.categoryId)
+            : null;
+
+          // Fallback to name matching if categoryId not found
+          if (!matchedCategory) {
+            matchedCategory = items.find(
+              (c) =>
+                c.name
+                  .toLowerCase()
+                  .includes(aiResult.categoryName.toLowerCase()) ||
+                aiResult.categoryName
+                  .toLowerCase()
+                  .includes(c.name.toLowerCase())
+            );
+          }
+
+          if (matchedCategory) {
+            await autoCreateTransactionDirect(aiResult, matchedCategory.id);
+            return;
+          }
+        }
+
+        // CASE 3: Low confidence (< 60%) - show suggestions for user to confirm
+        console.log(
+          `⚠️ Low confidence (${(confidenceValue * 100).toFixed(
+            1
+          )}%) - showing suggestions`
         );
-        return;
-      }
+        const { io, ranked } = await classifyToUserCategoriesAI(
+          aiResult.note,
+          aiResult.io
+        );
 
-      // Use AI parsed result
-
-      if (aiResult.action === "VIEW_STATS") {
-        // User wants to see statistics - direct them to Charts tab
         setMessages((m) => [
           ...m.slice(0, -1),
           {
             role: "bot",
-            text: `📊 ${aiResult.message}\n\nĐể xem thống kê chi tiết, vui lòng vào tab "Biểu đồ" ở thanh điều hướng bên dưới. 📈`,
+            text: `⚠️ Độ tin cậy thấp (${(confidenceValue * 100).toFixed(
+              0
+            )}%). Bạn muốn phân loại vào:`,
           },
         ]);
-        scrollToEnd();
-        return;
-      }
 
-      if (aiResult.action === "EDIT_TRANSACTION") {
-        // User wants to edit transaction - show last transaction with edit option
-        const lastCard = messages.findLast((m) => m.role === "card");
-        if (lastCard && lastCard.role === "card") {
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            {
-              role: "bot",
-              text: `✏️ ${aiResult.message}\n\nBạn có thể nhấn nút "Sửa" ở giao dịch bên dưới để chỉnh sửa.`,
-            },
-          ]);
-        } else {
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            {
-              role: "bot",
-              text: `❌ Không tìm thấy giao dịch nào để sửa.\n\nVui lòng tạo giao dịch mới hoặc xem danh sách giao dịch ở tab "Giao dịch".`,
-            },
-          ]);
-        }
-        scrollToEnd();
-        return;
-      }
-
-      if (aiResult.action === "DELETE_TRANSACTION") {
-        // User wants to delete transaction - show last transaction with delete option
-        const lastCard = messages.findLast((m) => m.role === "card");
-        if (lastCard && lastCard.role === "card") {
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            {
-              role: "bot",
-              text: `🗑️ ${aiResult.message}\n\nBạn có thể nhấn nút "Xóa" ở giao dịch bên dưới để xóa.`,
-            },
-          ]);
-        } else {
-          setMessages((m) => [
-            ...m.slice(0, -1),
-            {
-              role: "bot",
-              text: `❌ Không tìm thấy giao dịch nào để xóa.\n\nVui lòng xem danh sách giao dịch ở tab "Giao dịch".`,
-            },
-          ]);
-        }
-        scrollToEnd();
-        return;
-      }
-
-      // Default: CREATE_TRANSACTION
-      // Define minimum confidence for auto-creation (safety threshold)
-      const MIN_AUTO_CREATE_CONFIDENCE = 0.6; // 60% - balance between automation and accuracy
-      const confidenceValue =
-        (aiResult.confidence ?? 0) * (aiResult.confidence <= 1 ? 1 : 0.01); // Normalize to 0-1
-      const mlFailed = (aiResult as any).mlFailed || false;
-
-      // CASE 1: ML prediction completely failed - always show suggestions
-      if (mlFailed) {
-        console.log("🔍 ML failed - showing category suggestions");
-        const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
-            role: "bot",
-            text: `⚠️ Không thể xác định danh mục chính xác. Bạn muốn phân loại vào:`,
-          },
-        ]);
         setPendingPick({
           text: aiResult.note,
           amount: aiResult.amount,
@@ -2485,66 +2503,12 @@ export default function Chatbox() {
           choices: ranked?.slice(0, 3) || [],
           date: aiResult.date,
         });
-        return;
+      } finally {
+        processingTextRef.current = false;
       }
-
-      // CASE 2: High confidence (>= 60%) - auto-create transaction
-      if (confidenceValue >= MIN_AUTO_CREATE_CONFIDENCE) {
-        console.log(
-          `✅ High confidence (${(confidenceValue * 100).toFixed(
-            1
-          )}%) - auto-creating transaction`
-        );
-        let matchedCategory = aiResult.categoryId
-          ? items.find((c) => c.id === aiResult.categoryId)
-          : null;
-
-        // Fallback to name matching if categoryId not found
-        if (!matchedCategory) {
-          matchedCategory = items.find(
-            (c) =>
-              c.name
-                .toLowerCase()
-                .includes(aiResult.categoryName.toLowerCase()) ||
-              aiResult.categoryName.toLowerCase().includes(c.name.toLowerCase())
-          );
-        }
-
-        if (matchedCategory) {
-          await autoCreateTransactionDirect(aiResult, matchedCategory.id);
-          return;
-        }
-      }
-
-      // CASE 3: Low confidence (< 60%) - show suggestions for user to confirm
-      console.log(
-        `⚠️ Low confidence (${(confidenceValue * 100).toFixed(
-          1
-        )}%) - showing suggestions`
-      );
-      const { io, ranked } = await classifyToUserCategoriesAI(aiResult.note);
-
-      setMessages((m) => [
-        ...m.slice(0, -1),
-        {
-          role: "bot",
-          text: `⚠️ Độ tin cậy thấp (${(confidenceValue * 100).toFixed(
-            0
-          )}%). Bạn muốn phân loại vào:`,
-        },
-      ]);
-
-      setPendingPick({
-        text: aiResult.note,
-        amount: aiResult.amount,
-        io: aiResult.io,
-        choices: ranked?.slice(0, 3) || [],
-        date: aiResult.date,
-      });
-    } finally {
-      processingTextRef.current = false;
-    }
-  };
+    },
+    [items, classifyToUserCategoriesAI]
+  );
 
   // ----- Auto create transaction (NEW - from AI parsed result) -----
   const autoCreateTransactionDirect = async (
@@ -2575,15 +2539,12 @@ export default function Chatbox() {
         date: aiResult.date,
       });
 
-      // IMMEDIATE learning for better pattern recognition
-      try {
-        await transactionClassifier.learnFromNewTransaction(
-          aiResult.note,
-          categoryId
-        );
-      } catch (err) {
-        console.warn("⚠️ Auto-learning failed:", err);
-      }
+      // Defer learning to background (don't block UI)
+      setTimeout(() => {
+        transactionClassifier
+          .learnFromNewTransaction(aiResult.note, categoryId)
+          .catch(() => {});
+      }, 100);
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
 
@@ -2792,15 +2753,12 @@ export default function Chatbox() {
           console.warn("⚠️ Failed to log correction:", err);
         }
 
-        // Retrain model immediately with new correction
-        try {
-          await transactionClassifier.learnFromCorrection(
-            editNote,
-            editCategoryId
-          );
-        } catch (err) {
-          console.warn("⚠️ Model retraining failed:", err);
-        }
+        // Defer training to background (non-blocking)
+        InteractionManager.runAfterInteractions(() => {
+          transactionClassifier
+            .learnFromCorrection(editNote, editCategoryId)
+            .catch((err) => console.warn("⚠️ Model retraining failed:", err));
+        });
       }
 
       // Update message in chat - bao gồm cả io type, icon và color
@@ -3136,218 +3094,225 @@ export default function Chatbox() {
               flatRef.current?.scrollToEnd({ animated: false });
             });
           }}
-          renderItem={({ item }) => {
-            if (item.role === "user") {
-              return (
-                <View
-                  style={[
-                    styles.bubble,
-                    styles.right,
-                    {
-                      backgroundColor: mode === "dark" ? "#1E3A8A" : "#E5F5F9",
-                      borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
-                    },
-                  ]}
-                >
-                  {item.imageUri === "voice-recording" ? (
-                    <View
-                      style={{
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: 20,
-                      }}
-                    >
-                      <Ionicons name="mic" size={48} color="#3B82F6" />
-                    </View>
-                  ) : item.imageUri ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setSelectedImage(item.imageUri!);
-                        setImageViewerVisible(true);
-                      }}
-                    >
-                      <Image
-                        source={{ uri: item.imageUri }}
+          renderItem={useCallback(
+            ({ item }) => {
+              if (item.role === "user") {
+                return (
+                  <View
+                    style={[
+                      styles.bubble,
+                      styles.right,
+                      {
+                        backgroundColor:
+                          mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+                        borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+                      },
+                    ]}
+                  >
+                    {item.imageUri === "voice-recording" ? (
+                      <View
                         style={{
-                          width: 200,
-                          height: 200,
-                          borderRadius: 8,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: 20,
                         }}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
-                  ) : (
+                      >
+                        <Ionicons name="mic" size={48} color="#3B82F6" />
+                      </View>
+                    ) : item.imageUri ? (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedImage(item.imageUri!);
+                          setImageViewerVisible(true);
+                        }}
+                      >
+                        <Image
+                          source={{ uri: item.imageUri }}
+                          style={{
+                            width: 200,
+                            height: 200,
+                            borderRadius: 8,
+                          }}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={[styles.text, { color: colors.text }]}>
+                        {item.text}
+                      </Text>
+                    )}
+                  </View>
+                );
+              }
+              if (item.role === "bot") {
+                return (
+                  <View
+                    style={[
+                      styles.bubble,
+                      styles.left,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.divider,
+                      },
+                    ]}
+                  >
                     <Text style={[styles.text, { color: colors.text }]}>
                       {item.text}
                     </Text>
-                  )}
-                </View>
-              );
-            }
-            if (item.role === "bot") {
+                  </View>
+                );
+              }
+              if (item.role === "typing") {
+                return <TypingIndicator colors={colors} />;
+              }
+
               return (
                 <View
                   style={[
-                    styles.bubble,
-                    styles.left,
+                    styles.card,
                     {
                       backgroundColor: colors.card,
                       borderColor: colors.divider,
                     },
                   ]}
                 >
-                  <Text style={[styles.text, { color: colors.text }]}>
-                    {item.text}
-                  </Text>
-                </View>
-              );
-            }
-            if (item.role === "typing") {
-              return <TypingIndicator colors={colors} />;
-            }
-
-            return (
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: colors.card, borderColor: colors.divider },
-                ]}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
                   <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: item.categoryColor || "#6366F1" },
-                    ]}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
                   >
-                    <MaterialCommunityIcons
-                      name={fixIconName(item.categoryIcon) as any}
-                      size={26}
-                      color="#fff"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.subText, marginBottom: 2 }}>
-                      {t("recorded")}{" "}
-                      {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
-                      {item.when}
-                    </Text>
+                    <View
+                      style={[
+                        styles.iconCircle,
+                        { backgroundColor: item.categoryColor || "#6366F1" },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={fixIconName(item.categoryIcon) as any}
+                        size={26}
+                        color="#fff"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.subText, marginBottom: 2 }}>
+                        {t("recorded")}{" "}
+                        {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
+                        {item.when}
+                      </Text>
+                      <Text
+                        style={{
+                          fontWeight: "700",
+                          fontSize: 18,
+                          color: colors.text,
+                        }}
+                      >
+                        {item.categoryName}
+                      </Text>
+                      <Text style={{ marginTop: 2, color: colors.text }}>
+                        {item.note}
+                      </Text>
+                    </View>
                     <Text
                       style={{
                         fontWeight: "700",
-                        fontSize: 18,
+                        fontSize: 16,
                         color: colors.text,
                       }}
                     >
-                      {item.categoryName}
-                    </Text>
-                    <Text style={{ marginTop: 2, color: colors.text }}>
-                      {item.note}
+                      {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
                     </Text>
                   </View>
-                  <Text
+                  {/* Action buttons */}
+                  <View
                     style={{
-                      fontWeight: "700",
-                      fontSize: 16,
-                      color: colors.text,
+                      flexDirection: "row",
+                      gap: 10,
+                      marginTop: 16,
+                      justifyContent: "flex-end",
                     }}
                   >
-                    {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
-                  </Text>
-                </View>
-                {/* Action buttons */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 10,
-                    marginTop: 16,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={() => handleEditTransaction(item)}
-                    style={[
-                      styles.actionBtn,
-                      {
-                        backgroundColor:
-                          mode === "dark" ? "#1E40AF" : "#DBEAFE",
-                        borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
-                        shadowColor: "#3B82F6",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.15,
-                        shadowRadius: 3,
-                        elevation: 2,
-                      },
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name="create-outline"
-                      size={18}
-                      color={mode === "dark" ? "#93C5FD" : "#2563EB"}
-                    />
-                    <Text
-                      style={{
-                        color: mode === "dark" ? "#93C5FD" : "#2563EB",
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {t("edit")}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
-                        { text: t("cancel"), style: "cancel" },
+                    <TouchableOpacity
+                      onPress={() => handleEditTransaction(item)}
+                      style={[
+                        styles.actionBtn,
                         {
-                          text: t("delete"),
-                          style: "destructive",
-                          onPress: () =>
-                            handleDeleteTransaction(item.transactionId),
+                          backgroundColor:
+                            mode === "dark" ? "#1E40AF" : "#DBEAFE",
+                          borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+                          shadowColor: "#3B82F6",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.15,
+                          shadowRadius: 3,
+                          elevation: 2,
                         },
-                      ]);
-                    }}
-                    style={[
-                      styles.actionBtn,
-                      {
-                        backgroundColor:
-                          mode === "dark" ? "#7F1D1D" : "#FEE2E2",
-                        borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
-                        shadowColor: "#EF4444",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.15,
-                        shadowRadius: 3,
-                        elevation: 2,
-                      },
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={18}
-                      color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
-                    />
-                    <Text
-                      style={{
-                        color: mode === "dark" ? "#FCA5A5" : "#DC2626",
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
+                      ]}
+                      activeOpacity={0.7}
                     >
-                      {t("delete")}
-                    </Text>
-                  </TouchableOpacity>
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color={mode === "dark" ? "#93C5FD" : "#2563EB"}
+                      />
+                      <Text
+                        style={{
+                          color: mode === "dark" ? "#93C5FD" : "#2563EB",
+                          fontSize: 13,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {t("edit")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
+                          { text: t("cancel"), style: "cancel" },
+                          {
+                            text: t("delete"),
+                            style: "destructive",
+                            onPress: () =>
+                              handleDeleteTransaction(item.transactionId),
+                          },
+                        ]);
+                      }}
+                      style={[
+                        styles.actionBtn,
+                        {
+                          backgroundColor:
+                            mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+                          borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+                          shadowColor: "#EF4444",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.15,
+                          shadowRadius: 3,
+                          elevation: 2,
+                        },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
+                      />
+                      <Text
+                        style={{
+                          color: mode === "dark" ? "#FCA5A5" : "#DC2626",
+                          fontSize: 13,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {t("delete")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
-          }}
+              );
+            },
+            [colors, mode, items, t, editingTx]
+          )}
         />
 
         {/* Gợi ý khi chưa đủ tự tin: render above the input bar so it's not covered */}

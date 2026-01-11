@@ -183,26 +183,30 @@ export async function addExpense({
     ]
   );
 
-  // Auto-train AI model with new transaction
-  if (note && note.trim()) {
-    transactionClassifier
-      .learnFromNewTransaction(note, categoryId)
-      .catch((err) => {
-        console.error("Failed to update AI model:", err);
-      });
-  }
+  // ⚡ PERFORMANCE: Run non-critical operations asynchronously after returning
+  // This prevents blocking the UI during transaction creation
+  Promise.resolve().then(() => {
+    // Auto-train AI model with new transaction (non-blocking)
+    if (note && note.trim()) {
+      transactionClassifier
+        .learnFromNewTransaction(note, categoryId)
+        .catch((err) => {
+          console.error("Failed to update AI model:", err);
+        });
+    }
 
-  // Check budget alert for this category
-  import("@/services/smartNotificationService")
-    .then(({ checkBudgetAlert }) => checkBudgetAlert(categoryId, amount))
-    .catch((err) => console.error("Budget alert check failed:", err));
+    // Check budget alert for this category (non-blocking)
+    import("@/services/smartNotificationService")
+      .then(({ checkBudgetAlert }) => checkBudgetAlert(categoryId, amount))
+      .catch((err) => console.error("Budget alert check failed:", err));
 
-  // schedule debounced sync
-  try {
-    scheduleSyncDebounced(userId);
-  } catch (e) {
-    scheduleSyncDebounced();
-  }
+    // schedule debounced sync (non-blocking)
+    try {
+      scheduleSyncDebounced(userId);
+    } catch (e) {
+      scheduleSyncDebounced();
+    }
+  });
 
   return id;
 }
@@ -247,20 +251,25 @@ export async function addIncome({
     ]
   );
 
-  // Auto-train AI model with new transaction (income)
-  if (note && note.trim()) {
-    transactionClassifier
-      .learnFromNewTransaction(note, categoryId)
-      .catch((err) => {
-        console.error("Failed to update AI model:", err);
-      });
-  }
+  // ⚡ PERFORMANCE: Run non-critical operations asynchronously after returning
+  // This prevents blocking the UI during transaction creation
+  Promise.resolve().then(() => {
+    // Auto-train AI model with new transaction (income) (non-blocking)
+    if (note && note.trim()) {
+      transactionClassifier
+        .learnFromNewTransaction(note, categoryId)
+        .catch((err) => {
+          console.error("Failed to update AI model:", err);
+        });
+    }
 
-  try {
-    scheduleSyncDebounced(userId);
-  } catch (e) {
-    scheduleSyncDebounced();
-  }
+    // schedule debounced sync (non-blocking)
+    try {
+      scheduleSyncDebounced(userId);
+    } catch (e) {
+      scheduleSyncDebounced();
+    }
+  });
 
   return id;
 }

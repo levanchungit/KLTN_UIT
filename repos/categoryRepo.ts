@@ -95,6 +95,13 @@ export async function createCategory(input: {
       VALUES(?,?,?,?,?,?,?, strftime('%s','now'), strftime('%s','now'))`,
     [id, userId, input.name.trim(), input.type, icon, color, parent_id]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after creating category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   try {
     scheduleSyncDebounced(userId);
   } catch (e) {
@@ -146,6 +153,13 @@ export async function updateCategory(
     `UPDATE categories SET ${set.join(",")} WHERE id=? AND user_id=?`,
     [...vals, id, userId]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after updating category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   // schedule sync
   scheduleSyncDebounced(userId);
 }
@@ -157,6 +171,13 @@ export async function deleteCategory(id: string) {
     id,
     userId,
   ]);
+  
+  // ⚡ PERFORMANCE: Invalidate cache after deleting category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   scheduleSyncDebounced(userId);
   // write tombstone to Firestore so other clients can delete
   try {

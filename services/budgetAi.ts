@@ -6,6 +6,7 @@ import {
   tfliteModel,
   type HistoricalAnalysisResult,
 } from "@/services/budgetAIService";
+import { lifestyleSignalModel } from "@/services/lifestyleSignalModel";
 import { getCurrentUserId } from "@/utils/auth";
 
 // Giữ type cho tương thích
@@ -377,7 +378,7 @@ async function buildHistoricalAllocations(
   description: string,
   patterns: import("@/services/budgetAIService").SpendingPattern[]
 ): Promise<CategoryScoring[]> {
-  const signals = parseLifestyleSignals(description || "");
+  const signals = await getLifestyleSignalsAI(description || "");
 
   const needsBudget = Math.round(income * ratio.needs);
   const wantsBudget = Math.round(income * ratio.wants);
@@ -682,6 +683,36 @@ export function parseLifestyleSignals(
   };
 }
 
+/**
+ * AI-first lifestyle signal extraction.
+ * Falls back to legacy `parseLifestyleSignals` if the on-device model isn't ready.
+ */
+export async function getLifestyleSignalsAI(
+  description: string,
+  location?: string
+): Promise<LifestyleSignals> {
+  const augmented = location
+    ? `${description || ""} ${location}`.trim()
+    : description;
+  try {
+    const inferred = await lifestyleSignalModel.infer(augmented || "");
+    // Guard against missing fields
+    return {
+      hasRent: !!inferred.hasRent,
+      rentEstimate: inferred.rentEstimate ?? 0,
+      foodOutFrequency: inferred.foodOutFrequency ?? "low",
+      socialSpending: inferred.socialSpending ?? "low",
+      hasSavingsGoal: !!inferred.hasSavingsGoal,
+      hasDebt: !!inferred.hasDebt,
+      luxuryInterest: inferred.luxuryInterest ?? "low",
+      location: inferred.location ?? "other",
+      minimalLiving: !!inferred.minimalLiving,
+    };
+  } catch {
+    return parseLifestyleSignals(description || "", location);
+  }
+}
+
 // ============ Decision Tree ============
 
 /**
@@ -976,6 +1007,8 @@ export async function generateSmartBudget(
   const startTime = Date.now();
 
   try {
+    const signals = await getLifestyleSignalsAI(input.description || "");
+
     // === PHASE 1: HISTORICAL ANALYSIS ===
     let historicalData: any = null;
     let useML = false;
@@ -1117,7 +1150,6 @@ export async function generateSmartBudget(
       console.log("[SmartBudget] Using ML ratios:", ratio);
     } else if (historicalData && historicalData.patterns.length >= 2) {
       // Use historical-based adjustments
-      const signals = parseLifestyleSignals(input.description);
       const baseRatio = decisionTreeRatio(input.income, signals);
 
       // Adjust based on historical savings rate
@@ -1165,7 +1197,6 @@ export async function generateSmartBudget(
       console.log("[SmartBudget] Using historical-adjusted ratios:", ratio);
     } else {
       // Fallback to rule-based
-      const signals = parseLifestyleSignals(input.description);
       ratio = decisionTreeRatio(input.income, signals);
       source = "rule-based";
 
@@ -1219,7 +1250,7 @@ export async function generateSmartBudget(
     const generalInsights = generateInsights(
       allocated,
       ratio,
-      parseLifestyleSignals(input.description),
+      signals,
       input.income
     );
 
@@ -1329,8 +1360,6 @@ export async function generateSmartBudget(
           categoryCount:
             historicalData.categoryCount ??
             (historicalData.patterns ? historicalData.patterns.length : 0),
-          monthlyTotals: historicalData.monthlyTotals,
-          categoryVolatility: historicalData.categoryVolatility,
         }
       : undefined;
 
