@@ -519,3 +519,29 @@ export async function listBetween(
     [userId, fromSec, toSec]
   );
 }
+
+export async function listRecent(
+  limit: number,
+  offset: number = 0
+): Promise<TxDetailRow[]> {
+  await openDb();
+  const userId = await getCurrentUserId();
+
+  return db.getAllAsync<TxDetailRow>(
+    `
+    SELECT t.id, t.amount, t.note, t.occurred_at, t.updated_at, t.type,
+           a.name AS account_name,
+           t.category_id,
+           c.name AS category_name,
+           c.icon AS category_icon,
+           c.color AS category_color
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE t.user_id=?
+    ORDER BY t.occurred_at DESC
+    LIMIT ? OFFSET ?
+    `,
+    [userId, limit, offset]
+  );
+}
