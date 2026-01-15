@@ -135,7 +135,7 @@ export default function AIBudgetIntroScreen() {
 
       // Navigate to result screen
       router.push({
-        pathname: "/ai-budget/result",
+        pathname: "/budget/result",
         params: {
           income: incomeValue.toString(),
           period,

@@ -142,7 +142,7 @@ export default function BudgetScreen() {
   };
 
   const handleAIBudgetAdvisor = () => {
-    router.push("/ai-budget/intro");
+    router.push("/budget/intro");
   };
 
   const handleDeleteBudget = useCallback(
