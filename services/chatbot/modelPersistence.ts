@@ -47,6 +47,53 @@ export function modelSaveUrl(): string {
   return `${MODEL_DIR}model.json`;
 }
 
+const LABELMAP_KEY = "chatbot_labelmap_v1";
+
+export async function saveLabelMap(map: Record<number, string>) {
+  try {
+    await AsyncStorage.setItem(LABELMAP_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed to save label map:", e);
+  }
+}
+
+export async function loadLabelMap(): Promise<Record<number, string> | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LABELMAP_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Record<number, string>;
+  } catch (e) {
+    console.warn("Failed to load label map:", e);
+    return null;
+  }
+}
+
+const LABELMETA_KEY = "chatbot_labelmeta_v1";
+
+export type LabelMeta = {
+  id: string;
+  name: string;
+};
+
+export async function saveLabelMeta(map: Record<number, LabelMeta>) {
+  try {
+    await AsyncStorage.setItem(LABELMETA_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed to save label meta:", e);
+  }
+}
+
+export async function loadLabelMeta(): Promise<Record<number, LabelMeta> | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LABELMETA_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Record<number, LabelMeta>;
+  } catch (e) {
+    console.warn("Failed to load label meta:", e);
+    return null;
+  }
+}
+
 export async function saveModel(model: tf.LayersModel) {
   try {
     await ensureModelDir();

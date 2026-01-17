@@ -35,6 +35,7 @@ import {
 } from "expo-speech-recognition";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   AppState,
@@ -1288,6 +1289,7 @@ export default function Chatbox() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const [items, setItems] = useState<Category[]>([]);
+  const [isSending, setIsSending] = useState(false);
   const [model, setModel] = useState<LRModel | null>(null);
   const [priors, setPriors] = useState<{
     IN: Record<string, number>;
@@ -1948,8 +1950,9 @@ export default function Chatbox() {
   // ⬇️ Trong handleSend, đổi phần “tạo giao dịch” để fallback sang pendingPick khi chưa chắc danh mục:
   const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || isSending) return;
 
+    setIsSending(true); // show spinner + block
     setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
     setPendingPick(null);
@@ -1960,8 +1963,13 @@ export default function Chatbox() {
       nextStep();
     }
 
-    // Use the unified AI parser (same as voice input) - supports action types
-    await processTextInput(text);
+    try {
+      // Use the unified AI parser (same as voice input) - supports action types
+      await processTextInput(text);
+    } finally {
+      // Ensure we always clear sending state
+      setIsSending(false);
+    }
   };
 
   // ----- Gợi ý khi chưa đủ tự tin -----
@@ -3095,7 +3103,7 @@ export default function Chatbox() {
             });
           }}
           renderItem={useCallback(
-            ({ item }) => {
+            ({ item }: { item: any }) => {
               if (item.role === "user") {
                 return (
                   <View
@@ -4135,11 +4143,21 @@ export default function Chatbox() {
               <Pressable
                 style={[
                   styles.sendBtn,
-                  { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+                  isSending
+                    ? { backgroundColor: "#9CA3AF" }
+                    : { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
                 ]}
                 onPress={handleSend}
+                disabled={isSending}
+                accessibilityLabel={isSending ? "Đang gửi" : "Gửi"}
               >
-                <Text style={styles.sendText}>{t("send")}</Text>
+                {isSending ? (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                ) : (
+                  <Text style={styles.sendText}>{t("send")}</Text>
+                )}
               </Pressable>
             </Tooltip>
           )}

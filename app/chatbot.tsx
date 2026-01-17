@@ -1,25 +1,28 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
+import { logCorrection, logPrediction } from "@/repos/mlRepo";
+import { transactionClassifier } from "@/services/chatbot/transactionClassifier";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  View,
-  Text,
+  ActivityIndicator,
   FlatList,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useI18n } from "@/i18n/I18nProvider";
-import { useTheme } from "@/app/providers/ThemeProvider";
-import { transactionClassifier } from "@/services/chatbot/transactionClassifier";
-import { logPrediction, logCorrection } from "@/repos/mlRepo";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Msg = {
   role: "user" | "bot";
   text: string;
   sampleId?: string | null;
   suggestedCategoryId?: string | null;
+  suggestedCategoryName?: string | null;
 };
 
 export default function Chatbot() {
@@ -29,7 +32,23 @@ export default function Chatbot() {
     { role: "bot", text: t("chatWelcome") },
   ]);
   const [input, setInput] = useState("");
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const flatRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    // Initialize classifier once on mount
+    const initClassifier = async () => {
+      try {
+        await transactionClassifier.initialize();
+      } catch (e) {
+        console.warn("Failed to initialize classifier:", e);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    initClassifier();
+  }, []);
 
   useEffect(() => {
     // Auto-scroll when messages change
@@ -38,15 +57,17 @@ export default function Chatbot() {
     });
   }, [messages]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || isInitializing || isProcessing) return;
+
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
-    // Placeholder: enqueue processing (prediction, logging) later
-    (async () => {
+    setIsProcessing(true);
+
+    // Defer heavy TensorFlow operations to avoid blocking UI
+    InteractionManager.runAfterInteractions(async () => {
       try {
-        await transactionClassifier.initialize();
         const pred = await transactionClassifier.predict(text);
         if (pred) {
           // Log prediction to ml repo and capture sample id
@@ -63,15 +84,17 @@ export default function Chatbot() {
             // ignore logging failures
           }
 
+          const displayName = pred.categoryName ?? pred.categoryId;
           setMessages((m) => [
             ...m,
             {
               role: "bot",
-              text: `Đề xuất danh mục: ${pred.categoryId} (độ tin cậy ${(pred.confidence * 100).toFixed(
+              text: `Đề xuất danh mục: ${displayName} (độ tin cậy ${(pred.confidence * 100).toFixed(
                 0
               )}%) — bấm để chấp nhận`,
               sampleId,
               suggestedCategoryId: pred.categoryId,
+              suggestedCategoryName: displayName,
             },
           ]);
         } else {
@@ -79,24 +102,32 @@ export default function Chatbot() {
         }
       } catch (e) {
         setMessages((m) => [...m, { role: "bot", text: t("chatReplyPlaceholder") }]);
+      } finally {
+        setIsProcessing(false);
       }
-    })();
-  }, [input, t]);
+    });
+  }, [input, t, isInitializing, isProcessing]);
 
   const acceptSuggestion = useCallback(
     async (sampleId?: string | null, suggestedCategoryId?: string | null) => {
       if (!sampleId || !suggestedCategoryId) return;
-      try {
-        await logCorrection({ id: sampleId, chosenCategoryId: suggestedCategoryId });
-      } catch (e) {
-        // ignore
-      }
-      try {
-        await transactionClassifier.learnFromCorrection("accepted suggestion", suggestedCategoryId);
-      } catch (e) {
-        // ignore
-      }
+
+      // Immediate UI feedback
       setMessages((m) => [...m, { role: "bot", text: "Cám ơn — đã ghi nhận lựa chọn của bạn." }]);
+
+      // Defer heavy operations to background
+      InteractionManager.runAfterInteractions(async () => {
+        try {
+          await logCorrection({ id: sampleId, chosenCategoryId: suggestedCategoryId });
+        } catch (e) {
+          // ignore
+        }
+        try {
+          await transactionClassifier.learnFromCorrection("accepted suggestion", suggestedCategoryId);
+        } catch (e) {
+          // ignore
+        }
+      });
     },
     []
   );
@@ -109,14 +140,14 @@ export default function Chatbot() {
           style={[
             styles.bubble,
             { alignSelf: isUser ? "flex-end" : "flex-start" },
-            { backgroundColor: isUser ? colors.primary : colors.card },
+            { backgroundColor: isUser ? (colors as any).primary : (colors as any).card },
           ]}
         >
           <Text style={{ color: isUser ? "#fff" : colors.text }}>{item.text}</Text>
         </View>
       );
 
-      if (!isUser && item.sampleId) {
+        if (!isUser && item.sampleId) {
         return (
           <TouchableOpacity
             activeOpacity={0.8}
@@ -145,17 +176,30 @@ export default function Chatbot() {
           contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 16 }}
         />
 
-        <View style={[styles.inputRow, { borderTopColor: colors.border }]}>
+        <View style={[styles.inputRow, { borderTopColor: (colors as any).border }]}>
           <TextInput
             placeholder={t("chatPlaceholder") || "Nhập tin nhắn..."}
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={(colors as any).muted}
             value={input}
             onChangeText={setInput}
             style={[styles.input, { color: colors.text }]}
             multiline
           />
-          <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
-            <Text style={{ color: "#fff" }}>{t("send") || "Gửi"}</Text>
+          <TouchableOpacity
+            onPress={handleSend}
+            style={[styles.sendButton, (isInitializing || isProcessing) && styles.sendButtonDisabled]}
+            disabled={isInitializing || isProcessing}
+          >
+            {isInitializing ? (
+              <Text style={{ color: "#fff" }}>Đang khởi tạo...</Text>
+            ) : isProcessing ? (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={{ color: "#fff", marginLeft: 8 }}>Đang xử lý...</Text>
+              </View>
+            ) : (
+              <Text style={{ color: "#fff" }}>{t("send") || "Gửi"}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -192,6 +236,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#9CA3AF",
   },
 });
 
