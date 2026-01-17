@@ -152,11 +152,12 @@ function RootLayoutNav() {
           } else {
             router.push("/add-transaction");
           }
-        } else if (pathname === "chatbox") {
+        } else if (pathname === "chatbox" || pathname === "chatbot") {
           // support mode=voice|image|text and optional text param
           const mode = params["mode"];
           const text = params["text"];
-          let path = "/chatbox";
+          const isChatbot = pathname === "chatbot";
+          let path = isChatbot ? "/chatbot" : "/chatbox";
           const q: string[] = [];
           if (mode) q.push(`mode=${encodeURIComponent(mode)}`);
           if (text) q.push(`text=${encodeURIComponent(text)}`);
@@ -330,6 +331,7 @@ function RootLayoutNav() {
         <Stack.Screen name="onboarding/reminder-setup" />
         <Stack.Screen name="biometric-loading" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="chatbot" />
         <Stack.Screen name="chatbox" />
         <Stack.Screen name="budget/setup" />
         <Stack.Screen name="budget/suggest" />
