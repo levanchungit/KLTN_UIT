@@ -849,7 +849,9 @@ const parseTransactionWithAI = async (
             ? ` (${(confidence * 100).toFixed(0)}% chắc chắn)`
             : " ✓";
 
-        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${result.note} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
+        // Use original user text in the message to keep bot response identical
+        // to what the user sent (preserve casing/spacing).
+        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${text} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
       }
     } else {
       // ML prediction is too low or model not ready - will show suggestion UI
@@ -871,9 +873,12 @@ const parseTransactionWithAI = async (
         ? "OUT"
         : result.io;
 
-    // Include confidence and alternatives from the parser
+    // Include confidence and alternatives from the parser.
+    // Important: preserve the original user input as `note` so UI and storage
+    // show exactly what user sent (e.g., "Trà sữa 50k" stays unchanged).
     return {
       ...result,
+      note: text,
       categoryId,
       categoryName,
       confidence,
@@ -1179,7 +1184,7 @@ async function createTransaction(draft: {
   allowZeroAmount?: boolean; // Allow creating transaction with 0 amount (for image receipts)
 }) {
   if (!draft.allowZeroAmount && (!draft.amount || draft.amount <= 0)) {
-    throw new Error("Invalid amount: " + draft.amount);
+    throw new Error("Không xác định được số tiền: " + draft.amount);
   }
   if (!draft.categoryId) {
     throw new Error("Missing categoryId for transaction creation.");
@@ -1301,6 +1306,10 @@ export default function Chatbox() {
     { role: "bot", text: t("chatWelcome") },
   ]);
   const flatRef = useRef<FlatList>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [forceHideButton, setForceHideButton] = useState(false);
+  const [isScrollingToBottom, setIsScrollingToBottom] = useState(false);
+  const scrollButtonAnim = useRef(new Animated.Value(0)).current;
 
   // Voice states
   const [isRecording, setIsRecording] = useState(false);
@@ -2621,12 +2630,15 @@ export default function Chatbox() {
       const selectedCategory = items.find((c) => c.id === categoryId);
       const categoryName = selectedCategory?.name || "Unknown";
 
+      // Prefer using the original user text for both the AI reply and stored note
+      // so the bot response and saved transaction match what the user typed.
+      const originalNote = originalText || text;
       const aiResponse = await getEmotionalReplyDirect({
         io,
         categoryName,
         amount,
-        note: text,
-        originalText: originalText || text, // Use original text for date parsing
+        note: originalNote,
+        originalText: originalNote, // Use original text for date parsing
       });
 
       // Create transaction with extracted date
@@ -2634,7 +2646,7 @@ export default function Chatbox() {
         amount: aiResponse.amount,
         io: aiResponse.io,
         categoryId,
-        note: text,
+        note: originalNote,
         date: aiResponse.date, // Use extracted date
       });
 
@@ -2659,7 +2671,7 @@ export default function Chatbox() {
           categoryName,
           categoryIcon: selectedCategory?.icon || "wallet",
           categoryColor: selectedCategory?.color || "#6366F1",
-          note: text,
+          note: originalNote,
           when,
           date: aiResponse.date, // Store date object for future reference
         },
@@ -3018,6 +3030,15 @@ export default function Chatbox() {
     return () => subscription.remove();
   }, [isRecording]);
 
+  // Animate scroll button based on isAtBottom state (button visibility is handled by conditional rendering)
+  useEffect(() => {
+    Animated.timing(scrollButtonAnim, {
+      toValue: isAtBottom ? 0 : 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [isAtBottom, scrollButtonAnim]);
+
   const handleSubmitVoice = async () => {
     // If we're already processing a submit, ignore
     if (submittingRef.current) return;
@@ -3088,10 +3109,30 @@ export default function Chatbox() {
           keyExtractor={(_, i) => String(i)}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: new Animated.Value(0) } } }],
+            {
+              useNativeDriver: false,
+              listener: (event: any) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                // More accurate bottom detection - check if within 50px of bottom
+                const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+                const isCloseToBottom = distanceFromBottom <= 50; // Within 50px of bottom
+                setIsAtBottom(isCloseToBottom);
+                // Reset force hide only when user manually scrolls (not when scrolling to bottom via button)
+                if (!isCloseToBottom && !isScrollingToBottom) {
+                  setForceHideButton(false);
+                }
+                // Reset scrolling flag when reached bottom
+                if (isCloseToBottom) {
+                  setIsScrollingToBottom(false);
+                }
+              },
+            }
+          )}
           contentContainerStyle={{
             padding: 16,
             gap: 12,
-            paddingBottom: (insets.bottom || 0) + inputBarHeight + keyboardHeight + 16,
             flexGrow: 1,
           }}
           onContentSizeChange={() => {
@@ -4209,6 +4250,65 @@ export default function Chatbox() {
             )}
           </View>
         </Modal>
+
+        {/* Floating Scroll to Bottom Button */}
+        {!isAtBottom && !forceHideButton && (
+          <Animated.View
+          style={{
+            position: 'absolute',
+            right: 12, // Position above the send button
+            bottom: inputBarHeight + insets.bottom + 10, // Above the send button
+            opacity: scrollButtonAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 0.85], // Slightly transparent for subtle look
+            }),
+            transform: [
+              {
+                translateY: scrollButtonAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0], // Slide up from below
+                }),
+              },
+              {
+                scale: scrollButtonAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.8, 1], // Slight scale animation
+                }),
+              },
+            ],
+          }}
+        >
+          <Pressable
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 12, // Match send button borderRadius
+              backgroundColor: mode === 'dark' ? '#3B82F6' : '#2563EB', // Match send button colors
+              alignItems: 'center',
+              justifyContent: 'center',
+              elevation: 3,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.15,
+              shadowRadius: 2,
+            }}
+            onPress={() => {
+              // Hide button immediately when pressed
+              setForceHideButton(true);
+              setIsScrollingToBottom(true);
+              // Scroll to bottom
+              flatRef.current?.scrollToEnd({ animated: true });
+              // Set isAtBottom to true after scroll completes
+              setTimeout(() => {
+                setIsAtBottom(true);
+                setIsScrollingToBottom(false);
+              }, 300); // Match animation duration
+            }}
+          >
+            <Ionicons name="chevron-down" size={20} color="#fff" />
+          </Pressable>
+        </Animated.View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-react-native";
-import { parseAmountVN } from "../utils/textPreprocessing";
+import { parseAmountVN, parseTransactionText } from "../utils/textPreprocessing";
 import { phobertExtractor } from "./phobertAmountExtractor";
 import { transactionIntentClassifier } from "./transactionIntentClassifier";
 
@@ -314,7 +314,18 @@ class TensorFlowTransactionParser {
     text: string,
     amountResult?: AmountExtractionResult
   ): string {
+    // Prefer preserving the original text's casing/spacing by using the
+    // existing regex-based cleaner which removes amounts but keeps original
+    // substrings (parseTransactionText). This avoids tokenization lowercasing
+    // and splitting (e.g. "50k" -> "50 k").
     if (amountResult?.tokens?.length && amountResult.labels?.length) {
+      try {
+        const parsed = parseTransactionText(text);
+        if (parsed.note && parsed.note.trim()) return parsed.note;
+      } catch {
+        // fall through to token-based fallback below
+      }
+
       const kept: string[] = [];
       for (let i = 0; i < amountResult.tokens.length; i++) {
         const label = amountResult.labels[i];
@@ -324,6 +335,7 @@ class TensorFlowTransactionParser {
       const note = kept.join(" ").trim();
       return note || "Giao dịch";
     }
+
     // If no labels (rare), keep raw text.
     return (text || "").trim() || "Giao dịch";
   }
