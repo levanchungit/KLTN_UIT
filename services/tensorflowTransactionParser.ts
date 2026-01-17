@@ -3,6 +3,7 @@ import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-react-native";
 import { parseAmountVN } from "../utils/textPreprocessing";
 import { phobertExtractor } from "./phobertAmountExtractor";
+import { transactionIntentClassifier } from "./transactionIntentClassifier";
 
 interface Category {
   id: string;
@@ -35,6 +36,13 @@ interface ParsedTransaction {
   alternatives?: CategoryPrediction[]; // Alternative predictions (top 2-3)
   confidenceThreshold?: number; // Threshold for showing alternatives (default 75)
 }
+
+type AmountExtractionResult = {
+  amount: number | null;
+  confidence: number;
+  tokens: string[];
+  labels: string[];
+};
 
 class TensorFlowTransactionParser {
   private model: tf.LayersModel | null = null;
@@ -127,22 +135,21 @@ class TensorFlowTransactionParser {
     userCategories: Category[]
   ): Promise<ParsedTransaction | null> {
     try {
-      // Tạm bỏ khởi tạo TensorFlow, chỉ dùng phân tích theo luật
-      // Tránh lỗi thiết lập TF ở lần chạy đầu tiên
-      console.log("🔍 Parsing text locally (rule-based):", text);
+      // AI-first local parsing (offline)
 
-      // Bước 1: Nhận diện loại hành động
-      const action = this.detectActionType(text);
+      // Bước 1: Nhận diện loại hành động (AI-first)
+      const action = await this.detectActionTypeAI(text);
       console.log("📋 Action type:", action);
 
-      // Bước 2: Phân tích số tiền bằng cách kết hợp (PhoBERT + dự phòng)
-      const amount =
+      // Bước 2: Phân tích số tiền (on-device sequence tagging; regex only as last fallback)
+      const amountResult: AmountExtractionResult | null =
         action === "CREATE_TRANSACTION"
           ? await this.parseAmountHybrid(text)
           : null;
+      const amount = amountResult?.amount ?? null;
       console.log("💰 Amount:", amount);
 
-      // Bước 3: Nhận diện luồng tiền (IN/OUT)
+      // Bước 3: Nhận diện luồng tiền (keyword-based + defer to category model)
       const io = this.detectIOType(text);
       console.log("📊 IO type:", io);
 
@@ -150,27 +157,20 @@ class TensorFlowTransactionParser {
       const date = this.parseDate(text);
       console.log("📅 Date:", date);
 
-      // Bước 5: Trích ghi chú (loại bỏ số tiền và ngày)
-      const note = this.extractNote(text, amount);
+      // Bước 5: Trích ghi chú (loại bỏ span số tiền bằng nhãn từ model; tránh regex)
+      const note = this.extractNote(text, amountResult || undefined);
       console.log("📝 Note:", note);
 
-      // Bước 6: Phân loại danh mục kèm độ tin cậy + lựa chọn thay thế
-      const { primary, alternatives } = await this.classifyCategory(
-        note,
-        userCategories,
-        io
-      );
-      console.log(
-        "🏷️ Primary category:",
-        primary.categoryName,
-        `(${primary.confidence}%)`
-      );
-      if (alternatives.length > 0) {
-        console.log(
-          "🔄 Alternatives:",
-          alternatives.map((a) => `${a.categoryName} (${a.confidence}%)`)
-        );
-      }
+      // Bước 6: Danh mục sẽ được phân loại bởi model lịch sử (transactionClassifier) ở chatbox.
+      const fallbackCategory =
+        userCategories.find((c) => c.type === "expense") || userCategories[0];
+      const primary: CategoryPrediction = {
+        categoryId: fallbackCategory?.id || "",
+        categoryName:
+          fallbackCategory?.name || (io === "IN" ? "Thu nhập" : "Chi tiêu"),
+        confidence: 10,
+      };
+      const alternatives: CategoryPrediction[] = [];
 
       // Bước 7: Tạo thông điệp
       const primaryCategory = userCategories.find(
@@ -209,62 +209,55 @@ class TensorFlowTransactionParser {
   }
 
   /**
-   * Detect action type from text patterns
+   * AI-first detect action type (offline)
    */
-  private detectActionType(text: string): ParsedTransaction["action"] {
-    const lowerText = text.toLowerCase();
-
-    // VIEW_STATS patterns
-    const statsPatterns = [
-      /xem thống kê/,
-      /báo cáo/,
-      /phân tích/,
-      /tổng kết/,
-      /thống kê/,
-    ];
-
-    // EDIT patterns
-    const editPatterns = [
-      /sửa.*giao dịch/,
-      /chỉnh sửa/,
-      /thay đổi/,
-      /cập nhật/,
-    ];
-
-    // DELETE patterns
-    const deletePatterns = [/xóa.*giao dịch/, /hủy.*giao dịch/, /xóa.*cuối/];
-
-    // Check patterns
-    if (statsPatterns.some((p) => p.test(lowerText))) return "VIEW_STATS";
-    if (editPatterns.some((p) => p.test(lowerText))) return "EDIT_TRANSACTION";
-    if (deletePatterns.some((p) => p.test(lowerText)))
-      return "DELETE_TRANSACTION";
-
-    // Check if has amount → CREATE_TRANSACTION
-    const hasAmount = /\d+[kKtrTR]|\d{3,}/.test(text);
-    if (hasAmount) return "CREATE_TRANSACTION";
-
-    // Default: CREATE_TRANSACTION
+  private async detectActionTypeAI(
+    text: string
+  ): Promise<ParsedTransaction["action"]> {
+    try {
+      const pred = await transactionIntentClassifier.predictAction(text);
+      if (pred.confidence >= 0.6) return pred.action;
+    } catch {
+      // ignore
+    }
     return "CREATE_TRANSACTION";
   }
 
   /**
-   * Detect IO type (income/expense)
+   * Detect IO type (Income vs Expense) from text keywords
    */
   private detectIOType(text: string): "IN" | "OUT" {
     const lowerText = text.toLowerCase();
 
-    // Income keywords
-    const incomeKeywords = ["nhận", "thu", "lương", "thưởng", "được", "kiếm"];
+    // Income keywords (Vietnamese)
+    const incomeKeywords = [
+      "lương",
+      "thu nhập",
+      "nhận",
+      "tiền lương",
+      "thưởng",
+      "hoa hồng",
+      "tiền thưởng",
+      "lãi",
+      "cổ tức",
+      "bán",
+      "bán được",
+      "thu",
+      "thu về",
+      "nhận được",
+      "trúng",
+      "kiếm được",
+    ];
 
-    // Expense keywords
-    const expenseKeywords = ["mua", "chi", "trả", "nạp", "mất", "tiêu"];
+    // Check if any income keyword is present
+    for (const keyword of incomeKeywords) {
+      if (lowerText.includes(keyword)) {
+        return "IN";
+      }
+    }
 
-    const hasIncome = incomeKeywords.some((k) => lowerText.includes(k));
-    const hasExpense = expenseKeywords.some((k) => lowerText.includes(k));
-
-    if (hasIncome && !hasExpense) return "IN";
-    return "OUT"; // Default to expense
+    // Default to expense
+    return "OUT";
   }
 
   /**
@@ -315,129 +308,24 @@ class TensorFlowTransactionParser {
   }
 
   /**
-   * Extract note by removing amount and date from text
+   * Extract note by removing model-labeled amount span (no regex)
    */
-  private extractNote(text: string, amount: number | null): string {
-    let note = text;
-
-    // Remove amount patterns
-    note = note.replace(
-      /\d+[.,]?\d*\s*(k|K|tr|TR|triệu|trieu|nghìn|nghin|đ|d|đồng|dong)\b/gi,
-      ""
-    );
-
-    // Remove date patterns
-    note = note.replace(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{4})?/g, "");
-    note = note.replace(
-      /\b(hôm nay|hôm qua|hôm kia|tuần trước|ngày\s+\d+)\b/gi,
-      ""
-    );
-    note = note.replace(/\d+\s*ngày\s*trước/gi, "");
-
-    // Remove extra spaces
-    note = note.replace(/\s+/g, " ").trim();
-
-    return note || "Giao dịch";
-  }
-
-  /**
-   * Classify category with confidence scoring and alternatives
-   * Returns primary + alternative predictions for user to choose from
-   */
-  private async classifyCategory(
-    note: string,
-    userCategories: Category[],
-    io: "IN" | "OUT"
-  ): Promise<{
-    primary: CategoryPrediction;
-    alternatives: CategoryPrediction[];
-  }> {
-    const lowerNote = note.toLowerCase();
-
-    // Filter categories by IO type
-    const filteredCategories = userCategories.filter((c) =>
-      io === "IN" ? c.type === "income" : c.type === "expense"
-    );
-
-    if (filteredCategories.length === 0) {
-      const fallback: CategoryPrediction = {
-        categoryId: "",
-        categoryName: io === "IN" ? "Thu nhập" : "Chi tiêu",
-        confidence: 50,
-      };
-      return {
-        primary: fallback,
-        alternatives: [],
-      };
-    }
-
-    // Score all categories
-    const scores: { category: Category; score: number }[] = [];
-
-    const keywordMap: Record<string, string[]> = {
-      "ăn uống": [
-        "ăn",
-        "uống",
-        "trà",
-        "cà phê",
-        "coffee",
-        "quán",
-        "nhà hàng",
-        "buffet",
-      ],
-      "mua sắm": ["mua", "shopping", "quần áo", "giày", "túi"],
-      "di chuyển": ["taxi", "grab", "xe", "xăng", "dầu", "bus", "tàu"],
-      "du lịch": ["du lịch", "tour", "khách sạn", "resort", "vé máy bay"],
-      "giải trí": ["phim", "game", "vui chơi", "karaoke", "bar"],
-      "học tập": ["sách", "học", "khóa học", "trường"],
-      "sức khỏe": ["thuốc", "bệnh viện", "khám", "bác sĩ"],
-      "thu nhập": ["lương", "thưởng", "bonus"],
-    };
-
-    for (const category of filteredCategories) {
-      let score = 10; // baseline score
-
-      const lowerCategoryName = category.name.toLowerCase();
-
-      // Exact name match: +90 confidence
-      if (lowerNote.includes(lowerCategoryName)) {
-        score = 90;
-      } else {
-        // Keyword matching
-        const keywords = keywordMap[lowerCategoryName] || [];
-        const matchedKeywords = keywords.filter((k) => lowerNote.includes(k));
-
-        if (matchedKeywords.length > 0) {
-          // Multi-keyword boost: 80 for first match, +5 per additional
-          score = 75 + matchedKeywords.length * 5;
-        }
+  private extractNote(
+    text: string,
+    amountResult?: AmountExtractionResult
+  ): string {
+    if (amountResult?.tokens?.length && amountResult.labels?.length) {
+      const kept: string[] = [];
+      for (let i = 0; i < amountResult.tokens.length; i++) {
+        const label = amountResult.labels[i];
+        if (label === "B-AMT" || label === "I-AMT") continue;
+        kept.push(amountResult.tokens[i]);
       }
-
-      scores.push({ category, score: Math.min(score, 100) });
+      const note = kept.join(" ").trim();
+      return note || "Giao dịch";
     }
-
-    // Sort by score descending
-    scores.sort((a, b) => b.score - a.score);
-
-    // Primary: highest confidence
-    const primaryScore = scores[0];
-    const primary: CategoryPrediction = {
-      categoryId: primaryScore.category.id,
-      categoryName: primaryScore.category.name,
-      confidence: primaryScore.score,
-    };
-
-    // Alternatives: top 2-3 other predictions (only if different confidence buckets)
-    const alternatives: CategoryPrediction[] = scores
-      .slice(1, 4)
-      .filter((s) => s.score > 20) // Filter out very low confidence
-      .map((s) => ({
-        categoryId: s.category.id,
-        categoryName: s.category.name,
-        confidence: s.score,
-      }));
-
-    return { primary, alternatives };
+    // If no labels (rare), keep raw text.
+    return (text || "").trim() || "Giao dịch";
   }
 
   /**
@@ -485,53 +373,36 @@ class TensorFlowTransactionParser {
    * Hybrid amount parser: PhoBERT (ML) + parseAmountVN (regex fallback)
    * Uses PhoBERT for context-aware extraction with confidence scoring
    */
-  private async parseAmountHybrid(text: string): Promise<number | null> {
+  private async parseAmountHybrid(
+    text: string
+  ): Promise<AmountExtractionResult> {
     try {
-      // Step 1: Try PhoBERT extractor (ML-based, context-aware)
       const phobertResult = await phobertExtractor.extractAmount(text);
 
-      if (phobertResult.amount && phobertResult.confidence > 0.7) {
-        // High confidence from PhoBERT - use it
-        console.log(
-          `✅ PhoBERT: ${phobertResult.amount} (${(
-            phobertResult.confidence * 100
-          ).toFixed(1)}% confidence)`
-        );
-        return phobertResult.amount;
+      // If model result is low confidence, use regex parser as last resort to avoid null
+      if (!phobertResult.amount || phobertResult.confidence < 0.35) {
+        const regexAmount = parseAmountVN(text);
+        return {
+          ...phobertResult,
+          amount: phobertResult.amount || regexAmount,
+          confidence: phobertResult.amount
+            ? phobertResult.confidence
+            : regexAmount
+            ? 0.25
+            : 0,
+        };
       }
 
-      // Step 2: Low confidence, try regex fallback
-      const regexAmount = parseAmountVN(text);
-
-      if (phobertResult.amount && regexAmount) {
-        // Both methods agree - high confidence
-        if (phobertResult.amount === regexAmount) {
-          console.log(`✅ PhoBERT + Regex agree: ${regexAmount}`);
-          return regexAmount;
-        }
-
-        // Disagreement - use PhoBERT if reasonable confidence
-        if (phobertResult.confidence > 0.5) {
-          console.log(
-            `⚖️ Disagreement (PhoBERT: ${phobertResult.amount}, Regex: ${regexAmount}), using PhoBERT`
-          );
-          return phobertResult.amount;
-        }
-      }
-
-      // Step 3: Fallback priority
-      const finalAmount = phobertResult.amount || regexAmount;
-
-      if (finalAmount) {
-        const source = phobertResult.amount ? "PhoBERT" : "Regex";
-        console.log(`⚠️ Low confidence, using ${source}: ${finalAmount}`);
-      }
-
-      return finalAmount;
+      return phobertResult;
     } catch (error) {
-      // Step 4: Emergency fallback to regex
-      console.error("❌ PhoBERT failed, using regex fallback:", error);
-      return parseAmountVN(text);
+      console.error("❌ Amount extractor failed, using regex fallback:", error);
+      const regexAmount = parseAmountVN(text);
+      return {
+        amount: regexAmount,
+        confidence: regexAmount ? 0.2 : 0,
+        tokens: [],
+        labels: [],
+      };
     }
   }
 

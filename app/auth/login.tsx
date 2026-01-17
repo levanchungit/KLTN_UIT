@@ -122,10 +122,13 @@ export default function LoginScreen() {
           });
           acctId = fbUser.uid;
           // Trigger an immediate sync now that user is signed in
+          // WAIT for sync to complete để tránh tạo trùng categories
           try {
             const trig = await import("@/services/syncTrigger");
             if (trig && typeof trig.triggerImmediate === "function") {
+              console.log("Đang đồng bộ dữ liệu từ Firebase...");
               await trig.triggerImmediate(fbUser.uid);
+              console.log("Đồng bộ hoàn tất");
             }
           } catch (e) {
             // non-critical
@@ -227,6 +230,19 @@ export default function LoginScreen() {
         name: (result as any).name ?? null,
         image: (result as any).image ?? null,
       });
+
+      // Đồng bộ dữ liệu từ Firebase trước khi kiểm tra onboarding
+      try {
+        const trig = await import("@/services/syncTrigger");
+        if (trig && typeof trig.triggerImmediate === "function") {
+          console.log("Đang đồng bộ dữ liệu từ Firebase...");
+          await trig.triggerImmediate(result.id);
+          console.log("Đồng bộ hoàn tất");
+        }
+      } catch (e) {
+        console.warn("Không thể đồng bộ:", e);
+      }
+
       try {
         const onboarding = onboardingParam;
         const upgrade =

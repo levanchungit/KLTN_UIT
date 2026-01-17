@@ -141,6 +141,10 @@ export default function BudgetScreen() {
     router.push("/budget/setup");
   };
 
+  const handleAIBudgetAdvisor = () => {
+    router.push("/budget/intro");
+  };
+
   const handleDeleteBudget = useCallback(
     async (budgetId: string, budgetName: string) => {
       Alert.alert(
@@ -238,13 +242,9 @@ export default function BudgetScreen() {
           <Text style={styles.emptyDesc}>{t("noBudgetsDesc")}</Text>
         </ScrollView>
 
-        {/* Floating Action Button (icon-only) */}
-        <Pressable style={styles.fab} onPress={handleCreateBudget}>
-          <MaterialCommunityIcons
-            name="wallet-plus-outline"
-            size={24}
-            color="#fff"
-          />
+        {/* Floating Action Button - AI Budget Advisor */}
+        <Pressable style={styles.fab} onPress={handleAIBudgetAdvisor}>
+          <MaterialCommunityIcons name="robot-outline" size={24} color="#fff" />
         </Pressable>
       </SafeAreaView>
     );
@@ -422,7 +422,7 @@ export default function BudgetScreen() {
         )}
       </ScrollView>
 
-      {/* Floating Action Button (icon-only) */}
+      {/* Floating Action Button - AI Budget Advisor */}
       <Pressable
         style={[
           styles.fab,
@@ -433,13 +433,9 @@ export default function BudgetScreen() {
             shadowOpacity: 0.35,
           },
         ]}
-        onPress={handleCreateBudget}
+        onPress={handleAIBudgetAdvisor}
       >
-        <MaterialCommunityIcons
-          name="wallet-plus-outline"
-          size={24}
-          color="#fff"
-        />
+        <MaterialCommunityIcons name="robot-outline" size={24} color="#fff" />
       </Pressable>
     </SafeAreaView>
   );
@@ -800,6 +796,22 @@ const makeStyles = (c: {
       paddingHorizontal: 16,
       paddingVertical: 16,
       paddingBottom: 120,
+    },
+    fabAI: {
+      position: "absolute",
+      right: 16,
+      bottom: 190,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: c.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      elevation: 20,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
     },
     modalActions: {
       flexDirection: "row",

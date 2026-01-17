@@ -63,7 +63,6 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-vision-camera": "^4.7.3",
-    "react-native-vosk": "^2.1.7",
     "react-native-walkthrough-tooltip": "^1.6.0",
     "react-native-web": "~0.21.0",
     "react-native-wheel-color-picker": "^1.3.1",

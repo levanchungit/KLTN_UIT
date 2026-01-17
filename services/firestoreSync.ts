@@ -741,6 +741,7 @@ async function syncBudgetsPullAndPush(
   for (const doc of snap.docs) {
     const data = doc.data();
     const id = safeStr(data.id ?? doc.id);
+    if (!id) continue; // Skip nếu id null/empty
     remoteIds.add(id);
     if (data._deleted) {
       await db.runAsync(`DELETE FROM budget_allocations WHERE budget_id=?`, [
@@ -784,17 +785,40 @@ async function syncBudgetsPullAndPush(
         const allocSnap = await firestore.getDocs(allocCol);
         for (const ad of allocSnap.docs) {
           const adata = ad.data();
-          await db.runAsync(
-            `INSERT OR REPLACE INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
-            [
-              safeStr(adata.id ?? ad.id),
-              id,
-              safeStr(adata.category_id),
-              safeStr(adata.group_type),
-              toNum(adata.allocated_amount) ?? 0,
-              toNum(adata.created_at) ?? null,
-            ]
-          );
+          const categoryId = safeStr(adata.category_id);
+
+          // Validate category_id exists trước khi insert allocation
+          if (categoryId) {
+            const categoryExists = await db.getFirstAsync<{ id: string }>(
+              `SELECT id FROM categories WHERE id=? AND user_id=?`,
+              [categoryId, localUid]
+            );
+            if (!categoryExists) {
+              console.warn(
+                `Skip budget allocation: category ${categoryId} không tồn tại`
+              );
+              continue;
+            }
+          }
+
+          try {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
+              [
+                safeStr(adata.id ?? ad.id),
+                id,
+                categoryId,
+                safeStr(adata.group_type),
+                toNum(adata.allocated_amount) ?? 0,
+                toNum(adata.created_at) ?? null,
+              ]
+            );
+          } catch (e: any) {
+            console.error(
+              `Failed to insert budget allocation:`,
+              e?.message ?? e
+            );
+          }
         }
       } catch (e) {
         console.warn("Failed to pull budget allocations:", e);
@@ -832,17 +856,40 @@ async function syncBudgetsPullAndPush(
         const allocSnap = await firestore.getDocs(allocCol);
         for (const ad of allocSnap.docs) {
           const adata = ad.data();
-          await db.runAsync(
-            `INSERT INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
-            [
-              safeStr(adata.id ?? ad.id),
-              id,
-              safeStr(adata.category_id) ?? null,
-              safeStr(adata.group_type) ?? null,
-              toNum(adata.allocated_amount) ?? 0,
-              toNum(adata.created_at) ?? null,
-            ]
-          );
+          const categoryId = safeStr(adata.category_id);
+
+          // Validate category_id exists
+          if (categoryId) {
+            const categoryExists = await db.getFirstAsync<{ id: string }>(
+              `SELECT id FROM categories WHERE id=? AND user_id=?`,
+              [categoryId, localUid]
+            );
+            if (!categoryExists) {
+              console.warn(
+                `Skip budget allocation update: category ${categoryId} không tồn tại`
+              );
+              continue;
+            }
+          }
+
+          try {
+            await db.runAsync(
+              `INSERT INTO budget_allocations(id,budget_id,category_id,group_type,allocated_amount,created_at) VALUES(?,?,?,?,?,?)`,
+              [
+                safeStr(adata.id ?? ad.id),
+                id,
+                categoryId ?? null,
+                safeStr(adata.group_type) ?? null,
+                toNum(adata.allocated_amount) ?? 0,
+                toNum(adata.created_at) ?? null,
+              ]
+            );
+          } catch (e: any) {
+            console.error(
+              `Failed to insert budget allocation:`,
+              e?.message ?? e
+            );
+          }
         }
       } catch (e) {
         console.warn("Failed to sync budget allocations from remote:", e);
@@ -1017,16 +1064,65 @@ export async function syncAllToFirestore(userId?: string): Promise<boolean> {
     const metaSnap = await firestore.getDoc(metaRef);
     if (metaSnap && metaSnap.exists && metaSnap.exists()) {
       // remote has data -> perform pull-then-push reconciliation using per-collection `since`
-      await syncAccountsPullAndPush(localUid, authUid, sinceAccounts);
-      await syncCategoriesPullAndPush(localUid, authUid, sinceCategories);
-      await syncTransactionsPullAndPush(localUid, authUid, sinceTransactions);
-      await syncBudgetsPullAndPush(localUid, authUid, sinceBudgets);
+      console.log("Đồng bộ: Pull data từ Firebase...");
+
+      // Đồng bộ theo đúng thứ tự để tránh foreign key constraint
+      // 1. Categories và Accounts trước (không phụ thuộc gì)
+      try {
+        await syncCategoriesPullAndPush(localUid, authUid, sinceCategories);
+      } catch (e: any) {
+        console.error("Lỗi đồng bộ categories:", e?.message ?? e);
+      }
+
+      try {
+        await syncAccountsPullAndPush(localUid, authUid, sinceAccounts);
+      } catch (e: any) {
+        console.error("Lỗi đồng bộ accounts:", e?.message ?? e);
+      }
+
+      // 2. Transactions (phụ thuộc categories + accounts)
+      try {
+        await syncTransactionsPullAndPush(localUid, authUid, sinceTransactions);
+      } catch (e: any) {
+        console.error("Lỗi đồng bộ transactions:", e?.message ?? e);
+      }
+
+      // 3. Budgets (phụ thuộc categories)
+      try {
+        await syncBudgetsPullAndPush(localUid, authUid, sinceBudgets);
+      } catch (e: any) {
+        console.error("Lỗi đồng bộ budgets:", e?.message ?? e);
+      }
+
+      console.log("Đồng bộ: Hoàn tất pull từ Firebase");
     } else {
       // remote empty -> push local to remote (full push)
-      await syncAccounts(localUid);
-      await syncCategories(localUid);
-      await syncTransactions(localUid);
-      await syncBudgets(localUid);
+      console.log("Đồng bộ: Push data lên Firebase...");
+
+      try {
+        await syncCategories(localUid);
+      } catch (e: any) {
+        console.error("Lỗi push categories:", e?.message ?? e);
+      }
+
+      try {
+        await syncAccounts(localUid);
+      } catch (e: any) {
+        console.error("Lỗi push accounts:", e?.message ?? e);
+      }
+
+      try {
+        await syncTransactions(localUid);
+      } catch (e: any) {
+        console.error("Lỗi push transactions:", e?.message ?? e);
+      }
+
+      try {
+        await syncBudgets(localUid);
+      } catch (e: any) {
+        console.error("Lỗi push budgets:", e?.message ?? e);
+      }
+
       try {
         await firestore.setDoc(
           metaRef,
@@ -1036,6 +1132,8 @@ export async function syncAllToFirestore(userId?: string): Promise<boolean> {
       } catch (e) {
         console.warn("Failed to write remote meta doc:", e);
       }
+
+      console.log("Đồng bộ: Hoàn tất push lên Firebase");
     }
 
     // Record last-sync times on success
@@ -1156,6 +1254,7 @@ async function syncCategoriesPullAndPush(
   for (const doc of snap.docs) {
     const data = doc.data();
     const id = safeStr(data.id ?? doc.id);
+    if (!id) continue; // Skip nếu id null/empty
     remoteIds.add(id);
     if (data._deleted) {
       // remote tombstone -> delete local
@@ -1172,6 +1271,19 @@ async function syncCategoriesPullAndPush(
       [id, localUid]
     );
     if (!local) {
+      // Kiểm tra xem đã có category với cùng tên và type chưa (tránh trùng lặp)
+      const duplicate = await db.getFirstAsync<any>(
+        `SELECT id FROM categories WHERE name=? AND type=? AND user_id=?`,
+        [safeStr(data.name), safeStr(data.type), localUid]
+      );
+
+      if (duplicate) {
+        console.log(
+          `Category "${data.name}" (${data.type}) đã tồn tại với id khác, skip insert từ remote`
+        );
+        continue;
+      }
+
       // insert
       await db.runAsync(
         `INSERT OR REPLACE INTO categories(id,user_id,name,type,icon,color,parent_id,created_at,updated_at)
@@ -1313,6 +1425,7 @@ async function syncAccountsPullAndPush(
   for (const doc of snap.docs) {
     const data = doc.data();
     const id = safeStr(data.id ?? doc.id);
+    if (!id) continue; // Skip nếu id null/empty
     remoteIds.add(id);
     if (data._deleted) {
       await db.runAsync(`DELETE FROM accounts WHERE id=? AND user_id=?`, [
@@ -1470,6 +1583,7 @@ async function syncTransactionsPullAndPush(
   for (const doc of snap.docs) {
     const data = doc.data();
     const id = safeStr(data.id ?? doc.id);
+    if (!id) continue; // Skip nếu id null/empty
     remoteIds.add(id);
     if (data._deleted) {
       await db.runAsync(`DELETE FROM transactions WHERE id=? AND user_id=?`, [
@@ -1485,42 +1599,114 @@ async function syncTransactionsPullAndPush(
       [id, localUid]
     );
     if (!local) {
-      // Insert transaction; foreign keys rely on accounts/categories being present
-      await db.runAsync(
-        `INSERT OR REPLACE INTO transactions(id,user_id,account_id,category_id,type,amount,note,occurred_at,created_at,updated_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?)`,
-        [
-          id,
-          localUid,
-          safeStr(data.account_id),
-          safeStr(data.category_id),
-          safeStr(data.type),
-          toNum(data.amount) ?? 0,
-          safeStr(data.note),
-          toNum(data.occurred_at) ?? null,
-          toNum(data.created_at) ?? null,
-          remoteUpdated || null,
-        ]
-      );
+      // Validate foreign keys trước khi insert
+      const accountId = safeStr(data.account_id);
+      const categoryId = safeStr(data.category_id);
+
+      // Kiểm tra account_id tồn tại
+      if (accountId) {
+        const accountExists = await db.getFirstAsync<{ id: string }>(
+          `SELECT id FROM accounts WHERE id=? AND user_id=?`,
+          [accountId, localUid]
+        );
+        if (!accountExists) {
+          console.warn(
+            `Skip transaction ${id}: account ${accountId} không tồn tại. Sẽ sync sau khi account được tạo.`
+          );
+          continue;
+        }
+      }
+
+      // Kiểm tra category_id tồn tại (nullable nên chỉ check khi có giá trị)
+      if (categoryId) {
+        const categoryExists = await db.getFirstAsync<{ id: string }>(
+          `SELECT id FROM categories WHERE id=? AND user_id=?`,
+          [categoryId, localUid]
+        );
+        if (!categoryExists) {
+          console.warn(
+            `Transaction ${id} có category ${categoryId} không tồn tại, set NULL`
+          );
+          // Set null thay vì skip
+          data.category_id = null;
+        }
+      }
+
+      // Insert transaction với validated foreign keys
+      try {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO transactions(id,user_id,account_id,category_id,type,amount,note,occurred_at,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?)`,
+          [
+            id,
+            localUid,
+            safeStr(data.account_id),
+            safeStr(data.category_id),
+            safeStr(data.type),
+            toNum(data.amount) ?? 0,
+            safeStr(data.note),
+            toNum(data.occurred_at) ?? null,
+            toNum(data.created_at) ?? null,
+            remoteUpdated || null,
+          ]
+        );
+      } catch (e: any) {
+        console.error(`Failed to insert transaction ${id}:`, e?.message ?? e);
+        // Continue với các transactions khác
+      }
       continue;
     }
 
     const localUpdated = Number(local.updated_at) || 0;
     if (remoteUpdated > localUpdated) {
-      await db.runAsync(
-        `UPDATE transactions SET account_id=?, category_id=?, type=?, amount=?, note=?, occurred_at=?, updated_at=? WHERE id=? AND user_id=?`,
-        [
-          safeStr(data.account_id),
-          safeStr(data.category_id),
-          safeStr(data.type),
-          toNum(data.amount) ?? 0,
-          safeStr(data.note),
-          toNum(data.occurred_at) ?? null,
-          remoteUpdated || null,
-          id,
-          localUid,
-        ]
-      );
+      // Validate foreign keys trước khi update
+      const accountId = safeStr(data.account_id);
+      const categoryId = safeStr(data.category_id);
+
+      if (accountId) {
+        const accountExists = await db.getFirstAsync<{ id: string }>(
+          `SELECT id FROM accounts WHERE id=? AND user_id=?`,
+          [accountId, localUid]
+        );
+        if (!accountExists) {
+          console.warn(
+            `Skip update transaction ${id}: account ${accountId} không tồn tại`
+          );
+          continue;
+        }
+      }
+
+      if (categoryId) {
+        const categoryExists = await db.getFirstAsync<{ id: string }>(
+          `SELECT id FROM categories WHERE id=? AND user_id=?`,
+          [categoryId, localUid]
+        );
+        if (!categoryExists) {
+          console.warn(
+            `Transaction ${id} có category ${categoryId} không tồn tại, set NULL`
+          );
+          data.category_id = null;
+        }
+      }
+
+      try {
+        await db.runAsync(
+          `UPDATE transactions SET account_id=?, category_id=?, type=?, amount=?, note=?, occurred_at=?, updated_at=? WHERE id=? AND user_id=?`,
+          [
+            safeStr(data.account_id),
+            safeStr(data.category_id),
+            safeStr(data.type),
+            toNum(data.amount) ?? 0,
+            safeStr(data.note),
+            toNum(data.occurred_at) ?? null,
+            remoteUpdated || null,
+            id,
+            localUid,
+          ]
+        );
+      } catch (e: any) {
+        console.error(`Failed to update transaction ${id}:`, e?.message ?? e);
+      }
     } else if (localUpdated > remoteUpdated) {
       toPush.push({ id, row: local });
     }
@@ -1580,6 +1766,100 @@ async function syncTransactionsPullAndPush(
   await batch.commit();
 }
 
+/**
+ * Kiểm tra xem Firebase có categories cho user này không
+ * Dùng để tránh tạo trùng khi xóa app và cài lại
+ */
+export async function hasRemoteCategories(userId?: string): Promise<boolean> {
+  try {
+    const localUid = userId ?? (await getCurrentUserId());
+    if (!localUid) return false;
+
+    const { fdb, firestore } = await _getFirestore();
+
+    let rUid: string;
+    try {
+      rUid = await getAuthUid();
+    } catch (_) {
+      rUid = localUid;
+    }
+
+    // Query Firebase để xem có categories không
+    const colRef = firestore.collection(fdb, `users/${rUid}/categories`);
+    const snapshot = await firestore.getDocs(colRef);
+
+    // Chỉ đếm documents không bị _deleted
+    const activeCategories = snapshot.docs.filter(
+      (doc: any) => !doc.data()._deleted
+    );
+
+    return activeCategories.length > 0;
+  } catch (e) {
+    console.warn("Không thể kiểm tra remote categories:", e);
+    return false;
+  }
+}
+
+/**
+ * Pull categories từ Firebase về SQLite (không push)
+ * Dùng khi phát hiện Firebase đã có data mà SQLite trống
+ */
+export async function pullCategoriesOnly(userId?: string) {
+  try {
+    const localUid = userId ?? (await getCurrentUserId());
+    if (!localUid) throw new Error("No user logged in");
+
+    const { fdb, firestore } = await _getFirestore();
+
+    let rUid: string;
+    try {
+      rUid = await getAuthUid();
+    } catch (_) {
+      rUid = localUid;
+    }
+
+    // Pull tất cả categories từ Firebase
+    const colRef = firestore.collection(fdb, `users/${rUid}/categories`);
+    const snapshot = await firestore.getDocs(colRef);
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      if (data._deleted) continue; // Skip deleted items
+
+      const id = safeStr(data.id ?? doc.id);
+
+      // Insert vào SQLite nếu chưa tồn tại
+      const existing = await db.getFirstAsync<any>(
+        `SELECT id FROM categories WHERE id=? AND user_id=?`,
+        [id, localUid]
+      );
+
+      if (!existing) {
+        await db.runAsync(
+          `INSERT INTO categories(id, user_id, name, type, icon, color, parent_id, created_at, updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?)`,
+          [
+            id,
+            localUid,
+            safeStr(data.name),
+            safeStr(data.type),
+            safeStr(data.icon),
+            safeStr(data.color),
+            safeStr(data.parent_id),
+            toNum(data.created_at) ?? null,
+            toNum(data.updated_at) ?? null,
+          ]
+        );
+      }
+    }
+
+    console.log("Pull categories từ Firebase hoàn tất");
+  } catch (e) {
+    console.warn("pullCategoriesOnly failed:", e);
+    throw e;
+  }
+}
+
 export default {
   initFirestore,
   syncCategories,
@@ -1587,4 +1867,6 @@ export default {
   syncTransactions,
   syncBudgets,
   syncAllToFirestore,
+  hasRemoteCategories,
+  pullCategoriesOnly,
 };

@@ -58,6 +58,11 @@ export async function createAccount(input: {
       Math.max(0, Math.trunc(input.balance) || 0),
     ]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after creating account
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  
   try {
     scheduleSyncDebounced(userId);
   } catch (e) {
@@ -109,6 +114,11 @@ export async function updateAccount(
     `UPDATE accounts SET ${set.join(",")} WHERE id=? AND user_id=?`,
     [...vals, id, userId]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after updating account
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  
   try {
     scheduleSyncDebounced(userId);
   } catch (e) {
@@ -166,6 +176,11 @@ export async function deleteAccount(id: string) {
     id,
     userId,
   ]);
+  
+  // ⚡ PERFORMANCE: Invalidate cache after deleting account
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  
   try {
     scheduleSyncDebounced(userId);
   } catch (e) {

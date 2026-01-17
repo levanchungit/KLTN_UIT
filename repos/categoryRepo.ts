@@ -95,6 +95,13 @@ export async function createCategory(input: {
       VALUES(?,?,?,?,?,?,?, strftime('%s','now'), strftime('%s','now'))`,
     [id, userId, input.name.trim(), input.type, icon, color, parent_id]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after creating category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   try {
     scheduleSyncDebounced(userId);
   } catch (e) {
@@ -146,6 +153,13 @@ export async function updateCategory(
     `UPDATE categories SET ${set.join(",")} WHERE id=? AND user_id=?`,
     [...vals, id, userId]
   );
+  
+  // ⚡ PERFORMANCE: Invalidate cache after updating category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   // schedule sync
   scheduleSyncDebounced(userId);
 }
@@ -157,6 +171,13 @@ export async function deleteCategory(id: string) {
     id,
     userId,
   ]);
+  
+  // ⚡ PERFORMANCE: Invalidate cache after deleting category
+  const { invalidateCategoriesCache } = await import("@/services/cacheService");
+  invalidateCategoriesCache();
+  const { transactionClassifier } = await import("@/services/transactionClassifier");
+  transactionClassifier.invalidateCategoryCache();
+  
   scheduleSyncDebounced(userId);
   // write tombstone to Firestore so other clients can delete
   try {
@@ -170,10 +191,38 @@ export async function deleteCategory(id: string) {
 /** ===== Seed (tùy chọn) ===== */
 export async function seedCategoryDefaults() {
   const db = await openDb();
+  const userId = await getCurrentUserId();
+
+  // Kiểm tra xem SQLite đã có categories chưa
   const count = await db.getFirstAsync<{ c: number }>(
-    "SELECT COUNT(*) as c FROM categories"
+    "SELECT COUNT(*) as c FROM categories WHERE user_id=?",
+    [userId]
   );
   if ((count?.c ?? 0) > 0) return;
+
+  // Kiểm tra Firebase có dữ liệu categories không (tránh tạo trùng khi xóa app)
+  try {
+    const syncModule = await import("@/services/firestoreSync");
+    if (syncModule && typeof syncModule.hasRemoteCategories === "function") {
+      const hasRemote = await syncModule.hasRemoteCategories(userId);
+      if (hasRemote) {
+        console.log(
+          "Firebase đã có categories, đang pull về thay vì tạo mới..."
+        );
+        // Pull categories từ Firebase về SQLite
+        if (typeof syncModule.pullCategoriesOnly === "function") {
+          await syncModule.pullCategoriesOnly(userId);
+        }
+        return; // Không tạo mới nữa
+      }
+    }
+  } catch (e) {
+    console.log(
+      "Không thể kiểm tra Firebase, tiếp tục tạo categories mặc định:",
+      e
+    );
+    // Nếu Firebase không khả dụng, vẫn tạo mới như bình thường
+  }
 
   const defaults: {
     name: string;
@@ -299,6 +348,24 @@ export async function seedCategoryDefaults() {
 
 /** Đảm bảo danh mục ngân sách demo tồn tại với biểu tượng/màu sắc phù hợp */
 export async function ensureDemoBudgetCategories() {
+  const userId = await getCurrentUserId();
+
+  // Kiểm tra Firebase trước khi tạo
+  try {
+    const syncModule = await import("@/services/firestoreSync");
+    if (syncModule && typeof syncModule.hasRemoteCategories === "function") {
+      const hasRemote = await syncModule.hasRemoteCategories(userId);
+      if (hasRemote) {
+        console.log(
+          "Firebase đã có categories, skip ensureDemoBudgetCategories"
+        );
+        return;
+      }
+    }
+  } catch (e) {
+    // Continue nếu không check được Firebase
+  }
+
   const base: Array<{
     name: string;
     type: "expense" | "income";

@@ -1,6 +1,10 @@
 import { useI18n } from "@/i18n/I18nProvider";
 import { listCategories } from "@/repos/categoryRepo";
-import { listBetween, type TxDetailRow } from "@/repos/transactionRepo";
+import {
+  listBetween,
+  listRecent,
+  type TxDetailRow,
+} from "@/repos/transactionRepo";
 import {
   Ionicons,
   MaterialCommunityIcons,
@@ -144,7 +148,7 @@ export default function Transactions() {
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadedDays, setLoadedDays] = useState(0);
+  const [loadedCount, setLoadedCount] = useState(0);
   const [allDataLoaded, setAllDataLoaded] = useState(false);
 
   // Filter state
@@ -170,8 +174,7 @@ export default function Transactions() {
   const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
   const [allCategories, setAllCategories] = useState<any[]>([]);
 
-  const PAGE_DAYS = 14;
-  const MAX_PAST_DAYS = 365 * 3;
+  const PAGE_SIZE = 15;
 
   const loadingMoreRef = useRef(false);
   const onEndMomentumFired = useRef(false);
@@ -190,9 +193,13 @@ export default function Transactions() {
         }
         sec.data.push(r);
       }
-      return [...map.values()].sort(
-        (a, b) => b.date.getTime() - a.date.getTime()
-      );
+      // Sort sections by date (newest first) and sort transactions within each section by time (newest first)
+      return [...map.values()]
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .map((section) => ({
+          ...section,
+          data: section.data.sort((a, b) => b.occurred_at - a.occurred_at),
+        }));
     },
     [t, lang]
   );
@@ -274,21 +281,28 @@ export default function Transactions() {
   const loadInitial = useCallback(async () => {
     setRefreshing(true);
     try {
-      const secs = await fetchRange(0, PAGE_DAYS);
-      setSections(secs);
+      let rows: TxDetailRow[] = [];
 
-      // When using date filters (not "all"), all data is loaded in one go
-      if (filterType !== "all") {
-        setAllDataLoaded(true);
-        setLoadedDays(0); // Reset since we don't track pages for filtered views
+      if (filterType === "all") {
+        // Load theo số lượng giao dịch
+        rows = await listRecent(PAGE_SIZE, 0);
+        setLoadedCount(rows.length);
+        setAllDataLoaded(rows.length < PAGE_SIZE);
       } else {
-        setAllDataLoaded(false);
-        setLoadedDays(PAGE_DAYS);
+        // Load theo filter ngày
+        const secs = await fetchRange(0, 0);
+        setSections(secs);
+        setAllDataLoaded(true);
+        setLoadedCount(0);
+        return;
       }
+
+      const secs = groupByDay(rows);
+      setSections(secs);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchRange, filterType]);
+  }, [filterType, groupByDay]);
 
   useFocusEffect(
     useCallback(() => {
@@ -796,108 +810,150 @@ export default function Transactions() {
     if (filterType !== "all" || allDataLoaded) return;
 
     if (loadingMoreRef.current) return;
-    if (loadedDays >= MAX_PAST_DAYS) {
-      setAllDataLoaded(true);
-      return;
-    }
 
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const more = await fetchRange(loadedDays, PAGE_DAYS);
-      if (more.length === 0) {
+      const moreRows = await listRecent(PAGE_SIZE, loadedCount);
+      if (moreRows.length === 0) {
         setAllDataLoaded(true);
         return;
       }
 
-      // merge theo key (ngày)
+      // Group new rows
+      const newSections = groupByDay(moreRows);
+
+      // Merge with existing sections
       const merged = new Map<string, Section>();
       for (const s of sections) merged.set(s.key, s);
-      for (const s of more) {
+      for (const s of newSections) {
         const prev = merged.get(s.key);
-        if (prev)
+        if (prev) {
           merged.set(s.key, { ...prev, data: [...prev.data, ...s.data] });
-        else merged.set(s.key, s);
+        } else {
+          merged.set(s.key, s);
+        }
       }
-      const arr = [...merged.values()].sort(
-        (a, b) => b.date.getTime() - a.date.getTime()
-      );
+
+      const arr = [...merged.values()]
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .map((section) => ({
+          ...section,
+          data: section.data.sort((a, b) => b.occurred_at - a.occurred_at),
+        }));
+
       setSections(arr);
-      setLoadedDays((d) => d + PAGE_DAYS);
+      setLoadedCount((prev) => prev + moreRows.length);
+      setAllDataLoaded(moreRows.length < PAGE_SIZE);
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [fetchRange, loadedDays, sections, filterType, allDataLoaded]);
+  }, [loadedCount, sections, filterType, allDataLoaded, groupByDay]);
 
   // Memoized Transaction Item Component
-  const TransactionItem = React.memo(({ item }: { item: TxDetailRow }) => {
-    // Icon mapping for mi: prefix
-    const iconMap: Record<string, string> = {
-      "directions-car": "car",
-      "flight-takeoff": "airplane-takeoff",
-      assignment: "file-document-outline",
-      pets: "paw",
-      "credit-card": "credit-card-outline",
-    };
+  const TransactionItem = React.memo(
+    ({ item }: { item: TxDetailRow }) => {
+      const iconMap: Record<string, string> = useMemo(
+        () => ({
+          "directions-car": "car",
+          "flight-takeoff": "airplane-takeoff",
+          assignment: "file-document-outline",
+          pets: "paw",
+          "credit-card": "credit-card-outline",
+        }),
+        []
+      );
 
-    // Determine icon name and color
-    let iconName = "cash";
-    let iconColor = colors.icon;
+      const { iconName, iconColor } = useMemo(() => {
+        let name = "cash";
+        let color = colors.icon;
 
-    if (item.category_icon) {
-      if (item.category_icon.startsWith("mc:")) {
-        iconName = item.category_icon.replace("mc:", "");
-      } else if (item.category_icon.startsWith("mi:")) {
-        const miName = item.category_icon.replace("mi:", "");
-        iconName = iconMap[miName] || "help-circle-outline";
-      } else {
-        iconName = item.category_icon;
-      }
-    }
+        if (item.category_icon) {
+          if (item.category_icon.startsWith("mc:")) {
+            name = item.category_icon.replace("mc:", "");
+          } else if (item.category_icon.startsWith("mi:")) {
+            const miName = item.category_icon.replace("mi:", "");
+            name = iconMap[miName] || "help-circle-outline";
+          } else {
+            name = item.category_icon;
+          }
+        }
 
-    if (item.category_color) {
-      iconColor = item.category_color;
-    }
+        if (item.category_color) {
+          color = item.category_color;
+        }
 
-    return (
-      <TouchableOpacity
-        style={styles.row}
-        onPress={() => router.push(`/add-transaction?id=${item.id}`)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.leftIcon}>
-          <MaterialCommunityIcons
-            name={iconName as any}
-            size={18}
-            color={iconColor}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.catName}>{item.category_name || "Khác"}</Text>
-          <Text style={styles.sub}>{item.note || ""}</Text>
-        </View>
-        <Text
-          style={[
-            styles.amount,
-            {
-              color: item.type === "expense" ? "#EF4444" : "#10B981",
-            },
-          ]}
+        return { iconName: name, iconColor: color };
+      }, [item.category_icon, item.category_color, iconMap]);
+
+      const amountStyle = useMemo(
+        () => [
+          styles.amount,
+          { color: item.type === "expense" ? "#EF4444" : "#10B981" },
+        ],
+        [item.type, styles.amount]
+      );
+
+      const handlePress = useCallback(() => {
+        router.push(`/add-transaction?id=${item.id}`);
+      }, [item.id]);
+
+      return (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={handlePress}
+          activeOpacity={0.7}
         >
-          {item.type === "expense" ? "-" : "+"}
-          {fmtMoney(item.amount)}
-        </Text>
-      </TouchableOpacity>
-    );
-  });
+          <View style={styles.leftIcon}>
+            <MaterialCommunityIcons
+              name={iconName as any}
+              size={18}
+              color={iconColor}
+            />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.catName} numberOfLines={1}>
+              {item.category_name || "Khác"}
+            </Text>
+            <Text style={styles.sub} numberOfLines={1}>
+              {item.note || ""}
+            </Text>
+          </View>
+          <Text style={amountStyle} numberOfLines={1}>
+            {item.type === "expense" ? "-" : "+"}
+            {fmtMoney(item.amount)}
+          </Text>
+        </TouchableOpacity>
+      );
+    },
+    (prevProps, nextProps) => {
+      return (
+        prevProps.item.id === nextProps.item.id &&
+        prevProps.item.amount === nextProps.item.amount &&
+        prevProps.item.note === nextProps.item.note &&
+        prevProps.item.category_name === nextProps.item.category_name &&
+        prevProps.item.category_icon === nextProps.item.category_icon &&
+        prevProps.item.category_color === nextProps.item.category_color &&
+        prevProps.item.type === nextProps.item.type
+      );
+    }
+  );
 
   // Memoized Section Header Component
-  const SectionHeader = React.memo(({ section }: { section: Section }) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{section.title}</Text>
-    </View>
-  ));
+  const SectionHeader = React.memo(
+    ({ section }: { section: Section }) => (
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{section.title}</Text>
+      </View>
+    ),
+    (prevProps, nextProps) => {
+      return (
+        prevProps.section.key === nextProps.section.key &&
+        prevProps.section.title === nextProps.section.title
+      );
+    }
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: TxDetailRow }) => <TransactionItem item={item} />,
@@ -1617,20 +1673,18 @@ export default function Transactions() {
 
       <SectionList
         sections={filteredSections}
-        keyExtractor={(item, index) => `${item.id || index}`}
+        keyExtractor={(item) => item.id}
         renderSectionHeader={renderSectionHeader}
         renderItem={renderItem}
         refreshing={refreshing}
         onRefresh={loadInitial}
         onEndReached={() => {
-          // Chỉ load more khi filter = all và chưa load hết data
           if (filterType !== "all" || allDataLoaded) return;
-
           if (!loadingMoreRef.current && onEndMomentumFired.current) {
             loadMore();
           }
         }}
-        onEndReachedThreshold={0.3}
+        onEndReachedThreshold={0.5}
         onMomentumScrollBegin={() => {
           onEndMomentumFired.current = true;
         }}
@@ -1645,7 +1699,7 @@ export default function Transactions() {
         stickySectionHeadersEnabled={false}
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
-        initialNumToRender={15}
+        initialNumToRender={20}
         windowSize={10}
         removeClippedSubviews={true}
       />
@@ -1731,6 +1785,9 @@ const makeStyles = (c: {
       paddingVertical: 10,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: c.divider,
+    },
+    textContainer: {
+      flex: 1,
     },
     leftIcon: {
       width: 34,
