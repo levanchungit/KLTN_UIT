@@ -1287,6 +1287,7 @@ export default function Chatbox() {
   const { colors, mode } = useTheme();
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [inputBarHeight, setInputBarHeight] = useState(0);
 
   const [items, setItems] = useState<Category[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -3085,10 +3086,13 @@ export default function Chatbox() {
           ref={flatRef}
           data={messages}
           keyExtractor={(_, i) => String(i)}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{
             padding: 16,
             gap: 12,
-            paddingBottom: keyboardHeight + 140,
+            paddingBottom: (insets.bottom || 0) + inputBarHeight + keyboardHeight + 16,
+            flexGrow: 1,
           }}
           onContentSizeChange={() => {
             // Auto scroll to end when content size changes (new messages)
@@ -3767,24 +3771,21 @@ export default function Chatbox() {
           </View>
         </Modal>
 
-        {/* Input Bar (ẩn khi đang thu âm) */}
-        <Animated.View
-          style={[
-            styles.inputBar,
-            {
-              borderColor: colors.divider,
-              backgroundColor: colors.card,
-              // Absolute position so we can control bottom precisely
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: (insets.bottom || 0) + keyboardHeight,
-              zIndex: 20,
-              elevation: 8,
-              paddingBottom: 12,
-            },
-          ]}
-        >
+            {/* Input Bar (ẩn khi đang thu âm) */}
+            <Animated.View
+              onLayout={(e) =>
+                setInputBarHeight(Math.max(0, e.nativeEvent.layout.height || 0))
+              }
+              style={[
+                styles.inputBar,
+                {
+                  borderColor: colors.divider,
+                  backgroundColor: colors.card,
+                  marginBottom: (keyboardHeight || 0) + (insets.bottom || 0),
+                  paddingBottom: 12,
+                },
+              ]}
+            >
           {/* Nút Voice (ẩn khi đang ghi âm) */}
           {!isRecording && (
             <Pressable
