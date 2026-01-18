@@ -11,7 +11,7 @@ export type SupportedLang = "vi" | "en";
 
 const translations: Record<SupportedLang, Record<string, string>> = {
   vi: {
-    chatboxAI: "ChatboxAI",
+    chatbotAI: "ChatbotAI",
     manualTransaction: "Tạo giao dịch thủ công",
     // General
     language: "Ngôn ngữ",
@@ -66,6 +66,11 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     darkMode: "Tối",
     // Chatbox
     back: "Quay lại",
+    trainingTitle: "Đang huấn luyện mô hình",
+    trainingDesc: "Cải thiện độ chính xác — quá trình có thể mất vài chục giây",
+    continueQuickMode: "Tiếp tục ở Chế độ nhanh",
+    cancelTraining: "Hủy",
+    modelReady: "Mô hình đã sẵn sàng",
     chatWelcome: "Xin chào!👋 Hãy bắt đầu thêm giao dịch của bạn tại đây nhé!",
     askAmount: "Bạn cho mình biết số tiền cụ thể nhé 💬",
     recorded: "Đã ghi nhận:",
@@ -248,7 +253,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     monthly: "Hàng tháng",
   },
   en: {
-    chatboxAI: "ChatboxAI",
+    chatbotAI: "ChatbotAI",
     manualTransaction: "Manual transaction",
     language: "Language",
     accountSettings: "Account Settings",
@@ -300,6 +305,11 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     darkMode: "Dark",
     // Chatbox
     back: "Back",
+    trainingTitle: "Training model",
+    trainingDesc: "Improving accuracy — may take a few dozen seconds",
+    continueQuickMode: "Continue in Quick Mode",
+    cancelTraining: "Cancel",
+    modelReady: "Model ready",
     chatWelcome: "Hello!👋 Start adding your transactions here!",
     askAmount: "Please tell me the exact amount 💬",
     recorded: "Recorded:",

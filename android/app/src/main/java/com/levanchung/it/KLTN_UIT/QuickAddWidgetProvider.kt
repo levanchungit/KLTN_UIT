@@ -19,13 +19,13 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val views = RemoteViews(context.packageName, R.layout.widget_quick_add)
-        // Force widget to always deep-link into chatbox (bypass login file check)
+        // Force widget to always deep-link into chatbot (bypass login file check)
         val isLoggedIn = true
-        Log.i(TAG, "onUpdate called, force isLoggedIn=$isLoggedIn (widget will always open chatbox)")
+        Log.i(TAG, "onUpdate called, force isLoggedIn=$isLoggedIn (widget will always open chatbot)")
 
         if (isLoggedIn) {
-            // Fake input area: open chatbox (text mode) — use explicit MainActivity component
-            val uriInput = android.net.Uri.parse("kltnuit://chatbox?source=widget&mode=text")
+            // Fake input area: open chatbot (text mode) — use explicit MainActivity component
+            val uriInput = android.net.Uri.parse("kltnuit://chatbot?source=widget&mode=text")
             // Instead send a broadcast so provider can log and then start the activity explicitly
             val inputIntent = Intent(context, QuickAddWidgetProvider::class.java).apply {
                 action = ACTION_OPEN_CHATBOX
@@ -36,8 +36,8 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
             Log.i(TAG, "setOnClickPendingIntent for input (mode=text)")
             views.setOnClickPendingIntent(R.id.widget_input_area, pInput)
 
-            // Voice button: open chatbox in voice mode
-            val uriVoice = android.net.Uri.parse("kltnuit://chatbox?source=widget&mode=voice")
+            // Voice button: open chatbot in voice mode
+            val uriVoice = android.net.Uri.parse("kltnuit://chatbot?source=widget&mode=voice")
             val voiceIntent = Intent(context, QuickAddWidgetProvider::class.java).apply {
                 action = ACTION_OPEN_CHATBOX
                 putExtra(EXTRA_MODE, "voice")
@@ -47,8 +47,8 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
             Log.i(TAG, "setOnClickPendingIntent for voice (mode=voice)")
             views.setOnClickPendingIntent(R.id.action_voice, pVoice)
 
-            // Image button: open chatbox in image mode
-            val uriImage = android.net.Uri.parse("kltnuit://chatbox?source=widget&mode=image")
+            // Image button: open chatbot in image mode
+            val uriImage = android.net.Uri.parse("kltnuit://chatbot?source=widget&mode=image")
             val imageIntent = Intent(context, QuickAddWidgetProvider::class.java).apply {
                 action = ACTION_OPEN_CHATBOX
                 putExtra(EXTRA_MODE, "image")
@@ -81,7 +81,7 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
                 Log.i(TAG, "ACTION_OPEN_CHATBOX received mode=$mode uri=$uriStr")
                 // Build explicit intent to MainActivity
-                val uri = if (uriStr != null) android.net.Uri.parse(uriStr) else android.net.Uri.parse("kltnuit://chatbox?source=widget&mode=$mode")
+                val uri = if (uriStr != null) android.net.Uri.parse(uriStr) else android.net.Uri.parse("kltnuit://chatbot?source=widget&mode=$mode")
                 val start = Intent(Intent.ACTION_VIEW).apply {
                     data = uri
                     setComponent(ComponentName(context, MainActivity::class.java))
@@ -204,8 +204,8 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Mở ứng dụng")
-            .setContentText("Nhấn để mở chatbox")
-            .addAction(android.R.drawable.ic_menu_view, "Mở chatbox", openPending)
+            .setContentText("Nhấn để mở chatbot")
+            .addAction(android.R.drawable.ic_menu_view, "Mở chatbot", openPending)
             .setAutoCancel(true)
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID + 2, builder.build())

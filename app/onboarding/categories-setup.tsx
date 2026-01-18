@@ -220,7 +220,7 @@ export default function CategoriesSetup() {
       //log info row insert
       await db.execAsync("COMMIT");
       await AsyncStorage.setItem("onboarding_step", "categories_done");
-      router.push("/onboarding/chatbox-intro");
+      router.push("/onboarding/chatbot-intro");
     } catch (e) {
       await db.execAsync("ROLLBACK");
       console.error(e);

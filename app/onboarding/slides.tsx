@@ -45,7 +45,7 @@ const slides = [
   {
     key: "s5",
     title: "Trợ lý AI",
-    desc: "Dùng chatboxAI để tạo giao dịch bằng văn bản và gợi ý phân loại.",
+    desc: "Dùng chatbotAI để tạo giao dịch bằng văn bản và gợi ý phân loại.",
     image: require("../../assets/images/slide5.jpg"),
   },
 ];
