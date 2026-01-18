@@ -1287,7 +1287,7 @@ function TypingIndicator({ colors }: { colors: any }) {
 }
 
 /* ---------------- Component ---------------- */
-export default function Chatbox() {
+export default function Chatbot() {
   const { t } = useI18n();
   const { colors, mode } = useTheme();
   const insets = useSafeAreaInsets();

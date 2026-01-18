@@ -384,7 +384,7 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
   return 0.3 * A + 0.4 * tokenOverlap + 0.15 * B + 0.1 * C + 0.05 * D;
 };
 
-export default function ChatboxIntro() {
+export default function ChatbotIntro() {
   const { t } = useI18n();
   const { colors, mode } = useTheme();
 

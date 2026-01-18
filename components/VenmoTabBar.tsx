@@ -374,14 +374,14 @@ export default function VenmoTabBar({
                   💬 Chat với AI
                 </Text>
                 <Text style={{ fontSize: 14, color: "#666", marginBottom: 12 }}>
-                  Chọn "Chatbox AI" để trò chuyện với AI. AI sẽ giúp bạn tạo
+                  Chọn "Chatbot AI" để trò chuyện với AI. AI sẽ giúp bạn tạo
                   giao dịch bằng giọng nói hoặc văn bản.
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
-                    nextStep();
+                  nextStep();
                     setShowMenu(false);
-                    router.push("/chatbox");
+                    router.push("/chatbot");
                   }}
                   style={{
                     backgroundColor: "#10B981",
@@ -411,9 +411,9 @@ export default function VenmoTabBar({
             tooltipStyle={{ maxWidth: 280 }}
           >
             <TouchableOpacity
-              onPress={() => {
+                onPress={() => {
                 setShowMenu(false);
-                router.push("/chatbox");
+                router.push("/chatbot");
               }}
               style={{
                 flexDirection: "row",
@@ -444,7 +444,7 @@ export default function VenmoTabBar({
                   flex: 1,
                 }}
               >
-                {t("chatboxAI")}
+                {t("chatbotAI")}
               </Text>
             </TouchableOpacity>
           </Tooltip>

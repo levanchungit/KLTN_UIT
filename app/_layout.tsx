@@ -156,11 +156,11 @@ function RootLayoutNav() {
           } else {
             router.push("/add-transaction");
           }
-        } else if (pathname === "chatbox") {
+        } else if (pathname === "chatbot") {
           // support mode=voice|image|text and optional text param
           const mode = params["mode"];
           const text = params["text"];
-          let path = "/chatbox";
+          let path = "/chatbot";
           const q: string[] = [];
           if (mode) q.push(`mode=${encodeURIComponent(mode)}`);
           if (text) q.push(`text=${encodeURIComponent(text)}`);
@@ -331,11 +331,11 @@ function RootLayoutNav() {
           <Stack.Screen name="onboarding/slides" />
           <Stack.Screen name="onboarding/wallet-setup" />
           <Stack.Screen name="onboarding/categories-setup" />
-          <Stack.Screen name="onboarding/chatbox-intro" />
+          <Stack.Screen name="onboarding/chatbot-intro" />
           <Stack.Screen name="onboarding/reminder-setup" />
           <Stack.Screen name="biometric-loading" />
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="chatbox" />
+          <Stack.Screen name="chatbot" />
           <Stack.Screen name="budget/setup" />
           <Stack.Screen name="budget/suggest" />
           <Stack.Screen name="setting/categories" />
