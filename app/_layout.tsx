@@ -4,6 +4,7 @@ import {
 } from "@/app/providers/ThemeProvider";
 import { AppTourProvider } from "@/context/appTourContext";
 import { NetworkManagerProvider } from "@/context/NetworkManagerContext";
+import { ModelTrainingProvider } from "@/context/modelTrainingContext";
 import { UserProvider, useUser } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
@@ -110,13 +111,15 @@ export default function RootLayout() {
     <I18nProvider>
       <AppThemeProvider>
         <NetworkManagerProvider>
-          <AppTourProvider>
-            <UserProvider>
-              <PaperProvider>
-                <RootLayoutNav />
-              </PaperProvider>
-            </UserProvider>
-          </AppTourProvider>
+          <ModelTrainingProvider>
+            <AppTourProvider>
+              <UserProvider>
+                <PaperProvider>
+                  <RootLayoutNav />
+                </PaperProvider>
+              </UserProvider>
+            </AppTourProvider>
+          </ModelTrainingProvider>
         </NetworkManagerProvider>
       </AppThemeProvider>
     </I18nProvider>

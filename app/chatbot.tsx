@@ -25,6 +25,7 @@ import TextRecognition from "@react-native-ml-kit/text-recognition";
 import { useFocusEffect } from "@react-navigation/native";
 import Tooltip from "react-native-walkthrough-tooltip";
 // Waveform visualization will use a lightweight animated view instead of capturing audio
+import { useModelTraining } from "@/context/modelTrainingContext";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
@@ -1293,6 +1294,7 @@ export default function Chatbot() {
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputBarHeight, setInputBarHeight] = useState(0);
+  const { isTraining, isReady, isQuickMode, startTraining } = useModelTraining();
 
   const [items, setItems] = useState<Category[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -1318,6 +1320,14 @@ export default function Chatbot() {
   const [recognizing, setRecognizing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const audioMeter = useAudioMeter();
+
+  // Khi component mount, bắt đầu huấn luyện nếu chưa sẵn sàng
+  useEffect(() => {
+    if (!isReady && !isQuickMode && !isTraining) {
+      startTraining();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Image viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);

@@ -1,7 +1,16 @@
 {
+  "editor.formatOnSave": false,
+  "editor.defaultFormatter": "ms-vscode.vscode-typescript-next",
   "editor.codeActionsOnSave": {
-    "source.fixAll": "explicit",
-    "source.organizeImports": "explicit",
-    "source.sortMembers": "explicit"
+    "source.fixAll.eslint": false,
+    "source.organizeImports": false
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "ms-vscode.vscode-typescript-next",
+    "editor.formatOnSave": false
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "ms-vscode.vscode-typescript-next",
+    "editor.formatOnSave": false
   }
 }
