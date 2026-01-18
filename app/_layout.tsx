@@ -3,6 +3,7 @@ import {
   useTheme as useAppTheme,
 } from "@/app/providers/ThemeProvider";
 import { AppTourProvider } from "@/context/appTourContext";
+import { NetworkManagerProvider } from "@/context/NetworkManagerContext";
 import { UserProvider, useUser } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
@@ -29,7 +30,7 @@ import {
   View,
 } from "react-native";
 import { PaperProvider } from "react-native-paper";
-
+import { GlobalOfflineToggle } from "@/components/GlobalOfflineToggle";
 // Suppress warnings in New Architecture and Expo Go limitations
 LogBox.ignoreLogs([
   /setLayoutAnimationEnabledExperimental/,
@@ -45,7 +46,7 @@ if (Platform.OS === "android") {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from "expo-router";
 
 export const unstable_settings = {
@@ -108,13 +109,15 @@ export default function RootLayout() {
   return (
     <I18nProvider>
       <AppThemeProvider>
-        <AppTourProvider>
-          <UserProvider>
-            <PaperProvider>
-              <RootLayoutNav />
-            </PaperProvider>
-          </UserProvider>
-        </AppTourProvider>
+        <NetworkManagerProvider>
+          <AppTourProvider>
+            <UserProvider>
+              <PaperProvider>
+                <RootLayoutNav />
+              </PaperProvider>
+            </UserProvider>
+          </AppTourProvider>
+        </NetworkManagerProvider>
       </AppThemeProvider>
     </I18nProvider>
   );
@@ -125,6 +128,7 @@ function RootLayoutNav() {
   const { user, isLoading } = useUser();
   const segments = useSegments();
   const router = useRouter();
+  const BANNER_RESERVED_HEIGHT = 40; // reserve top space so global banner doesn't cover content
   const [hasCheckedBiometric, setHasCheckedBiometric] = useState(false);
 
   // Reset biometric check when user changes (login/logout)
@@ -320,22 +324,25 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={mode === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* Onboarding flow */}
-        <Stack.Screen name="onboarding/welcome" />
-        <Stack.Screen name="onboarding/slides" />
-        <Stack.Screen name="onboarding/wallet-setup" />
-        <Stack.Screen name="onboarding/categories-setup" />
-        <Stack.Screen name="onboarding/chatbox-intro" />
-        <Stack.Screen name="onboarding/reminder-setup" />
-        <Stack.Screen name="biometric-loading" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="chatbox" />
-        <Stack.Screen name="budget/setup" />
-        <Stack.Screen name="budget/suggest" />
-        <Stack.Screen name="setting/categories" />
-        <Stack.Screen name="setting/wallet" />
-      </Stack>
+      <View style={{ flex: 1, paddingTop: BANNER_RESERVED_HEIGHT }}>
+        <Stack screenOptions={{ headerShown: false }}>
+          {/* Onboarding flow */}
+          <Stack.Screen name="onboarding/welcome" />
+          <Stack.Screen name="onboarding/slides" />
+          <Stack.Screen name="onboarding/wallet-setup" />
+          <Stack.Screen name="onboarding/categories-setup" />
+          <Stack.Screen name="onboarding/chatbox-intro" />
+          <Stack.Screen name="onboarding/reminder-setup" />
+          <Stack.Screen name="biometric-loading" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="chatbox" />
+          <Stack.Screen name="budget/setup" />
+          <Stack.Screen name="budget/suggest" />
+          <Stack.Screen name="setting/categories" />
+          <Stack.Screen name="setting/wallet" />
+        </Stack>
+      </View>
+      <GlobalOfflineToggle />
     </ThemeProvider>
   );
 }

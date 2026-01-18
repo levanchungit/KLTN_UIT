@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { StatusBar } from "expo-status-bar";
+import { StatusBar as RNStatusBar } from "react-native";
 import React, {
   createContext,
   useContext,
@@ -94,7 +94,13 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeContext.Provider value={value}>
-      <StatusBar style={effectiveMode === "light" ? "dark" : "light"} />
+      {/* Make native status bar translucent so app content can draw under it.
+          This allows overlays (like the offline pill) to appear over the system bar. */}
+      <RNStatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle={effectiveMode === "light" ? "dark-content" : "light-content"}
+      />
       {children}
     </ThemeContext.Provider>
   );
