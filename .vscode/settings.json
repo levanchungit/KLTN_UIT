@@ -2,8 +2,8 @@
   "editor.formatOnSave": false,
   "editor.defaultFormatter": "ms-vscode.vscode-typescript-next",
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": false,
-    "source.organizeImports": false
+    "source.fixAll.eslint": "never",
+    "source.organizeImports": "never"
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "ms-vscode.vscode-typescript-next",

@@ -1,12 +1,17 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import NotificationPrePermission from "@/components/NotificationPrePermission";
+import NotificationPreview from "@/components/NotificationPreview";
 import { useI18n } from "@/i18n/I18nProvider";
 import { requestNotificationPermissions } from "@/services/notificationService";
 import {
   getSettings,
   initSmartNotifications,
   updateSettings,
+  selectFunnyNotification,
+  sendFunnyNotification,
 } from "@/services/smartNotificationService";
+import { sendLocalNotification } from "@/services/notificationService";
+import funnyNotifications, { FunnyNotification } from "@/data/funnyNotifications";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -20,25 +25,26 @@ import {
   View,
 } from "react-native";
 import { Modal, Portal, Switch } from "react-native-paper";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
+import TimeWheelPicker from "@/components/TimeWheelPicker";
 
 export default function NotificationSettingsScreen() {
   const { colors } = useTheme();
   const { t } = useI18n();
-  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState({
     dailyReminderTime: { hour: 19, minute: 0 },
     enableDaily: true,
     enableInactivity: true,
     enableBudget: true,
     enableWeekly: true,
+    enableFunnyMode: false,
+    funnyTheme: 'random' as const,
   });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedHour, setSelectedHour] = useState(19);
   const [selectedMinute, setSelectedMinute] = useState(0);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewNotification, setPreviewNotification] = useState<FunnyNotification | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -46,9 +52,20 @@ export default function NotificationSettingsScreen() {
 
   const loadSettings = async () => {
     const current = await getSettings();
-    setSettings(current);
-    setSelectedHour(current.dailyReminderTime.hour);
-    setSelectedMinute(current.dailyReminderTime.minute);
+    // Merge with default settings to ensure all properties exist
+    const mergedSettings = {
+      dailyReminderTime: { hour: 19, minute: 0 },
+      enableDaily: true,
+      enableInactivity: true,
+      enableBudget: true,
+      enableWeekly: true,
+      enableFunnyMode: false,
+      funnyTheme: 'random' as const,
+      ...current, // Override with saved settings
+    };
+    setSettings(mergedSettings);
+    setSelectedHour(mergedSettings.dailyReminderTime.hour);
+    setSelectedMinute(mergedSettings.dailyReminderTime.minute);
   };
 
   const handleToggle = async (key: keyof typeof settings) => {
@@ -67,6 +84,18 @@ export default function NotificationSettingsScreen() {
     if (key === "enableDaily") {
       await initSmartNotifications();
     }
+  };
+
+  const handleFunnyModeToggle = async (value: boolean) => {
+    const updated = { ...settings, enableFunnyMode: value };
+    setSettings(updated);
+    await updateSettings(updated);
+  };
+
+  const handleFunnyThemeChange = async (theme: FunnyNotification['type'] | 'random') => {
+    const updated = { ...settings, funnyTheme: theme };
+    setSettings(updated);
+    await updateSettings(updated);
   };
 
   const [showPrePermission, setShowPrePermission] = useState(false);
@@ -116,10 +145,145 @@ export default function NotificationSettingsScreen() {
     setSettings(updated);
     await updateSettings(updated);
     await initSmartNotifications();
-    const timeStr = `${selectedHour}:${selectedMinute
-      .toString()
-      .padStart(2, "0")}`;
+    const timeStr = `${selectedHour}:${selectedMinute.toString().padStart(2, "0")}`;
     Alert.alert(t("updated"), t("dailyReminderUpdated", { time: timeStr }));
+  };
+
+  const testAllNotifications = async () => {
+    try {
+      const modeText = settings.enableFunnyMode ? "CHẾ ĐỘ HÀI HƯỚC ĐÃ BẬT 🎭" : "CHẾ ĐỘ THÔNG THƯỜNG 📢";
+     
+      const kachingNotifications = funnyNotifications.filter(n => n.soundKey === 'kaching.wav');
+
+      for (const notification of kachingNotifications) {
+        await sendLocalNotification({
+          title: notification.title,
+          message: notification.message,
+          type: notification.type === 'survival' || notification.type === 'drama' ? 'warning' : 'reminder',
+        }, {
+          iconName: notification.iconName,
+          soundKey: notification.soundKey,
+        });
+
+        // Delay nhỏ giữa các thông báo
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      const otherFunnyNotifications = funnyNotifications.filter(n => n.soundKey !== 'kaching.wav');
+
+      for (const notification of otherFunnyNotifications) {
+        await sendLocalNotification({
+          title: notification.title,
+          message: notification.message,
+          type: notification.type === 'survival' || notification.type === 'drama' ? 'warning' : 'reminder',
+        }, {
+          iconName: notification.iconName,
+          soundKey: notification.soundKey,
+        });
+
+        // Delay nhỏ giữa các thông báo
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      // === THÔNG BÁO THÔNG THƯỜNG (TÙY CHẾ ĐỘ HÀI HƯỚC) ===
+      if (!settings.enableFunnyMode) {
+        console.log("📢 Gửi thông báo thông thường...");
+
+        // 1. Nhắc ghi chú cuối ngày
+        await sendLocalNotification({
+          title: "Nhắc nhở chi tiêu 💸",
+          message: "Đừng quên ghi chi tiêu hôm nay nha!",
+          type: "reminder"
+        });
+
+        // 2. Cảnh báo không hoạt động - Gửi cả 2 loại
+        await sendLocalNotification({
+          title: "Bạn ổn chứ? 🤔",
+          message: "Đã 3 ngày bạn chưa ghi chi tiêu. Hãy cập nhật để theo dõi tốt hơn nhé!",
+          type: "warning"
+        });
+
+        await sendLocalNotification({
+          title: "Chúng tôi nhớ bạn! 💙",
+          message: "Đã 1 tuần rồi! Quay lại ghi chi tiêu để kiểm soát tài chính tốt hơn nhé.",
+          type: "warning"
+        });
+
+        // 3. Cảnh báo ngân sách - Gửi các loại cảnh báo khác nhau
+        await sendLocalNotification({
+          title: "Cảnh báo ngân sách ⚠️",
+          message: "Một danh mục đã đạt 70% ngân sách!",
+          type: "warning"
+        });
+
+        await sendLocalNotification({
+          title: "Gần vượt ngân sách! 🚨",
+          message: "Một danh mục đã đạt 90% ngân sách!",
+          type: "warning"
+        });
+
+        await sendLocalNotification({
+          title: "Vượt ngân sách! 🔴",
+          message: "Một danh mục đã vượt ngân sách!",
+          type: "error"
+        });
+
+        // 4. Báo cáo tuần
+        await sendLocalNotification({
+          title: "Báo cáo tuần 📈",
+          message: "Chi tiêu tuần này tăng/giảm X% so với tuần trước!",
+          type: "info"
+        });
+
+        } else {
+        // Gửi thêm một lượt tất cả funny notifications để thay thế 7 cái thông thường
+        const allFunnyNotifications = [...funnyNotifications];
+
+        for (const notification of allFunnyNotifications) {
+          await sendLocalNotification({
+            title: notification.title,
+            message: notification.message,
+            type: notification.type === 'survival' || notification.type === 'drama' ? 'warning' : 'reminder',
+          }, {
+            iconName: notification.iconName,
+            soundKey: notification.soundKey,
+          });
+
+          // Delay nhỏ giữa các thông báo
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
+      }
+    } catch (error) {
+      console.error("Error testing notifications:", error);
+      Alert.alert("Lỗi", "Có lỗi xảy ra khi gửi thông báo");
+    }
+  };
+
+
+  const handlePreviewFunny = () => {
+    const selectedType = settings.funnyTheme === 'random' ? undefined : settings.funnyTheme;
+    const notification = selectFunnyNotification({ type: selectedType });
+    if (notification) {
+      setPreviewNotification(notification);
+      setShowPreview(true);
+    } else {
+      Alert.alert("Không có thông báo", "Không tìm thấy thông báo phù hợp cho chủ đề này.");
+    }
+  };
+
+  const handleSendFunnySamples = async () => {
+    try {
+      for (let i = 0; i < 5; i++) {
+        await sendFunnyNotification({
+          bypassAntiSpam: true, // Allow sending multiple for testing
+        });
+        // Small delay between sends
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (error) {
+      console.error("Error sending funny samples:", error);
+      Alert.alert("Lỗi", "Có lỗi xảy ra khi gửi thông báo mẫu");
+    }
   };
 
   const styles = StyleSheet.create({
@@ -295,11 +459,78 @@ export default function NotificationSettingsScreen() {
     confirmButtonText: {
       color: "#fff",
     },
+    testButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#667eea",
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      marginBottom: 12,
+      gap: 8,
+    },
+    testButtonText: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    testButtonDesc: {
+      fontSize: 13,
+      color: colors.subText,
+      lineHeight: 18,
+    },
+    themeSelector: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 16,
+    },
+    themeButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      minWidth: 80,
+      alignItems: 'center',
+    },
+    themeButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    previewButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#10B981',
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      marginBottom: 12,
+      gap: 8,
+    },
+  previewButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+    sampleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      gap: 8,
+    },
+    sampleButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
   });
-
-  const currentTime = new Date();
-  currentTime.setHours(settings.dailyReminderTime.hour);
-  currentTime.setMinutes(settings.dailyReminderTime.minute);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -346,10 +577,7 @@ export default function NotificationSettingsScreen() {
               >
                 <Ionicons name="time-outline" size={18} color={colors.icon} />
                 <Text style={styles.timeText}>
-                  {settings.dailyReminderTime.hour}:
-                  {settings.dailyReminderTime.minute
-                    .toString()
-                    .padStart(2, "0")}
+                  {settings.dailyReminderTime.hour}:{settings.dailyReminderTime.minute.toString().padStart(2, "0")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -403,6 +631,100 @@ export default function NotificationSettingsScreen() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Funny Notifications</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Text style={styles.settingTitle}>Bật chế độ hài hước</Text>
+              <Text style={styles.settingDesc}>
+                Sử dụng thông báo hài hước và sinh động thay vì thông báo thông thường.
+              </Text>
+            </View>
+            <Switch
+              value={settings.enableFunnyMode}
+              onValueChange={handleFunnyModeToggle}
+              color="#667eea"
+            />
+          </View>
+
+          {settings.enableFunnyMode && (
+            <>
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingTitle}>Chủ đề thông báo</Text>
+                  <Text style={styles.settingDesc}>
+                    Chọn loại thông báo hài hước hoặc để ngẫu nhiên.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.themeSelector}>
+                {[
+                  { key: 'random', label: '🎲 Ngẫu nhiên' },
+                  { key: 'tingting', label: '🔔 TingTing' },
+                  { key: 'survival', label: '🍜 Survival' },
+                  { key: 'drama', label: '💔 Drama' },
+                  { key: 'reminder', label: '🧠 Reminder' },
+                ].map((theme) => (
+                  <TouchableOpacity
+                    key={theme.key}
+                    style={[
+                      styles.themeButton,
+                      settings.funnyTheme === theme.key && { backgroundColor: '#667eea' },
+                      { borderColor: colors.divider }
+                    ]}
+                    onPress={() => handleFunnyThemeChange(theme.key as any)}
+                  >
+                    <Text style={[
+                      styles.themeButtonText,
+                      settings.funnyTheme === theme.key && { color: '#fff' },
+                      { color: colors.text }
+                    ]}>
+                      {theme.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={styles.previewButton}
+                onPress={handlePreviewFunny}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="eye" size={20} color="#fff" />
+                <Text style={styles.previewButtonText}>Xem trước thông báo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.sampleButton}
+                onPress={handleSendFunnySamples}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="flask" size={20} color={colors.primary} />
+                <Text style={[styles.sampleButtonText, { color: colors.primary }]}>
+                  Gửi 5 mẫu để test
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Test Notifications</Text>
+          <TouchableOpacity
+            style={styles.testButton}
+            onPress={testAllNotifications}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications" size={20} color="#fff" />
+            <Text style={styles.testButtonText}>Gửi tất cả thông báo</Text>
+          </TouchableOpacity>
+          <Text style={styles.testButtonDesc}>
+            💰 Ưu tiên 6 Funny kaching.wav trước, sau đó tùy chế độ hài hước:\n• Tắt: +6 Funny +7 thường = 19 TB\n• Bật: +6 Funny +12 Funny bổ sung = 24 TB funny!
+          </Text>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -415,60 +737,13 @@ export default function NotificationSettingsScreen() {
           >
             <Text style={styles.pickerTitle}>{t("selectTime")}</Text>
 
-            <View style={styles.pickerRow}>
-              <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>{t("hour")}</Text>
-                <View style={styles.pickerButtons}>
-                  <TouchableOpacity
-                    style={styles.pickerButton}
-                    onPress={() => setSelectedHour((h) => (h + 1) % 24)}
-                  >
-                    <Ionicons name="chevron-up" size={20} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.pickerValue}>
-                    {selectedHour.toString().padStart(2, "0")}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.pickerButton}
-                    onPress={() => setSelectedHour((h) => (h - 1 + 24) % 24)}
-                  >
-                    <Ionicons
-                      name="chevron-down"
-                      size={20}
-                      color={colors.text}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <Text style={[styles.pickerValue, { marginHorizontal: 8 }]}>
-                :
-              </Text>
-
-              <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>{t("minute")}</Text>
-                <View style={styles.pickerButtons}>
-                  <TouchableOpacity
-                    style={styles.pickerButton}
-                    onPress={() => setSelectedMinute((m) => (m + 1) % 60)}
-                  >
-                    <Ionicons name="chevron-up" size={20} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.pickerValue}>
-                    {selectedMinute.toString().padStart(2, "0")}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.pickerButton}
-                    onPress={() => setSelectedMinute((m) => (m - 1 + 60) % 60)}
-                  >
-                    <Ionicons
-                      name="chevron-down"
-                      size={20}
-                      color={colors.text}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
+            <View style={{ alignItems: "center", marginBottom: 8 }}>
+              <TimeWheelPicker
+                initialHour={selectedHour}
+                initialMinute={selectedMinute}
+                onHourChange={(h) => setSelectedHour(h)}
+                onMinuteChange={(m) => setSelectedMinute(m)}
+              />
             </View>
 
             <View style={styles.modalActions}>
@@ -494,6 +769,12 @@ export default function NotificationSettingsScreen() {
         visible={showPrePermission}
         onConfirm={handlePrePermissionConfirm}
         onCancel={handlePrePermissionCancel}
+      />
+      <NotificationPreview
+        visible={showPreview}
+        notification={previewNotification}
+        onClose={() => setShowPreview(false)}
+        onSend={() => setShowPreview(false)}
       />
     </SafeAreaView>
   );

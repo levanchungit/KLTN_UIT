@@ -2,7 +2,8 @@ import { db, openDb } from "@/db";
 import { getCurrentUserId } from "@/utils/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-import { saveNotification } from "./notificationService";
+import { saveNotification, sendLocalNotification, playNotificationSound } from "./notificationService";
+import funnyNotifications, { FunnyNotification } from "@/data/funnyNotifications";
 
 const NOTIFICATION_LOG_KEY = "@notification_log";
 const NOTIFICATION_SETTINGS_KEY = "@notification_settings";
@@ -20,6 +21,8 @@ type NotificationSettings = {
   enableInactivity: boolean;
   enableBudget: boolean;
   enableWeekly: boolean;
+  enableFunnyMode: boolean;
+  funnyTheme: 'random' | 'tingting' | 'survival' | 'drama' | 'reminder';
 };
 
 const DEFAULT_SETTINGS: NotificationSettings = {
@@ -28,6 +31,8 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   enableInactivity: true,
   enableBudget: true,
   enableWeekly: true,
+  enableFunnyMode: false,
+  funnyTheme: 'random',
 };
 
 // ===== Notification Log Management =====
@@ -172,17 +177,28 @@ async function sendBudgetNotificationImmediate(
   if (!userId) {
     userId = await getCurrentUserId();
   }
-  return sendSmartNotification(
-    type,
-    title,
-    message,
-    metadata,
-    {
+
+  const settings = await getSettings(userId);
+
+  // Use funny notification if enabled, otherwise use regular
+  if (settings.enableFunnyMode) {
+    return sendFunnyNotification({
+      type: settings.funnyTheme === 'random' ? 'survival' : settings.funnyTheme,
       bypassAntiSpam: true,
-      uiType: "warning",
-    },
-    userId
-  );
+    });
+  } else {
+    return sendSmartNotification(
+      type,
+      title,
+      message,
+      metadata,
+      {
+        bypassAntiSpam: true,
+        uiType: "warning",
+      },
+      userId
+    );
+  }
 }
 
 // ===== 1) Daily Reminder =====
@@ -207,9 +223,7 @@ export async function checkDailyReminder() {
   );
 
   if ((todayTx?.count ?? 0) > 0) {
-    console.log(
-      "User already recorded transaction today, skipping daily reminder"
-    );
+    // User already recorded transaction today, skipping daily reminder
     return;
   }
 
@@ -220,18 +234,25 @@ export async function checkDailyReminder() {
   );
 
   if (todaySent) {
-    console.log("Daily reminder already sent today");
+    // Daily reminder already sent today
     return;
   }
 
-  await sendSmartNotification(
-    "daily",
-    "Nhắc nhở chi tiêu 💸",
-    "Đừng quên ghi chi tiêu hôm nay nha!",
-    undefined,
-    undefined,
-    userId
-  );
+  // Use funny notification if enabled, otherwise use regular
+  if (settings.enableFunnyMode) {
+    await sendFunnyNotification({
+      type: settings.funnyTheme === 'random' ? undefined : settings.funnyTheme,
+    });
+  } else {
+    await sendSmartNotification(
+      "daily",
+      "Nhắc nhở chi tiêu 💸",
+      "Đừng quên ghi chi tiêu hôm nay nha!",
+      undefined,
+      undefined,
+      userId
+    );
+  }
 }
 
 // ===== 2) Inactivity Reminder =====
@@ -261,7 +282,7 @@ export async function checkInactivityReminder() {
 
   // Don't send if any notification sent in last 24h
   if (last24h.length > 0) {
-    console.log("Inactivity: Skip due to recent notification");
+    // Inactivity: Skip due to recent notification
     return;
   }
 
@@ -273,14 +294,20 @@ export async function checkInactivityReminder() {
         Date.now() - n.sentAt < 7 * 24 * 60 * 60 * 1000
     );
     if (!sent3day) {
-      await sendSmartNotification(
-        "inactivity_3d",
-        "Bạn ổn chứ? 🤔",
-        "Đã 3 ngày bạn chưa ghi chi tiêu. Hãy cập nhật để theo dõi tốt hơn nhé!",
-        undefined,
-        undefined,
-        userId
-      );
+      if (settings.enableFunnyMode) {
+        await sendFunnyNotification({
+          type: settings.funnyTheme === 'random' ? 'survival' : settings.funnyTheme,
+        });
+      } else {
+        await sendSmartNotification(
+          "inactivity_3d",
+          "Bạn ổn chứ? 🤔",
+          "Đã 3 ngày bạn chưa ghi chi tiêu. Hãy cập nhật để theo dõi tốt hơn nhé!",
+          undefined,
+          undefined,
+          userId
+        );
+      }
     }
   }
 
@@ -292,14 +319,20 @@ export async function checkInactivityReminder() {
         Date.now() - n.sentAt < 7 * 24 * 60 * 60 * 1000
     );
     if (!sent7day) {
-      await sendSmartNotification(
-        "inactivity_7d",
-        "Chúng tôi nhớ bạn! 💙",
-        "Đã 1 tuần rồi! Quay lại ghi chi tiêu để kiểm soát tài chính tốt hơn nhé.",
-        undefined,
-        undefined,
-        userId
-      );
+      if (settings.enableFunnyMode) {
+        await sendFunnyNotification({
+          type: settings.funnyTheme === 'random' ? 'survival' : settings.funnyTheme,
+        });
+      } else {
+        await sendSmartNotification(
+          "inactivity_7d",
+          "Chúng tôi nhớ bạn! 💙",
+          "Đã 1 tuần rồi! Quay lại ghi chi tiêu để kiểm soát tài chính tốt hơn nhé.",
+          undefined,
+          undefined,
+          userId
+        );
+      }
     }
   }
 }
@@ -486,7 +519,7 @@ export async function checkWeeklyInsight() {
   const changePercent = Math.abs(((thisTotal - lastTotal) / lastTotal) * 100);
 
   if (changePercent < 10) {
-    console.log("Weekly spending change < 10%, skipping insight");
+    // Weekly spending change < 10%, skipping insight
     return;
   }
 
@@ -497,29 +530,36 @@ export async function checkWeeklyInsight() {
   );
 
   if (thisWeekSent) {
-    console.log("Weekly insight already sent this week");
+    // Weekly insight already sent this week
     return;
   }
 
   const trend = thisTotal > lastTotal ? "tăng" : "giảm";
   const emoji = thisTotal > lastTotal ? "📈" : "📉";
 
-  await sendSmartNotification(
-    "weekly",
-    `Báo cáo tuần ${emoji}`,
-    `Chi tiêu tuần này ${trend} ${Math.round(
-      changePercent
-    )}% so với tuần trước!`,
-    undefined,
-    undefined,
-    userId
-  );
+  // Use funny notification if enabled, otherwise use regular
+  if (settings.enableFunnyMode) {
+    await sendFunnyNotification({
+      type: settings.funnyTheme === 'random' ? undefined : settings.funnyTheme,
+    });
+  } else {
+    await sendSmartNotification(
+      "weekly",
+      `Báo cáo tuần ${emoji}`,
+      `Chi tiêu tuần này ${trend} ${Math.round(
+        changePercent
+      )}% so với tuần trước!`,
+      undefined,
+      undefined,
+      userId
+    );
+  }
 }
 
 // ===== Background Task Scheduler =====
 
 export async function initSmartNotifications() {
-  console.log("Initializing smart notifications...");
+  // Initializing smart notifications...
 
   const userId = await getCurrentUserId();
   // Schedule daily reminder
@@ -550,6 +590,125 @@ export async function initSmartNotifications() {
   if (now.getDay() === 0 && now.getHours() === 20) {
     checkWeeklyInsight().catch(console.error);
   }
+}
+
+// ===== Funny Notifications =====
+
+// Select a funny notification based on type and time preferences
+export function selectFunnyNotification(options?: {
+  type?: FunnyNotification['type'];
+  timeOfDay?: Date;
+}): FunnyNotification | null {
+  const now = options?.timeOfDay || new Date();
+  const hour = now.getHours();
+  const dayOfMonth = now.getDate();
+
+  // Filter by type if specified
+  let candidates = options?.type
+    ? funnyNotifications.filter(n => n.type === options.type)
+    : funnyNotifications;
+
+  if (candidates.length === 0) return null;
+
+  // Apply time-based preferences (boost certain types at specific times)
+  const timePreferences: Record<string, FunnyNotification['type'][]> = {
+    // Lunch time (12-13) - prefer food/survival notifications
+    'lunch': ['survival', 'tingting'],
+    // Evening (21-22) - prefer drama/summary notifications
+    'evening': ['drama', 'reminder'],
+    // Mid/end month (15, 30) - prefer salary/tingting notifications
+    'month_end': ['tingting', 'survival']
+  };
+
+  let preferredTypes: FunnyNotification['type'][] = [];
+  if (hour >= 12 && hour <= 13) {
+    preferredTypes = timePreferences.lunch;
+  } else if (hour >= 21 && hour <= 22) {
+    preferredTypes = timePreferences.evening;
+  } else if (dayOfMonth === 15 || dayOfMonth >= 28) {
+    preferredTypes = timePreferences.month_end;
+  }
+
+  // Boost weight for preferred types
+  const weightedCandidates = candidates.map(notification => ({
+    ...notification,
+    effectiveWeight: preferredTypes.includes(notification.type)
+      ? (notification.weight || 1) * 2
+      : (notification.weight || 1)
+  }));
+
+  // Select randomly based on weights
+  const totalWeight = weightedCandidates.reduce((sum, n) => sum + n.effectiveWeight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const candidate of weightedCandidates) {
+    random -= candidate.effectiveWeight;
+    if (random <= 0) {
+      return candidate;
+    }
+  }
+
+  // Fallback to first candidate
+  return candidates[0];
+}
+
+// Send a funny notification (with optional bypass for testing/preview)
+export async function sendFunnyNotification(options?: {
+  type?: FunnyNotification['type'];
+  bypassAntiSpam?: boolean;
+  previewOnly?: boolean; // If true, only play sound without sending actual notification
+}): Promise<void> {
+  const selectedNotification = selectFunnyNotification({ type: options?.type });
+
+  if (!selectedNotification) {
+    console.warn("No funny notification available for the given criteria");
+    return;
+  }
+
+  const userId = await getCurrentUserId();
+
+  if (options?.previewOnly) {
+    // Only play sound for preview
+    await playNotificationSound(selectedNotification.soundKey);
+    return;
+  }
+
+  // Check anti-spam unless bypassed
+  if (!options?.bypassAntiSpam) {
+    if (!(await canSendNotification(`funny_${selectedNotification.type}`, userId))) {
+      console.log(`Skipped funny notification (anti-spam): ${selectedNotification.type}`);
+      return;
+    }
+  }
+
+  // Save to in-app notification storage
+  await saveNotification(
+    {
+      title: selectedNotification.title,
+      message: selectedNotification.message,
+      type: selectedNotification.type === 'survival' || selectedNotification.type === 'drama' ? 'warning' : 'reminder',
+    },
+    userId
+  );
+
+  // Log the notification
+  await logNotification(`funny_${selectedNotification.type}`, {
+    imageKey: selectedNotification.imageKey,
+    soundKey: selectedNotification.soundKey
+  }, userId);
+
+  // Send local notification with image and sound
+  await sendLocalNotification(
+    {
+      title: selectedNotification.title,
+      message: selectedNotification.message,
+      type: selectedNotification.type === 'survival' || selectedNotification.type === 'drama' ? 'warning' : 'reminder',
+    },
+    {
+      image: selectedNotification.imageKey ? `assets/images/funny/${selectedNotification.imageKey}` : undefined,
+      soundKey: selectedNotification.soundKey
+    }
+  );
 }
 
 // Export settings for UI
