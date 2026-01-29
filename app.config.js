@@ -86,6 +86,12 @@ export default {
       typedRoutes: true,
     },
     extra: {
+      // Backend API URL for LLM-based transaction classification
+      // Default: local development server (update IP if needed)
+      EXPO_PUBLIC_BACKEND_API_URL:
+        process.env.EXPO_PUBLIC_BACKEND_API_URL ||
+        process.env.BACKEND_API_URL ||
+        "http://10.53.108.244:8000",
       EXPO_PUBLIC_HUGGINGFACE_API_KEY:
         process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY ||
         process.env.HUGGINGFACE_API_KEY,

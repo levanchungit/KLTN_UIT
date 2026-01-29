@@ -13,9 +13,18 @@ import {
   addIncome,
   deleteTx,
   updateTransaction,
+  getTxById,
 } from "@/repos/transactionRepo";
+import { listAccounts } from "@/repos/accountRepo";
 import { phobertExtractor } from "@/services/phobertAmountExtractor";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import {
+  classifyTransactionWithBackend,
+  checkBackendHealth,
+  getBackendApiUrl,
+  testBackendConnection,
+  type MappedPrediction,
+} from "@/services/backendClassificationService";
 import useAudioMeter from "@/services/useAudioMeter";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -778,6 +787,7 @@ const parseTransactionWithAI = async (
 ): Promise<{
   action:
     | "CREATE_TRANSACTION"
+    | "CREATE_MULTIPLE_TRANSACTIONS"
     | "VIEW_STATS"
     | "EDIT_TRANSACTION"
     | "DELETE_TRANSACTION";
@@ -788,6 +798,20 @@ const parseTransactionWithAI = async (
   io: "IN" | "OUT";
   date: Date;
   message: string;
+  transactions?: Array<{
+    amount: number;
+    note: string;
+    categoryId: string;
+    categoryName: string;
+    confidence: number;
+    io?: "IN" | "OUT";
+    date?: Date;
+    alternatives?: Array<{
+      categoryId: string;
+      categoryName: string;
+      confidence: number;
+    }>;
+  }>;
   confidence?: number;
   mlFailed?: boolean;
   alternatives?: Array<{
@@ -797,6 +821,67 @@ const parseTransactionWithAI = async (
   }>;
 } | null> => {
   try {
+    // =========================================
+    // PRIORITY 1: Try Backend API (LLM-based classification)
+    // =========================================
+    console.log("🌐 Attempting backend API classification...");
+    const backendResult = await classifyTransactionWithBackend(text, userCategories);
+    
+    if (!backendResult.error && backendResult.categoryId && backendResult.confidence > 0) {
+      console.log(`✅ Backend API success: ${backendResult.categoryName} (${(backendResult.confidence * 100).toFixed(1)}%)`);
+      
+      // Handle multi-transaction response
+      if (backendResult.isMultiple && backendResult.transactions?.length) {
+        console.log(`🎯 Multi-transaction detected: ${backendResult.transactions.length} items`);
+        return {
+          action: "CREATE_MULTIPLE_TRANSACTIONS",
+          amount: backendResult.amount,
+          note: backendResult.note,
+          categoryId: backendResult.categoryId,
+          categoryName: backendResult.categoryName,
+          io: backendResult.io,
+          date: backendResult.date,
+          message: backendResult.message,
+          transactions: backendResult.transactions.map(tx => ({
+            amount: tx.amount,
+            note: tx.note,
+            categoryId: tx.categoryId,
+            categoryName: tx.categoryName,
+            confidence: tx.confidence,
+            io: tx.io,
+            date: tx.date,
+          })),
+          confidence: backendResult.confidence,
+          mlFailed: false,
+        };
+      }
+      
+      // Single transaction from backend
+      return {
+        action: "CREATE_TRANSACTION",
+        amount: backendResult.amount,
+        note: text,
+        categoryId: backendResult.categoryId,
+        categoryName: backendResult.categoryName,
+        io: backendResult.io,
+        date: backendResult.date,
+        message: backendResult.message,
+        confidence: backendResult.confidence,
+        mlFailed: false,
+        alternatives: [],
+      };
+    }
+    
+    // Log backend failure reason
+    if (backendResult.error) {
+      console.warn(`⚠️ Backend API failed: ${backendResult.error}. Falling back to local classification.`);
+    }
+
+    // =========================================
+    // PRIORITY 2: Fallback to Local TensorFlow Parser
+    // =========================================
+    console.log("🔄 Falling back to local TensorFlow parser...");
+    
     // Parse transaction locally with TensorFlow (for amount and date only!)
     const result = await tfTransactionParser.parseTransaction(
       text,
@@ -828,7 +913,7 @@ const parseTransactionWithAI = async (
     if (mlPrediction && mlPrediction.confidence > MIN_AUTO_CONFIDENCE) {
       // ML has a good prediction - use it instead!
       console.log(
-        `✅ Auto-creating with ${(mlPrediction.confidence * 100).toFixed(
+        `✅ Local ML auto-creating with ${(mlPrediction.confidence * 100).toFixed(
           1
         )}% confidence`
       );
@@ -893,7 +978,7 @@ const parseTransactionWithAI = async (
       })),
     };
   } catch (error) {
-    console.error("❌ TensorFlow parser error:", error);
+    console.error("❌ Transaction parser error:", error);
     return null;
   }
 };
@@ -1673,6 +1758,22 @@ export default function Chatbot() {
     const rows = await getCachedCategories();
     setItems(rows);
 
+    // Test backend connection on load (for debugging)
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(async () => {
+        console.log("🔌 Testing backend API connection...");
+        const connTest = await testBackendConnection();
+        if (connTest.success) {
+          console.log(`✅ Backend connected! URL: ${connTest.url}, Latency: ${connTest.latency}ms`);
+        } else {
+          console.warn(`⚠️ Backend unreachable: ${connTest.error}`);
+          if (connTest.suggestion) {
+            console.warn(`💡 ${connTest.suggestion}`);
+          }
+        }
+      }, 500);
+    });
+
     // Defer model training to background (after UI loads)
     InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
@@ -2440,6 +2541,110 @@ export default function Chatbot() {
             ]);
           }
           scrollToEnd();
+          return;
+        }
+
+        // Handle multi-transaction from backend API
+        if (aiResult.action === "CREATE_MULTIPLE_TRANSACTIONS") {
+          if (!aiResult.transactions || aiResult.transactions.length === 0) {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Không thể phân tích các giao dịch từ: "${userText}"\n\nVui lòng thử lại với định dạng khác.`,
+              },
+            ]);
+            scrollToEnd();
+            return;
+          }
+
+          // Auto-create multiple transactions
+          try {
+            const userId = await getCurrentUserId();
+            if (!userId) throw new Error("No user logged in");
+
+            // Get default account
+            const accounts = await listAccounts(userId);
+            const defaultAccount = accounts.find((acc) => acc.isDefault) || accounts[0];
+            if (!defaultAccount) throw new Error("No default account found");
+
+            // Create all transactions
+            const createdTransactions: string[] = [];
+            const cardMessages: any[] = [];
+
+            for (const tx of aiResult.transactions) {
+              const txn = await addExpense({
+                userId,
+                accountId: defaultAccount.id,
+                amount: tx.amount,
+                categoryId: tx.categoryId,
+                note: tx.note,
+                when: tx.date || new Date(),
+                updatedAt: new Date(),
+              });
+              createdTransactions.push(txn);
+
+              // Get category info for display
+              const txCategory = items.find((c) => c.id === tx.categoryId);
+              const when = (tx.date || new Date()).toLocaleDateString("vi-VN");
+
+              cardMessages.push({
+                role: "card",
+                transactionId: txn,
+                accountId: defaultAccount.id,
+                amount: tx.amount,
+                io: tx.io || "OUT",
+                categoryId: tx.categoryId,
+                categoryName: tx.categoryName || txCategory?.name || "",
+                categoryIcon: txCategory?.icon || "wallet",
+                categoryColor: txCategory?.color || "#6366F1",
+                note: tx.note,
+                when,
+                date: tx.date,
+              });
+
+              // Log prediction for learning
+              await logPrediction({
+                text: tx.note,
+                amount: tx.amount || null,
+                io: tx.io || "OUT",
+                predictedCategoryId: tx.categoryId || null,
+                confidence: tx.confidence || 0.8,
+              });
+            }
+
+            // Update messages with bot response and cards
+            setMessages((m) => [
+              ...m.slice(0, -1), // Remove typing
+              {
+                role: "bot",
+                text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ\n\n${aiResult.message}`,
+              },
+              ...cardMessages,
+            ]);
+
+            // Trigger model retraining for first transaction
+            if (aiResult.transactions.length > 0) {
+              transactionClassifier.learnFromNewTransaction(
+                userText,
+                aiResult.transactions[0].categoryId
+              );
+            }
+
+            scrollToEnd();
+          } catch (error: any) {
+            console.error("❌ Error creating multiple transactions:", error);
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Lỗi khi tạo giao dịch: ${error.message}\n\nVui lòng thử lại.`,
+              },
+            ]);
+            scrollToEnd();
+          }
+
+          processingTextRef.current = false;
           return;
         }
 
