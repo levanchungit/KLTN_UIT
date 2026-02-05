@@ -25,10 +25,6 @@ import {
   testBackendConnection,
   type MappedPrediction,
 } from "@/services/backendClassificationService";
-import {
-  classificationCacheService,
-  type CachedPrediction,
-} from "@/services/classificationCacheService";
 import useAudioMeter from "@/services/useAudioMeter";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -280,9 +276,8 @@ async function getEmotionalReplyDirect(args: {
 📝 Người dùng nói: "${note}"
 
 ✓ Đã xác định:
-- ${io === "IN" ? "Thu" : "Chi"}: ${
-    amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
-  }
+- ${io === "IN" ? "Thu" : "Chi"}: ${amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
+    }
 - Danh mục: ${categoryName}
 - Ngày: ${dateDisplay}${isFuture ? " (TƯƠNG LAI)" : ""}
 
@@ -342,27 +337,28 @@ function BackBar() {
   const { colors } = useTheme();
   return (
     <View
-      style={{
-        padding: 12,
-        borderBottomWidth: 1,
+      style= {{
+    padding: 12,
+      borderBottomWidth: 1,
         borderColor: colors.divider,
-        backgroundColor: colors.card,
-      }}
+          backgroundColor: colors.card,
+      }
+}
     >
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+  <TouchableOpacity
+        onPress={ () => router.back() }
+style = {{ flexDirection: "row", alignItems: "center", gap: 8 }}
+hitSlop = {{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <MaterialCommunityIcons
+  <MaterialCommunityIcons
           name="chevron-left"
-          size={28}
-          color={colors.text}
-        />
-        <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>
-          {t("back")}
-        </Text>
-      </TouchableOpacity>
+size = { 28}
+color = { colors.text }
+  />
+  <Text style={ { fontSize: 16, fontWeight: "600", color: colors.text } }>
+    { t("back") }
+    </Text>
+    </TouchableOpacity>
     </View>
   );
 }
@@ -806,11 +802,11 @@ const parseTransactionWithAI = async (
   userCategories: Category[]
 ): Promise<{
   action:
-    | "CREATE_TRANSACTION"
-    | "CREATE_MULTIPLE_TRANSACTIONS"
-    | "VIEW_STATS"
-    | "EDIT_TRANSACTION"
-    | "DELETE_TRANSACTION";
+  | "CREATE_TRANSACTION"
+  | "CREATE_MULTIPLE_TRANSACTIONS"
+  | "VIEW_STATS"
+  | "EDIT_TRANSACTION"
+  | "DELETE_TRANSACTION";
   amount: number | null;
   note: string;
   categoryId: string;
@@ -846,10 +842,9 @@ const parseTransactionWithAI = async (
 
   try {
     // =========================================
-    // ALWAYS: Call Backend API (LLM-based classification)
+    // Always call Backend API (LLM-based classification)
     // =========================================
-    console.log("🔍 Processing classification via backend API...");
-    console.log("🌐 Attempting backend API classification...");
+    console.log("🌐 Calling backend API...");
     const backendStartTime = Date.now();
     const backendResult = await classifyTransactionWithBackend(text, userCategories);
     const backendLatency = Date.now() - backendStartTime;
@@ -858,31 +853,6 @@ const parseTransactionWithAI = async (
 
     if (!backendResult.error && backendResult.categoryId && backendResult.confidence > 0) {
       console.log(`✅ Backend API success: ${backendResult.categoryName} (${(backendResult.confidence * 100).toFixed(1)}%)`);
-
-      // Cache the result for future use
-      const cachePayload: CachedPrediction = {
-        amount: backendResult.amount,
-        categoryId: backendResult.categoryId,
-        categoryName: backendResult.categoryName,
-        io: backendResult.io,
-        confidence: backendResult.confidence,
-        note: backendResult.note,
-        date: backendResult.date.toISOString(),
-        isMultiple: backendResult.isMultiple,
-        transactions: backendResult.transactions?.map(tx => ({
-          amount: tx.amount,
-          categoryId: tx.categoryId,
-          categoryName: tx.categoryName,
-          io: tx.io,
-          confidence: tx.confidence,
-          note: tx.note,
-          date: tx.date.toISOString(),
-        })),
-        message: backendResult.message,
-        overallConfidence: backendResult.overallConfidence,
-        source: "llm",
-      };
-      await classificationCacheService.cacheResult(text, cachePayload);
 
       // Handle multi-transaction response
       if (backendResult.isMultiple && backendResult.transactions?.length) {
@@ -937,7 +907,7 @@ const parseTransactionWithAI = async (
     // PRIORITY 2: Fallback to Local TensorFlow Parser
     // =========================================
     console.log("🔄 Falling back to local TensorFlow parser...");
-    
+
     // Parse transaction locally with TensorFlow (for amount and date only!)
     const result = await tfTransactionParser.parseTransaction(
       text,
@@ -998,8 +968,7 @@ const parseTransactionWithAI = async (
     } else {
       // ML prediction is too low or model not ready - will show suggestion UI
       console.log(
-        `⚠️ Low confidence (${
-          mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
+        `⚠️ Low confidence (${mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
         }%) - showing suggestions`
       );
       mlFailed = true;
@@ -1012,8 +981,8 @@ const parseTransactionWithAI = async (
       resolvedCategory?.type === "income"
         ? "IN"
         : resolvedCategory?.type === "expense"
-        ? "OUT"
-        : result.io;
+          ? "OUT"
+          : result.io;
 
     // Include confidence and alternatives from the parser.
     // Important: preserve the original user input as `note` so UI and storage
@@ -1245,8 +1214,8 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
         /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang|thu cung|y te|giao duc)/.test(
           normalizedCatName
         )
-      ? 0.1
-      : 0;
+        ? 0.1
+        : 0;
 
   // Weighted scoring:
   // - Token overlap: 40% (most important for multi-word matching)
@@ -1418,7 +1387,8 @@ function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: s
 
   return (
     <View
-      style={[
+      style= {
+      [
         styles.bubble,
         styles.left,
         {
@@ -1432,24 +1402,28 @@ function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: s
         },
       ]}
     >
-      {/* Animated dots */}
-      <View style={{ flexDirection: "row", gap: 4 }}>
-        {animations.map((anim, index) => (
-          <Animated.View
-            key={index}
-            style={[
-              styles.dot,
-              { backgroundColor: colors.subText, opacity: anim },
+    {/* Animated dots */ }
+    < View style = {{ flexDirection: "row", gap: 4 }
+}>
+{
+  animations.map((anim, index) => (
+    <Animated.View
+            key= { index }
+            style = {
+      [
+        styles.dot,
+        { backgroundColor: colors.subText, opacity: anim },
             ]}
-          />
-        ))}
-      </View>
+    />
+        ))
+}
+  </View>
 
-      {/* Status text */}
-      <Text style={{ color: colors.subText, fontSize: 12, fontStyle: "italic" }}>
-        {getStatusText()}
-      </Text>
-    </View>
+{/* Status text */ }
+<Text style={ { color: colors.subText, fontSize: 12, fontStyle: "italic" } }>
+  { getStatusText() }
+  </Text>
+  </View>
   );
 }
 
@@ -1642,7 +1616,7 @@ export default function Chatbot() {
       // Ensure previous sessions are stopped cleanly before starting a new one
       try {
         await ExpoSpeechRecognitionModule.stop();
-      } catch {}
+      } catch { }
 
       // reset UI
       if (recordTimerRef.current) {
@@ -1800,7 +1774,7 @@ export default function Chatbot() {
     if (pendingFinalRef.current) {
       try {
         setMessages((m) => m.slice(0, -1));
-      } catch {}
+      } catch { }
       pendingFinalRef.current = false;
     }
     try {
@@ -1808,8 +1782,8 @@ export default function Chatbot() {
         await ExpoSpeechRecognitionModule.stop();
         // Wait briefly for any in-flight result events to arrive and be ignored
         await new Promise((r) => setTimeout(r, 200));
-      } catch {}
-    } catch {}
+      } catch { }
+    } catch { }
 
     setIsRecording(false);
     setRecognizing(false);
@@ -1864,8 +1838,7 @@ export default function Chatbot() {
           .then((result) => {
             if (result.success) {
               console.log(
-                `✅ Background training complete: ${
-                  result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
+                `✅ Background training complete: ${result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
                 }% accuracy`
               );
             } else {
@@ -1927,7 +1900,7 @@ export default function Chatbot() {
             return out;
           };
           setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
-        } catch (e) {}
+        } catch (e) { }
       }, 1500);
     });
   }, []);
@@ -1949,7 +1922,7 @@ export default function Chatbot() {
             // Fire-and-forget cancel to stop audio + recognition
             cancelRecording();
           }
-        } catch (e) {}
+        } catch (e) { }
       };
     }, [isRecording, params?.mode])
   );
@@ -1988,14 +1961,14 @@ export default function Chatbot() {
           clearTimeout(t2);
           try {
             showListener.remove();
-          } catch (e) {}
+          } catch (e) { }
         };
       });
 
       return () => {
         try {
           interaction.cancel();
-        } catch (e) {}
+        } catch (e) { }
       };
     }, [isRecording])
   );
@@ -2427,9 +2400,8 @@ export default function Chatbot() {
           ...m.slice(0, -1),
           {
             role: "bot",
-            text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${
-              ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
-            }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
+            text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
+              }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
           },
         ]);
         scrollToEnd();
@@ -2484,9 +2456,8 @@ export default function Chatbot() {
         },
         {
           role: "bot",
-          text: `✅ Tạo giao dịch thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${
-            selectedCategory?.name || "Mua sắm"
-          }\n\nNhấn Edit nếu cần sửa.`,
+          text: `✅ Tạo giao dịch thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${selectedCategory?.name || "Mua sắm"
+            }\n\nNhấn Edit nếu cần sửa.`,
         },
       ]);
       scrollToEnd();
@@ -2662,7 +2633,7 @@ export default function Chatbot() {
               },
             ]);
 
-            // Process transactions progressively with staggered delay
+            // Process transactions - collect cards, update progress incrementally
             for (let index = 0; index < aiResult.transactions.length; index++) {
               const tx = aiResult.transactions[index];
 
@@ -2697,11 +2668,20 @@ export default function Chatbot() {
                 date: tx.date,
               };
 
-              // Add card progressively with animation
-              setMessages((m) => [
-                ...m,
-                cardMessage,
-              ]);
+              // Collect card message - will be added ONCE at the end
+              cardMessages.push(cardMessage);
+
+              // Update progress message with current count (progressive feedback)
+              const processedCount = index + 1;
+              if (processedCount < totalTransactions) {
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.role === "bot" && msg.text?.includes("Đang xử lý")
+                      ? { ...msg, text: `🔄 Đang xử lý ${processedCount}/${totalTransactions} giao dịch...\n\n⏳ Vui lòng chờ trong giây lát.` }
+                      : msg
+                  )
+                );
+              }
 
               // Log prediction for learning
               await logPrediction({
@@ -2711,32 +2691,34 @@ export default function Chatbot() {
                 predictedCategoryId: tx.categoryId || null,
                 confidence: tx.confidence || 0.8,
               });
-
-              // Small delay between cards for progressive effect (except last one)
-              if (index < aiResult.transactions.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 400));
-              }
             }
 
-            // Update messages with final success message
-            const cacheIndicator = aiResult.fromCache ? " (từ cache)" : "";
+            // Validate: ensure card count matches backend transactions exactly
+            const expectedCount = aiResult.transactions.length;
+            const actualCardCount = cardMessages.length;
+            if (actualCardCount !== expectedCount) {
+              console.warn(`⚠️ Card count mismatch: expected ${expectedCount}, got ${actualCardCount}`);
+            }
+
+            // Final update: remove progress, show success + all cards ONCE
             const latencyInfo = aiResult.cacheLatency
-              ? `\n⏱️ Thời gian: ${aiResult.cacheLatency}ms${cacheIndicator}`
+              ? `\n⏱️ Thời gian: ${aiResult.cacheLatency}ms`
               : "";
 
             setMessages((m) => {
-              // Remove the progress message and replace with final result
-              const withoutProgress = m.filter(msg =>
-                !(msg.role === "bot" && msg.text?.includes("Đang xử lý"))
+              // Keep user's message, remove progress and typing indicator
+              const cleanMessages = m.filter(
+                (msg) =>
+                  !(msg.role === "bot" && (msg.text?.includes("Đang xử lý") || msg.text === "..."))
               );
 
               return [
-                ...withoutProgress.slice(0, -1), // Remove typing indicator
+                ...cleanMessages, // Keep user's message
                 {
                   role: "bot",
-                  text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!${cacheIndicator}${latencyInfo}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ\n\n${aiResult.message}`,
+                  text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!${latencyInfo}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ`,
                 },
-                ...cardMessages,
+                ...cardMessages, // Add ALL cards ONCE - exactly matching backend count
               ];
             });
 
@@ -2864,10 +2846,10 @@ export default function Chatbot() {
   const autoCreateTransactionDirect = async (
     aiResult: {
       action:
-        | "CREATE_TRANSACTION"
-        | "VIEW_STATS"
-        | "EDIT_TRANSACTION"
-        | "DELETE_TRANSACTION";
+      | "CREATE_TRANSACTION"
+      | "VIEW_STATS"
+      | "EDIT_TRANSACTION"
+      | "DELETE_TRANSACTION";
       amount: number | null;
       note: string;
       categoryName: string;
@@ -2893,13 +2875,12 @@ export default function Chatbot() {
       setTimeout(() => {
         transactionClassifier
           .learnFromNewTransaction(aiResult.note, categoryId)
-          .catch(() => {});
+          .catch(() => { });
       }, 100);
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
 
-      // Cache indicator for UI feedback
-      const cacheIndicator = aiResult.fromCache ? " ⚡" : "";
+      // Latency info for UI feedback
       const latencyInfo = aiResult.cacheLatency
         ? `\n⏱️ ${aiResult.cacheLatency}ms`
         : "";
@@ -2909,7 +2890,7 @@ export default function Chatbot() {
         ...m.slice(0, -1),
         {
           role: "bot",
-          text: aiResult.message + (cacheIndicator + latencyInfo),
+          text: aiResult.message + latencyInfo,
         },
         {
           role: "card",
@@ -3126,15 +3107,15 @@ export default function Chatbot() {
         msgs.map((m) =>
           m.role === "card" && m.transactionId === editingTx.transactionId
             ? {
-                ...m,
-                amount: newAmount,
-                note: editNote,
-                categoryId: editCategoryId,
-                io: editingTx.io, // Update io type
-                categoryName: updatedCategory?.name || m.categoryName,
-                categoryIcon: updatedCategory?.icon || m.categoryIcon, // Update icon
-                categoryColor: updatedCategory?.color || m.categoryColor, // Update color
-              }
+              ...m,
+              amount: newAmount,
+              note: editNote,
+              categoryId: editCategoryId,
+              io: editingTx.io, // Update io type
+              categoryName: updatedCategory?.name || m.categoryName,
+              categoryIcon: updatedCategory?.icon || m.categoryIcon, // Update icon
+              categoryColor: updatedCategory?.color || m.categoryColor, // Update color
+            }
             : m
         )
       );
@@ -3228,1427 +3209,1518 @@ export default function Chatbot() {
 
     return (
       <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
+        style= {{
+      flexDirection: "row",
+        alignItems: "center",
           justifyContent: "center",
-          height: 44,
-        }}
-      >
-        <View
-          style={{
-            width: "100%",
-            flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: "center",
-            gap: 2,
             height: 44,
-            paddingHorizontal: 4,
-            borderRadius: 14,
-            backgroundColor: "rgba(255,255,255,0.06)",
-            overflow: "hidden",
-          }}
+        }
+  }
+      >
+    <View
+          style={
+    {
+      width: "100%",
+        flexDirection: "row",
+          alignItems: "flex-end",
+            justifyContent: "center",
+              gap: 2,
+                height: 44,
+                  paddingHorizontal: 4,
+                    borderRadius: 14,
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                        overflow: "hidden",
+          }
+  }
         >
-          {Array.from({ length: NUM_BARS }).map((_, i) => {
-            const symmetry = Math.sin((Math.PI * i) / (NUM_BARS - 1));
-            const base = 0.35 + 0.65 * symmetry;
-            const peak = Math.max(MIN_H + 1, MAX_H * base * peaks[i]);
+  {
+    Array.from({ length: NUM_BARS }).map((_, i) => {
+      const symmetry = Math.sin((Math.PI * i) / (NUM_BARS - 1));
+      const base = 0.35 + 0.65 * symmetry;
+      const peak = Math.max(MIN_H + 1, MAX_H * base * peaks[i]);
 
-            const h = anim.interpolate({
-              inputRange: [0, 0.25, 0.5, 0.75, 1],
-              outputRange: [MIN_H, peak * 0.7, peak * 1.05, peak * 0.75, MIN_H],
-            });
+      const h = anim.interpolate({
+        inputRange: [0, 0.25, 0.5, 0.75, 1],
+        outputRange: [MIN_H, peak * 0.7, peak * 1.05, peak * 0.75, MIN_H],
+      });
 
-            return (
-              <Animated.View
-                key={i}
-                style={{
-                  flex: 1,
-                  borderRadius: 3,
-                  backgroundColor: color,
-                  height: h,
-                  opacity: 0.55 + 0.45 * base,
+      return (
+        <Animated.View
+                key= { i }
+      style = {{
+        flex: 1,
+          borderRadius: 3,
+            backgroundColor: color,
+              height: h,
+                opacity: 0.55 + 0.45 * base,
                   shadowColor: color,
-                  shadowOpacity: 0.16,
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowRadius: 4,
-                  elevation: 2,
-                }}
+                    shadowOpacity: 0.16,
+                      shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 4,
+          elevation: 2,
+                }
+    }
               />
-            );
-          })}
-        </View>
-      </View>
+    );
+  })
+}
+</View>
+  </View>
     );
   }
 
-  const formatDuration = (sec: number) => {
-    const m = Math.floor(sec / 60)
-      .toString()
-      .padStart(2, "0");
-    const s = (sec % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
-  };
+const formatDuration = (sec: number) => {
+  const m = Math.floor(sec / 60)
+    .toString()
+    .padStart(2, "0");
+  const s = (sec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+};
 
-  const inputAnim = useRef(new Animated.Value(0)).current;
+const inputAnim = useRef(new Animated.Value(0)).current;
 
-  const estimatedKeyboardHeight = Math.round(
-    Dimensions.get("window").height * 0.38
-  );
+const estimatedKeyboardHeight = Math.round(
+  Dimensions.get("window").height * 0.38
+);
 
-  useEffect(() => {
-    Animated.timing(inputAnim, {
-      toValue: isRecording ? 1 : 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [isRecording, inputAnim]);
+useEffect(() => {
+  Animated.timing(inputAnim, {
+    toValue: isRecording ? 1 : 0,
+    duration: 220,
+    useNativeDriver: true,
+  }).start();
+}, [isRecording, inputAnim]);
 
-  // Keyboard listeners to lift input bar on Android and adjust padding
-  useEffect(() => {
-    const onShow = (e: any) => {
-      // Try multiple event shapes (some keyboards report different fields)
-      let h =
-        e?.endCoordinates?.height ||
-        e?.end?.height ||
-        e?.startCoordinates?.height ||
-        0;
+// Keyboard listeners to lift input bar on Android and adjust padding
+useEffect(() => {
+  const onShow = (e: any) => {
+    // Try multiple event shapes (some keyboards report different fields)
+    let h =
+      e?.endCoordinates?.height ||
+      e?.end?.height ||
+      e?.startCoordinates?.height ||
+      0;
 
-      // Fallback: some OEM keyboards report 0 — estimate as ~38% of screen height
-      if (!h || h <= 0) {
-        h = Math.round(Dimensions.get("window").height * 0.38);
-      }
-
-      // Use full keyboard height so when keyboard is hidden (height = 0)
-      // the input bottom will be 0 as requested.
-      setKeyboardHeight(h);
-
-      // Ensure view scrolls so input and last messages are visible
-      // Multiple attempts to handle different keyboard animation timings
-      setTimeout(() => {
-        flatRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      setTimeout(() => {
-        flatRef.current?.scrollToEnd({ animated: true });
-      }, 300);
-    };
-
-    const onHide = () => {
-      setKeyboardHeight(0);
-      // Scroll to end when keyboard hides to keep chat at bottom
-      setTimeout(() => {
-        flatRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    };
-
-    const subShow = Keyboard.addListener("keyboardDidShow", onShow);
-    const subHide = Keyboard.addListener("keyboardDidHide", onHide);
-
-    return () => {
-      try {
-        subShow.remove();
-      } catch (e) {}
-      try {
-        subHide.remove();
-      } catch (e) {}
-    };
-  }, [insets.bottom]);
-
-  // Prevent duplicate submits when user taps ✓ multiple times quickly
-  const submittingRef = useRef(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Cancel recording if app goes to background or becomes inactive
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") {
-        if (isRecording) cancelRecording();
-      }
-    });
-    return () => subscription.remove();
-  }, [isRecording]);
-
-  // Animate scroll button based on isAtBottom state (button visibility is handled by conditional rendering)
-  useEffect(() => {
-    Animated.timing(scrollButtonAnim, {
-      toValue: isAtBottom ? 0 : 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [isAtBottom, scrollButtonAnim]);
-
-  const handleSubmitVoice = async () => {
-    // If we're already processing a submit, ignore
-    if (submittingRef.current) return;
-
-    // Immediately mark as submitting so UI (both X and ✓) disables right away
-    submittingRef.current = true;
-    setIsSubmitting(true);
-
-    try {
-      // If a final result is already pending or being processed by the speech handler,
-      // don't duplicate — stop recording and let the existing handler finish. Keep buttons disabled.
-      if (pendingFinalRef.current || processingSessionRef.current != null) {
-        try {
-          await stopVoice({ skipFallback: true });
-        } catch {}
-        return;
-      }
-
-      const text = spokenText.trim();
-      if (!text) {
-        await stopVoice({ skipFallback: true });
-        return;
-      }
-
-      // Prevent the speech recognition event handler or fallback timer from
-      // also inserting/processing a final result that would duplicate this send.
-      clearFallbackTimer();
-      pendingFinalRef.current = true;
-      processingSessionRef.current = sessionIdRef.current;
-      cancelledRef.current = true;
-      activeSessionRef.current = null;
-      sessionIdRef.current = (sessionIdRef.current || 0) + 1;
-      lastInterimRef.current = "";
-
-      // Stop recording and wait for any pending result to be processed
-      await stopVoice({ skipFallback: true });
-
-      // Push into chat like sending text normally
-      setMessages((m) => [...m, { role: "user", text }]);
-      setSpokenText("");
-
-      await processTextInput(text);
-    } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
-      // Clear the temporary cancel guard so future sessions work normally
-      cancelledRef.current = false;
-      pendingFinalRef.current = false;
-      processingSessionRef.current = null;
+    // Fallback: some OEM keyboards report 0 — estimate as ~38% of screen height
+    if (!h || h <= 0) {
+      h = Math.round(Dimensions.get("window").height * 0.38);
     }
+
+    // Use full keyboard height so when keyboard is hidden (height = 0)
+    // the input bottom will be 0 as requested.
+    setKeyboardHeight(h);
+
+    // Ensure view scrolls so input and last messages are visible
+    // Multiple attempts to handle different keyboard animation timings
+    setTimeout(() => {
+      flatRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    setTimeout(() => {
+      flatRef.current?.scrollToEnd({ animated: true });
+    }, 300);
   };
 
-  return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      edges={["top"]}
-    >
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: colors.background }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <BackBar />
+  const onHide = () => {
+    setKeyboardHeight(0);
+    // Scroll to end when keyboard hides to keep chat at bottom
+    setTimeout(() => {
+      flatRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
 
-        {/* Chat */}
-        <FlatList
-          ref={flatRef}
-          data={messages}
-          keyExtractor={(_, i) => String(i)}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: new Animated.Value(0) } } }],
-            {
-              useNativeDriver: false,
-              listener: (event: any) => {
-                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                // More accurate bottom detection - check if within 50px of bottom
-                const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-                const isCloseToBottom = distanceFromBottom <= 50; // Within 50px of bottom
-                setIsAtBottom(isCloseToBottom);
-                // Reset force hide only when user manually scrolls (not when scrolling to bottom via button)
-                if (!isCloseToBottom && !isScrollingToBottom) {
-                  setForceHideButton(false);
-                }
-                // Reset scrolling flag when reached bottom
-                if (isCloseToBottom) {
-                  setIsScrollingToBottom(false);
-                }
-              },
-            }
-          )}
-          contentContainerStyle={{
-            padding: 16,
-            gap: 12,
-            flexGrow: 1,
+  const subShow = Keyboard.addListener("keyboardDidShow", onShow);
+  const subHide = Keyboard.addListener("keyboardDidHide", onHide);
+
+  return () => {
+    try {
+      subShow.remove();
+    } catch (e) { }
+    try {
+      subHide.remove();
+    } catch (e) { }
+  };
+}, [insets.bottom]);
+
+// Prevent duplicate submits when user taps ✓ multiple times quickly
+const submittingRef = useRef(false);
+const [isSubmitting, setIsSubmitting] = useState(false);
+
+// Cancel recording if app goes to background or becomes inactive
+useEffect(() => {
+  const subscription = AppState.addEventListener("change", (state) => {
+    if (state !== "active") {
+      if (isRecording) cancelRecording();
+    }
+  });
+  return () => subscription.remove();
+}, [isRecording]);
+
+// Animate scroll button based on isAtBottom state (button visibility is handled by conditional rendering)
+useEffect(() => {
+  Animated.timing(scrollButtonAnim, {
+    toValue: isAtBottom ? 0 : 1,
+    duration: 300,
+    useNativeDriver: true,
+  }).start();
+}, [isAtBottom, scrollButtonAnim]);
+
+const handleSubmitVoice = async () => {
+  // If we're already processing a submit, ignore
+  if (submittingRef.current) return;
+
+  // Immediately mark as submitting so UI (both X and ✓) disables right away
+  submittingRef.current = true;
+  setIsSubmitting(true);
+
+  try {
+    // If a final result is already pending or being processed by the speech handler,
+    // don't duplicate — stop recording and let the existing handler finish. Keep buttons disabled.
+    if (pendingFinalRef.current || processingSessionRef.current != null) {
+      try {
+        await stopVoice({ skipFallback: true });
+      } catch { }
+      return;
+    }
+
+    const text = spokenText.trim();
+    if (!text) {
+      await stopVoice({ skipFallback: true });
+      return;
+    }
+
+    // Prevent the speech recognition event handler or fallback timer from
+    // also inserting/processing a final result that would duplicate this send.
+    clearFallbackTimer();
+    pendingFinalRef.current = true;
+    processingSessionRef.current = sessionIdRef.current;
+    cancelledRef.current = true;
+    activeSessionRef.current = null;
+    sessionIdRef.current = (sessionIdRef.current || 0) + 1;
+    lastInterimRef.current = "";
+
+    // Stop recording and wait for any pending result to be processed
+    await stopVoice({ skipFallback: true });
+
+    // Push into chat like sending text normally
+    setMessages((m) => [...m, { role: "user", text }]);
+    setSpokenText("");
+
+    await processTextInput(text);
+  } finally {
+    submittingRef.current = false;
+    setIsSubmitting(false);
+    // Clear the temporary cancel guard so future sessions work normally
+    cancelledRef.current = false;
+    pendingFinalRef.current = false;
+    processingSessionRef.current = null;
+  }
+};
+
+return (
+  <SafeAreaView
+      style= {{ flex: 1, backgroundColor: colors.background }}
+edges = { ["top"]}
+  >
+  <KeyboardAvoidingView
+        style={ { flex: 1, backgroundColor: colors.background } }
+behavior = { Platform.OS === "ios" ? "padding" : undefined }
+  >
+  <BackBar />
+
+{/* Chat */ }
+<FlatList
+          ref={ flatRef }
+data = { messages }
+keyExtractor = {(_, i) => String(i)}
+keyboardShouldPersistTaps = "handled"
+keyboardDismissMode = "on-drag"
+onScroll = {
+  Animated.event(
+    [{ nativeEvent: { contentOffset: { y: new Animated.Value(0) } } }],
+    {
+      useNativeDriver: false,
+      listener: (event: any) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        // More accurate bottom detection - check if within 50px of bottom
+        const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+        const isCloseToBottom = distanceFromBottom <= 50; // Within 50px of bottom
+        setIsAtBottom(isCloseToBottom);
+        // Reset force hide only when user manually scrolls (not when scrolling to bottom via button)
+        if (!isCloseToBottom && !isScrollingToBottom) {
+          setForceHideButton(false);
+        }
+        // Reset scrolling flag when reached bottom
+        if (isCloseToBottom) {
+          setIsScrollingToBottom(false);
+        }
+      },
+    }
+  )
+}
+contentContainerStyle = {{
+  padding: 16,
+    gap: 12,
+      flexGrow: 1,
           }}
-          onContentSizeChange={() => {
-            // Auto scroll to end when content size changes (new messages)
-            requestAnimationFrame(() => {
-              flatRef.current?.scrollToEnd({ animated: true });
-            });
-          }}
-          onLayout={() => {
-            // Scroll to end on initial layout
-            requestAnimationFrame(() => {
-              flatRef.current?.scrollToEnd({ animated: false });
-            });
-          }}
-          renderItem={useCallback(
+onContentSizeChange = {() => {
+  // Auto scroll to end when content size changes (new messages)
+  requestAnimationFrame(() => {
+    flatRef.current?.scrollToEnd({ animated: true });
+  });
+}}
+onLayout = {() => {
+  // Scroll to end on initial layout
+  requestAnimationFrame(() => {
+    flatRef.current?.scrollToEnd({ animated: false });
+  });
+}}
+renderItem = { useCallback(
             ({ item }: { item: any }) => {
-              if (item.role === "user") {
-                return (
-                  <View
-                    style={[
-                      styles.bubble,
-                      styles.right,
-                      {
-                        backgroundColor:
-                          mode === "dark" ? "#1E3A8A" : "#E5F5F9",
-                        borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
-                      },
+  if (item.role === "user") {
+    return (
+      <View
+                    style= {
+        [
+          styles.bubble,
+          styles.right,
+          {
+            backgroundColor:
+              mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+            borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+          },
                     ]}
-                  >
-                    {item.imageUri === "voice-recording" ? (
-                      <View
-                        style={{
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: 20,
-                        }}
+      >
+      {
+        item.imageUri === "voice-recording" ? (
+          <View
+                        style= {{
+      alignItems: "center",
+        justifyContent: "center",
+          padding: 20,
+                        }
+  }
                       >
-                        <Ionicons name="mic" size={48} color="#3B82F6" />
-                      </View>
+    <Ionicons name="mic" size = { 48} color = "#3B82F6" />
+      </View>
                     ) : item.imageUri ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setSelectedImage(item.imageUri!);
-                          setImageViewerVisible(true);
-                        }}
+    <TouchableOpacity
+                        onPress= {() => {
+    setSelectedImage(item.imageUri!);
+    setImageViewerVisible(true);
+  }
+}
                       >
-                        <Image
-                          source={{ uri: item.imageUri }}
-                          style={{
-                            width: 200,
-                            height: 200,
-                            borderRadius: 8,
+  <Image
+                          source={ { uri: item.imageUri } }
+style = {{
+  width: 200,
+    height: 200,
+      borderRadius: 8,
                           }}
-                          resizeMode="cover"
-                        />
-                      </TouchableOpacity>
+resizeMode = "cover"
+  />
+  </TouchableOpacity>
                     ) : (
-                      <Text style={[styles.text, { color: colors.text }]}>
-                        {item.text}
-                      </Text>
+  <Text style= { [styles.text, { color: colors.text }]} >
+  { item.text }
+  </Text>
                     )}
-                  </View>
+</View>
                 );
               }
-              if (item.role === "bot") {
-                return (
-                  <View
-                    style={[
-                      styles.bubble,
-                      styles.left,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.divider,
-                      },
+if (item.role === "bot") {
+  return (
+    <View
+                    style= {
+      [
+        styles.bubble,
+        styles.left,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.divider,
+        },
                     ]}
-                  >
-                    <Text style={[styles.text, { color: colors.text }]}>
-                      {item.text}
-                    </Text>
-                  </View>
+    >
+    <Text style={ [styles.text, { color: colors.text }] }>
+      { item.text }
+      </Text>
+      </View>
                 );
-              }
-              if (item.role === "typing") {
-                return <TypingIndicator colors={colors} cacheStatus={item.cacheStatus} />;
-              }
+}
+if (item.role === "typing") {
+  return <TypingIndicator colors={ colors } cacheStatus = { item.cacheStatus } />;
+}
 
-              return (
-                <View
-                  style={[
-                    styles.card,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.divider,
-                    },
+return (
+  <View
+                  style= {
+    [
+      styles.card,
+      {
+        backgroundColor: colors.card,
+        borderColor: colors.divider,
+      },
                   ]}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+  >
+  <View
+                    style={
+  {
+    flexDirection: "row",
+      alignItems: "center",
+        gap: 12,
+                    }
+}
                   >
-                    <View
-                      style={[
-                        styles.iconCircle,
-                        { backgroundColor: item.categoryColor || "#6366F1" },
-                      ]}
+  <View
+                      style={
+  [
+    styles.iconCircle,
+    { backgroundColor: item.categoryColor || "#6366F1" },
+  ]
+}
                     >
-                      <MaterialCommunityIcons
-                        name={fixIconName(item.categoryIcon) as any}
-                        size={26}
-                        color="#fff"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.subText, marginBottom: 2 }}>
-                        {t("recorded")}{" "}
-                        {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
-                        {item.when}
-                      </Text>
-                      <Text
-                        style={{
-                          fontWeight: "700",
-                          fontSize: 18,
-                          color: colors.text,
+  <MaterialCommunityIcons
+                        name={ fixIconName(item.categoryIcon) as any }
+size = { 26}
+color = "#fff"
+  />
+  </View>
+  < View style = {{ flex: 1 }}>
+    <Text style={ { color: colors.subText, marginBottom: 2 } }>
+      { t("recorded") }{ " " }
+{ item.io === "OUT" ? t("expense") : t("income") } ·{ " " }
+{ item.when }
+</Text>
+  < Text
+style = {{
+  fontWeight: "700",
+    fontSize: 18,
+      color: colors.text,
                         }}
                       >
-                        {item.categoryName}
-                      </Text>
-                      <Text style={{ marginTop: 2, color: colors.text }}>
-                        {item.note}
-                      </Text>
-                    </View>
-                    <Text
-                      style={{
-                        fontWeight: "700",
-                        fontSize: 16,
-                        color: colors.text,
+  { item.categoryName }
+  </Text>
+  < Text style = {{ marginTop: 2, color: colors.text }}>
+    { item.note }
+    </Text>
+    </View>
+    < Text
+style = {{
+  fontWeight: "700",
+    fontSize: 16,
+      color: colors.text,
                       }}
                     >
-                      {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
-                    </Text>
-                  </View>
-                  {/* Action buttons */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 10,
-                      marginTop: 16,
-                      justifyContent: "flex-end",
-                    }}
+  { item.amount ? item.amount.toLocaleString() + "đ" : "—" }
+  </Text>
+  </View>
+{/* Action buttons */ }
+<View
+                    style={
+  {
+    flexDirection: "row",
+      gap: 10,
+        marginTop: 16,
+          justifyContent: "flex-end",
+                    }
+}
                   >
-                    <TouchableOpacity
-                      onPress={() => handleEditTransaction(item)}
-                      style={[
-                        styles.actionBtn,
-                        {
-                          backgroundColor:
-                            mode === "dark" ? "#1E40AF" : "#DBEAFE",
-                          borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
-                          shadowColor: "#3B82F6",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.15,
-                          shadowRadius: 3,
-                          elevation: 2,
-                        },
+  <TouchableOpacity
+                      onPress={ () => handleEditTransaction(item) }
+style = {
+  [
+    styles.actionBtn,
+    {
+      backgroundColor:
+        mode === "dark" ? "#1E40AF" : "#DBEAFE",
+      borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+      shadowColor: "#3B82F6",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 2,
+    },
                       ]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
+activeOpacity = { 0.7}
+  >
+  <Ionicons
                         name="create-outline"
-                        size={18}
-                        color={mode === "dark" ? "#93C5FD" : "#2563EB"}
+size = { 18}
+color = { mode === "dark" ? "#93C5FD" : "#2563EB"}
                       />
-                      <Text
-                        style={{
-                          color: mode === "dark" ? "#93C5FD" : "#2563EB",
-                          fontSize: 13,
-                          fontWeight: "600",
+  < Text
+style = {{
+  color: mode === "dark" ? "#93C5FD" : "#2563EB",
+    fontSize: 13,
+      fontWeight: "600",
                         }}
                       >
-                        {t("edit")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
-                          { text: t("cancel"), style: "cancel" },
-                          {
-                            text: t("delete"),
-                            style: "destructive",
-                            onPress: () =>
-                              handleDeleteTransaction(item.transactionId),
-                          },
-                        ]);
-                      }}
-                      style={[
-                        styles.actionBtn,
-                        {
-                          backgroundColor:
-                            mode === "dark" ? "#7F1D1D" : "#FEE2E2",
-                          borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
-                          shadowColor: "#EF4444",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.15,
-                          shadowRadius: 3,
-                          elevation: 2,
-                        },
+  { t("edit") }
+  </Text>
+  </TouchableOpacity>
+  < TouchableOpacity
+onPress = {() => {
+  Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
+    { text: t("cancel"), style: "cancel" },
+    {
+      text: t("delete"),
+      style: "destructive",
+      onPress: () =>
+        handleDeleteTransaction(item.transactionId),
+    },
+  ]);
+}}
+style = {
+  [
+    styles.actionBtn,
+    {
+      backgroundColor:
+        mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+      borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+      shadowColor: "#EF4444",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 2,
+    },
                       ]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
+activeOpacity = { 0.7}
+  >
+  <Ionicons
                         name="trash-outline"
-                        size={18}
-                        color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
+size = { 18}
+color = { mode === "dark" ? "#FCA5A5" : "#DC2626"}
                       />
-                      <Text
-                        style={{
-                          color: mode === "dark" ? "#FCA5A5" : "#DC2626",
-                          fontSize: 13,
-                          fontWeight: "600",
+  < Text
+style = {{
+  color: mode === "dark" ? "#FCA5A5" : "#DC2626",
+    fontSize: 13,
+      fontWeight: "600",
                         }}
                       >
-                        {t("delete")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+  { t("delete") }
+  </Text>
+  </TouchableOpacity>
+  </View>
+  </View>
               );
             },
-            [colors, mode, items, t, editingTx]
+[colors, mode, items, t, editingTx]
           )}
         />
 
-        {/* Gợi ý khi chưa đủ tự tin: render above the input bar so it's not covered */}
-        {
-          <Animated.View
-            pointerEvents={pendingPick ? "auto" : "none"}
-            style={[
-              styles.suggestBar,
-              {
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: (insets.bottom || 0) + keyboardHeight + 70,
-                zIndex: 60,
-                // full-width + no outer background/border/shadow
-                backgroundColor: "transparent",
-                borderRadius: 0,
-                paddingVertical: 6,
-                paddingHorizontal: 0,
-                borderWidth: 0,
-                borderColor: "transparent",
-                elevation: 0,
-                // animated opacity + translate
-                opacity: suggestAnim,
-                transform: [
-                  {
-                    translateY: suggestAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [8, 0],
-                    }),
-                  },
-                ],
-                shadowColor: "transparent",
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 0,
-                shadowRadius: 0,
-              },
+{/* Gợi ý khi chưa đủ tự tin: render above the input bar so it's not covered */ }
+{
+  <Animated.View
+            pointerEvents={ pendingPick ? "auto" : "none" }
+  style = {
+    [
+      styles.suggestBar,
+      {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: (insets.bottom || 0) + keyboardHeight + 70,
+        zIndex: 60,
+        // full-width + no outer background/border/shadow
+        backgroundColor: "transparent",
+        borderRadius: 0,
+        paddingVertical: 6,
+        paddingHorizontal: 0,
+        borderWidth: 0,
+        borderColor: "transparent",
+        elevation: 0,
+        // animated opacity + translate
+        opacity: suggestAnim,
+        transform: [
+          {
+            translateY: suggestAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [8, 0],
+            }),
+          },
+        ],
+        shadowColor: "transparent",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+      },
             ]}
-          >
-            <ScrollView
+    >
+    <ScrollView
               horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                alignItems: "center",
-                paddingLeft: insets.left || 4,
-              }}
+  showsHorizontalScrollIndicator = { false}
+  contentContainerStyle = {{
+    alignItems: "center",
+      paddingLeft: insets.left || 4,
+              }
+}
             >
-              {pendingPick?.choices.map((c, index) => (
-                <Pressable
-                  key={c.categoryId}
-                  onPress={() => chooseCategory(c)}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor: colors.divider,
-                      backgroundColor:
-                        index === 0 && c.score > 0.5 ? "#16A34A" : colors.card,
-                      borderWidth: index === 0 && c.score > 0.5 ? 0 : 1,
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      marginRight: 8,
-                      flexDirection: "row",
-                      alignItems: "center",
-                    },
+{
+  pendingPick?.choices.map((c, index) => (
+    <Pressable
+                  key= { c.categoryId }
+                  onPress = {() => chooseCategory(c)}
+style = {
+  [
+    styles.chip,
+    {
+      borderColor: colors.divider,
+      backgroundColor:
+        index === 0 && c.score > 0.5 ? "#16A34A" : colors.card,
+      borderWidth: index === 0 && c.score > 0.5 ? 0 : 1,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginRight: 8,
+      flexDirection: "row",
+      alignItems: "center",
+    },
                   ]}
-                >
-                  {index === 0 && c.score > 0.5 && (
-                    <MaterialCommunityIcons
+  >
+  { index === 0 && c.score > 0.5 && (
+    <MaterialCommunityIcons
                       name="robot"
-                      size={14}
-                      color="#fff"
-                      style={{ marginRight: 8 }}
+size = { 14}
+color = "#fff"
+style = {{ marginRight: 8 }}
                     />
                   )}
-                  <Text
-                    style={[
-                      styles.chipText,
-                      {
-                        color:
-                          index === 0 && c.score > 0.5 ? "#fff" : colors.text,
-                      },
-                    ]}
+<Text
+                    style={
+  [
+    styles.chipText,
+    {
+      color:
+        index === 0 && c.score > 0.5 ? "#fff" : colors.text,
+    },
+  ]
+}
                   >
-                    {c.name}
-                  </Text>
-                  <View
-                    style={{
-                      marginLeft: 8,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 8,
-                      backgroundColor:
-                        index === 0 && c.score > 0.5
-                          ? "rgba(255,255,255,0.12)"
-                          : "transparent",
+  { c.name }
+  </Text>
+  < View
+style = {{
+  marginLeft: 8,
+    paddingHorizontal: 6,
+      paddingVertical: 2,
+        borderRadius: 8,
+          backgroundColor:
+  index === 0 && c.score > 0.5
+    ? "rgba(255,255,255,0.12)"
+    : "transparent",
                     }}
                   >
-                    <Text
-                      style={{
-                        color:
-                          index === 0 && c.score > 0.5
-                            ? "#fff"
-                            : colors.subText,
-                        fontSize: 12,
-                      }}
+  <Text
+                      style={
+  {
+    color:
+    index === 0 && c.score > 0.5
+      ? "#fff"
+      : colors.subText,
+      fontSize: 12,
+                      }
+}
                     >
-                      {(c as any).isFromML
-                        ? `🎓 ${Math.round(
-                            ((c as any).mlConfidence || c.score) * 100
-                          )}%`
-                        : `${Math.round(c.score * 100)}%`}
-                    </Text>
-                  </View>
-                </Pressable>
+  {(c as any).isFromML
+  ? `🎓 ${Math.round(
+    ((c as any).mlConfidence || c.score) * 100
+  )}%`
+  : `${Math.round(c.score * 100)}%`}
+</Text>
+  </View>
+  </Pressable>
               ))}
-            </ScrollView>
-          </Animated.View>
+</ScrollView>
+  </Animated.View>
         }
 
-        {/* Edit Modal */}
-        <Modal
-          visible={!!editingTx}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setEditingTx(null)}
+{/* Edit Modal */ }
+<Modal
+          visible={ !!editingTx }
+transparent
+animationType = "slide"
+onRequestClose = {() => setEditingTx(null)}
         >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "flex-end",
-            }}
+  <View
+            style={
+  {
+    flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "flex-end",
+            }
+}
           >
-            <SafeAreaView
-              style={{
-                backgroundColor: colors.card,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                padding: 20,
-                maxHeight: "80%",
-              }}
-              edges={["bottom"]}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16,
-                }}
+  <SafeAreaView
+              style={
+  {
+    backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+          padding: 20,
+            maxHeight: "80%",
+              }
+}
+edges = { ["bottom"]}
+  >
+  <View
+                style={
+  {
+    flexDirection: "row",
+      justifyContent: "space-between",
+        alignItems: "center",
+          marginBottom: 16,
+                }
+}
               >
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.text,
-                  }}
+  <Text
+                  style={
+  {
+    fontSize: 18,
+      fontWeight: "700",
+        color: colors.text,
+                  }
+}
                 >
-                  {t("editTransaction")}
-                </Text>
-                <TouchableOpacity onPress={() => setEditingTx(null)}>
-                  <Ionicons name="close" size={24} color={colors.icon} />
-                </TouchableOpacity>
-              </View>
+  { t("editTransaction") }
+  </Text>
+  < TouchableOpacity onPress = {() => setEditingTx(null)}>
+    <Ionicons name="close" size = { 24} color = { colors.icon } />
+      </TouchableOpacity>
+      </View>
 
-              <ScrollView>
-                {/* Transaction Type Toggle */}
-                <View style={{ marginBottom: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 8,
-                      color: colors.text,
-                    }}
+      <ScrollView>
+{/* Transaction Type Toggle */ }
+<View style={ { marginBottom: 16 } }>
+  <Text
+                    style={
+  {
+    fontSize: 14,
+      fontWeight: "600",
+        marginBottom: 8,
+          color: colors.text,
+                    }
+}
                   >
-                    Loại giao dịch
-                  </Text>
-                  <View style={{ flexDirection: "row", gap: 12 }}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (editingTx) {
-                          setEditingTx({ ...editingTx, io: "OUT" });
-                          // Reset category khi đổi loại
-                          setEditCategoryId("");
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        paddingVertical: 12,
-                        borderRadius: 12,
-                        borderWidth: 2,
-                        borderColor:
-                          editingTx?.io === "OUT" ? "#EF4444" : colors.divider,
-                        backgroundColor:
-                          editingTx?.io === "OUT"
-                            ? mode === "dark"
-                              ? "#7F1D1D"
-                              : "#FEE2E2"
-                            : colors.background,
+  Loại giao dịch
+    </Text>
+    < View style = {{ flexDirection: "row", gap: 12 }}>
+      <TouchableOpacity
+                      onPress={
+  () => {
+    if (editingTx) {
+      setEditingTx({ ...editingTx, io: "OUT" });
+      // Reset category khi đổi loại
+      setEditCategoryId("");
+    }
+  }
+}
+style = {{
+  flex: 1,
+    flexDirection: "row",
+      alignItems: "center",
+        justifyContent: "center",
+          gap: 8,
+            paddingVertical: 12,
+              borderRadius: 12,
+                borderWidth: 2,
+                  borderColor:
+  editingTx?.io === "OUT" ? "#EF4444" : colors.divider,
+    backgroundColor:
+  editingTx?.io === "OUT"
+    ? mode === "dark"
+      ? "#7F1D1D"
+      : "#FEE2E2"
+    : colors.background,
                       }}
                     >
-                      <Ionicons
+  <Ionicons
                         name="arrow-down-circle"
-                        size={20}
-                        color={
-                          editingTx?.io === "OUT" ? "#EF4444" : colors.subText
+size = { 20}
+color = {
+  editingTx?.io === "OUT" ? "#EF4444" : colors.subText
                         }
                       />
-                      <Text
-                        style={{
-                          fontSize: 15,
-                          fontWeight: "700",
-                          color:
-                            editingTx?.io === "OUT"
-                              ? "#EF4444"
-                              : colors.subText,
+  < Text
+style = {{
+  fontSize: 15,
+    fontWeight: "700",
+      color:
+  editingTx?.io === "OUT"
+    ? "#EF4444"
+    : colors.subText,
                         }}
                       >
-                        Chi phí
-                      </Text>
-                    </TouchableOpacity>
+  Chi phí
+    </Text>
+    </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (editingTx) {
-                          setEditingTx({ ...editingTx, io: "IN" });
-                          // Reset category khi đổi loại
-                          setEditCategoryId("");
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        paddingVertical: 12,
-                        borderRadius: 12,
-                        borderWidth: 2,
-                        borderColor:
-                          editingTx?.io === "IN" ? "#10B981" : colors.divider,
-                        backgroundColor:
-                          editingTx?.io === "IN"
-                            ? mode === "dark"
-                              ? "#065F46"
-                              : "#D1FAE5"
-                            : colors.background,
+    < TouchableOpacity
+onPress = {() => {
+  if (editingTx) {
+    setEditingTx({ ...editingTx, io: "IN" });
+    // Reset category khi đổi loại
+    setEditCategoryId("");
+  }
+}}
+style = {{
+  flex: 1,
+    flexDirection: "row",
+      alignItems: "center",
+        justifyContent: "center",
+          gap: 8,
+            paddingVertical: 12,
+              borderRadius: 12,
+                borderWidth: 2,
+                  borderColor:
+  editingTx?.io === "IN" ? "#10B981" : colors.divider,
+    backgroundColor:
+  editingTx?.io === "IN"
+    ? mode === "dark"
+      ? "#065F46"
+      : "#D1FAE5"
+    : colors.background,
                       }}
                     >
-                      <Ionicons
+  <Ionicons
                         name="arrow-up-circle"
-                        size={20}
-                        color={
-                          editingTx?.io === "IN" ? "#10B981" : colors.subText
+size = { 20}
+color = {
+  editingTx?.io === "IN" ? "#10B981" : colors.subText
                         }
                       />
-                      <Text
-                        style={{
-                          fontSize: 15,
-                          fontWeight: "700",
-                          color:
-                            editingTx?.io === "IN" ? "#10B981" : colors.subText,
+  < Text
+style = {{
+  fontSize: 15,
+    fontWeight: "700",
+      color:
+  editingTx?.io === "IN" ? "#10B981" : colors.subText,
                         }}
                       >
-                        Thu nhập
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+  Thu nhập
+    </Text>
+    </TouchableOpacity>
+    </View>
+    </View>
 
-                {/* Amount */}
-                <View style={{ marginBottom: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
-                    }}
+{/* Amount */ }
+<View style={ { marginBottom: 16 } }>
+  <Text
+                    style={
+  {
+    fontSize: 14,
+      fontWeight: "600",
+        marginBottom: 6,
+          color: colors.text,
+                    }
+}
                   >
-                    {t("amount")}
-                  </Text>
-                  <TextInput
-                    value={editAmount}
-                    onChangeText={(text) => {
-                      // Format with commas
-                      const num = text.replace(/[^0-9]/g, "");
-                      if (num) {
-                        const formatted = parseInt(num).toLocaleString("vi-VN");
-                        setEditAmount(formatted);
-                      } else {
-                        setEditAmount("");
-                      }
-                    }}
-                    keyboardType="numeric"
-                    placeholderTextColor={colors.subText}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.divider,
-                      borderRadius: 8,
-                      padding: 12,
-                      fontSize: 16,
-                      color: colors.text,
-                      backgroundColor: colors.background,
+  { t("amount") }
+  </Text>
+  < TextInput
+value = { editAmount }
+onChangeText = {(text) => {
+  // Format with commas
+  const num = text.replace(/[^0-9]/g, "");
+  if (num) {
+    const formatted = parseInt(num).toLocaleString("vi-VN");
+    setEditAmount(formatted);
+  } else {
+    setEditAmount("");
+  }
+}}
+keyboardType = "numeric"
+placeholderTextColor = { colors.subText }
+style = {{
+  borderWidth: 1,
+    borderColor: colors.divider,
+      borderRadius: 8,
+        padding: 12,
+          fontSize: 16,
+            color: colors.text,
+              backgroundColor: colors.background,
                     }}
                   />
-                </View>
+  </View>
 
-                {/* Note */}
-                <View style={{ marginBottom: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
-                    }}
+{/* Note */ }
+<View style={ { marginBottom: 16 } }>
+  <Text
+                    style={
+  {
+    fontSize: 14,
+      fontWeight: "600",
+        marginBottom: 6,
+          color: colors.text,
+                    }
+}
                   >
-                    {t("note")}
-                  </Text>
-                  <TextInput
-                    value={editNote}
-                    onChangeText={setEditNote}
-                    multiline
-                    numberOfLines={3}
-                    placeholderTextColor={colors.subText}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.divider,
-                      borderRadius: 8,
-                      padding: 12,
-                      fontSize: 16,
-                      textAlignVertical: "top",
-                      color: colors.text,
-                      backgroundColor: colors.background,
+  { t("note") }
+  </Text>
+  < TextInput
+value = { editNote }
+onChangeText = { setEditNote }
+multiline
+numberOfLines = { 3}
+placeholderTextColor = { colors.subText }
+style = {{
+  borderWidth: 1,
+    borderColor: colors.divider,
+      borderRadius: 8,
+        padding: 12,
+          fontSize: 16,
+            textAlignVertical: "top",
+              color: colors.text,
+                backgroundColor: colors.background,
                     }}
                   />
-                </View>
+  </View>
 
-                {/* Category */}
-                <View style={{ marginBottom: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
+{/* Category */ }
+<View style={ { marginBottom: 16 } }>
+  <Text
+                    style={
+  {
+    fontSize: 14,
+      fontWeight: "600",
+        marginBottom: 6,
+          color: colors.text,
+                    }
+}
+                  >
+  { t("category") }
+  </Text>
+  < ScrollView
+horizontal
+showsHorizontalScrollIndicator = { false}
+contentContainerStyle = {{
+  flexDirection: "row",
+    gap: 8,
+      paddingVertical: 4,
                     }}
                   >
-                    {t("category")}
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{
-                      flexDirection: "row",
-                      gap: 8,
-                      paddingVertical: 4,
-                    }}
-                  >
-                    {items
+{
+  items
                       .filter((c) => {
-                        if (!editingTx) return false;
-                        const type =
-                          editingTx.io === "OUT" ? "expense" : "income";
-                        return c.type === type;
-                      })
-                      .map((cat) => (
-                        <TouchableOpacity
-                          key={cat.id}
-                          onPress={() => setEditCategoryId(cat.id)}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor:
-                              editCategoryId === cat.id
-                                ? "#10B981"
-                                : colors.divider,
-                            backgroundColor:
-                              editCategoryId === cat.id
-                                ? mode === "dark"
-                                  ? "#065F46"
-                                  : "#D1FAE5"
-                                : colors.background,
+    if (!editingTx) return false;
+    const type =
+      editingTx.io === "OUT" ? "expense" : "income";
+    return c.type === type;
+  })
+    .map((cat) => (
+      <TouchableOpacity
+                          key= { cat.id }
+                          onPress = {() => setEditCategoryId(cat.id)}
+style = {{
+  paddingHorizontal: 12,
+    paddingVertical: 8,
+      borderRadius: 8,
+        borderWidth: 1,
+          borderColor:
+  editCategoryId === cat.id
+    ? "#10B981"
+    : colors.divider,
+    backgroundColor:
+  editCategoryId === cat.id
+    ? mode === "dark"
+      ? "#065F46"
+      : "#D1FAE5"
+    : colors.background,
                           }}
                         >
-                          <Text
-                            style={{
-                              fontSize: 14,
-                              fontWeight: "600",
-                              color:
-                                editCategoryId === cat.id
-                                  ? "#10B981"
-                                  : colors.text,
-                            }}
+  <Text
+                            style={
+  {
+    fontSize: 14,
+      fontWeight: "600",
+        color:
+    editCategoryId === cat.id
+      ? "#10B981"
+      : colors.text,
+                            }
+}
                           >
-                            {cat.name}
-                          </Text>
-                        </TouchableOpacity>
+  { cat.name }
+  </Text>
+  </TouchableOpacity>
                       ))}
-                  </ScrollView>
-                </View>
-              </ScrollView>
+</ScrollView>
+  </View>
+  </ScrollView>
 
-              {/* Save button */}
-              <TouchableOpacity
-                onPress={handleSaveEdit}
-                disabled={isSaving}
-                style={{
-                  backgroundColor: isSaving ? "#9CA3AF" : "#10B981",
-                  padding: 14,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  marginTop: 8,
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  opacity: isSaving ? 0.7 : 1,
+{/* Save button */ }
+<TouchableOpacity
+                onPress={ handleSaveEdit }
+disabled = { isSaving }
+style = {{
+  backgroundColor: isSaving ? "#9CA3AF" : "#10B981",
+    padding: 14,
+      borderRadius: 10,
+        alignItems: "center",
+          marginTop: 8,
+            flexDirection: "row",
+              justifyContent: "center",
+                opacity: isSaving ? 0.7 : 1,
                 }}
               >
-                {isSaving && (
-                  <Animated.View
-                    style={{
-                      marginRight: 8,
-                      transform: [{ rotate: spin }],
-                    }}
+  { isSaving && (
+    <Animated.View
+                    style={
+  {
+    marginRight: 8,
+      transform: [{ rotate: spin }],
+                    }
+}
                   >
-                    <Ionicons name="sync" size={20} color="#fff" />
-                  </Animated.View>
+  <Ionicons name="sync" size = { 20} color = "#fff" />
+    </Animated.View>
                 )}
-                <Text
-                  style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}
+<Text
+                  style={ { color: "#fff", fontSize: 16, fontWeight: "600" } }
                 >
-                  {isSaving ? t("saving") || "Đang lưu..." : t("saveChanges")}
-                </Text>
-              </TouchableOpacity>
-            </SafeAreaView>
-          </View>
-        </Modal>
+  { isSaving? t("saving") || "Đang lưu..." : t("saveChanges")}
+</Text>
+  </TouchableOpacity>
+  </SafeAreaView>
+  </View>
+  </Modal>
 
-            {/* Input Bar (ẩn khi đang thu âm) */}
-            <Animated.View
-              onLayout={(e) =>
-                setInputBarHeight(Math.max(0, e.nativeEvent.layout.height || 0))
-              }
-              style={[
-                styles.inputBar,
-                {
-                  borderColor: colors.divider,
-                  backgroundColor: colors.card,
-                  marginBottom: (keyboardHeight || 0) + (insets.bottom || 0),
-                  paddingBottom: 12,
-                },
+{/* Input Bar (ẩn khi đang thu âm) */ }
+<Animated.View
+              onLayout={
+  (e) =>
+    setInputBarHeight(Math.max(0, e.nativeEvent.layout.height || 0))
+}
+style = {
+  [
+    styles.inputBar,
+    {
+      borderColor: colors.divider,
+      backgroundColor: colors.card,
+      marginBottom: (keyboardHeight || 0) + (insets.bottom || 0),
+      paddingBottom: 12,
+    },
               ]}
-            >
-          {/* Nút Voice (ẩn khi đang ghi âm) */}
-          {!isRecording && (
-            <Pressable
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor:
-                    mode === "dark" ? colors.background : "#F3F4F6",
-                  borderColor: colors.divider,
-                  opacity: isProcessingVoice ? 0.4 : 1,
-                },
-              ]}
-              onPress={startVoice}
-              disabled={isProcessingVoice}
-            >
-              <Ionicons name={"mic"} size={22} color={colors.icon} />
-            </Pressable>
-          )}
+  >
+  {/* Nút Voice (ẩn khi đang ghi âm) */ }
+{
+  !isRecording && (
+    <Pressable
+              style={
+    [
+      styles.iconBtn,
+      {
+        backgroundColor:
+          mode === "dark" ? colors.background : "#F3F4F6",
+        borderColor: colors.divider,
+        opacity: isProcessingVoice ? 0.4 : 1,
+      },
+    ]
+  }
+  onPress = { startVoice }
+  disabled = { isProcessingVoice }
+    >
+    <Ionicons name={ "mic" } size = { 22} color = { colors.icon } />
+      </Pressable>
+          )
+}
 
-          {/* Nút Image - ẩn khi đang ghi âm */}
-          {!isRecording && (
-            <Pressable
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor:
-                    mode === "dark" ? colors.background : "#F3F4F6",
-                  borderColor: colors.divider,
-                },
-              ]}
-              onPress={handleImagePress}
-              disabled={isProcessingVoice}
-            >
-              <Ionicons name="image" size={22} color={colors.icon} />
-            </Pressable>
-          )}
+{/* Nút Image - ẩn khi đang ghi âm */ }
+{
+  !isRecording && (
+    <Pressable
+              style={
+    [
+      styles.iconBtn,
+      {
+        backgroundColor:
+          mode === "dark" ? colors.background : "#F3F4F6",
+        borderColor: colors.divider,
+      },
+    ]
+  }
+  onPress = { handleImagePress }
+  disabled = { isProcessingVoice }
+    >
+    <Ionicons name="image" size = { 22} color = { colors.icon } />
+      </Pressable>
+          )
+}
 
-          {/* Vùng giữa: TextInput <-> RecordingBar */}
-          <View
-            style={{
-              flex: 1,
-              marginHorizontal: 4,
-              position: "relative",
-              minHeight: 44,
-              justifyContent: "center",
-            }}
+{/* Vùng giữa: TextInput <-> RecordingBar */ }
+<View
+            style={
+  {
+    flex: 1,
+      marginHorizontal: 4,
+        position: "relative",
+          minHeight: 44,
+            justifyContent: "center",
+            }
+}
           >
-            {/* TextInput (hiện khi không ghi) */}
-            <Animated.View
-              pointerEvents={isRecording ? "none" : "auto"}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                opacity: inputAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 0],
-                }),
-                transform: [
-                  {
-                    translateY: inputAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 10],
-                    }),
-                  },
-                ],
+  {/* TextInput (hiện khi không ghi) */ }
+  < Animated.View
+pointerEvents = { isRecording? "none": "auto" }
+style = {{
+  position: "absolute",
+    left: 0,
+      right: 0,
+        opacity: inputAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 0],
+        }),
+          transform: [
+            {
+              translateY: inputAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 10],
+              }),
+            },
+          ],
               }}
             >
-              <Tooltip
-                isVisible={shouldShowTour && currentStep === 2}
-                content={
-                  <View style={{ padding: 8 }}>
-                    <Text
-                      style={{
-                        fontSize: 16,
-                        fontWeight: "700",
-                        color: "#111",
-                        marginBottom: 8,
-                      }}
+  <Tooltip
+                isVisible={ shouldShowTour && currentStep === 2 }
+content = {
+                  < View style = {{ padding: 8 }}>
+  <Text
+                      style={
+  {
+    fontSize: 16,
+      fontWeight: "700",
+        color: "#111",
+          marginBottom: 8,
+                      }
+}
                     >
                       📝 Nhập giao dịch
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        color: "#666",
-                        marginBottom: 12,
+  </Text>
+  < Text
+style = {{
+  fontSize: 14,
+    color: "#666",
+      marginBottom: 12,
                       }}
                     >
-                      Nhập nội dung giao dịch của bạn tại đây. Ví dụ: "Trà sữa
-                      60k" rồi nhấn nút gửi.
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        nextStep();
-                        inputRef.current?.focus();
-                      }}
-                      style={{
-                        backgroundColor: "#10B981",
-                        paddingVertical: 8,
-                        paddingHorizontal: 16,
-                        borderRadius: 8,
-                        alignItems: "center",
+  Nhập nội dung giao dịch của bạn tại đây.Ví dụ: "Trà sữa
+60k" rồi nhấn nút gửi.
+  </Text>
+  < TouchableOpacity
+onPress = {() => {
+  nextStep();
+  inputRef.current?.focus();
+}}
+style = {{
+  backgroundColor: "#10B981",
+    paddingVertical: 8,
+      paddingHorizontal: 16,
+        borderRadius: 8,
+          alignItems: "center",
                       }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>
-                        Tiếp tục
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+  <Text style={ { color: "#fff", fontWeight: "600" } }>
+    Tiếp tục
+      </Text>
+      </TouchableOpacity>
+      </View>
                 }
-                placement="top"
-                onClose={() => nextStep()}
-                contentStyle={{
-                  backgroundColor: "#fff",
-                  borderRadius: 12,
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.25,
-                  shadowRadius: 8,
-                  elevation: 5,
+placement = "top"
+onClose = {() => nextStep()}
+contentStyle = {{
+  backgroundColor: "#fff",
+    borderRadius: 12,
+      shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+    shadowRadius: 8,
+      elevation: 5,
                 }}
               >
-                <TextInput
-                  placeholder={t("inputPlaceholder")}
-                  placeholderTextColor={colors.subText}
-                  value={input}
-                  onChangeText={(text) => {
-                    setInput(text);
-                    // Advance to step 3 when user types something
-                    if (
-                      shouldShowTour &&
-                      currentStep === 2 &&
-                      text.trim().length > 3
-                    ) {
-                      nextStep();
-                    }
-                  }}
-                  ref={(r) => {
-                    inputRef.current = r;
-                  }}
-                  onFocus={() => {
-                    // Some keyboards/ROMs don't emit keyboardDidShow with sizes.
-                    // Ensure the input bar lifts when focused by using an estimated height.
-                    if (!keyboardHeight) {
-                      const est = Math.max(
-                        150,
-                        estimatedKeyboardHeight - (insets.bottom || 0)
-                      );
-                      setKeyboardHeight(est);
-                    }
-                    // Scroll to end so last messages remain visible. Use multiple
-                    // attempts to handle timing differences across keyboards/ROMs.
-                    try {
-                      requestAnimationFrame(() =>
-                        flatRef.current?.scrollToEnd({ animated: true })
-                      );
-                    } catch (e) {}
+  <TextInput
+                  placeholder={ t("inputPlaceholder") }
+placeholderTextColor = { colors.subText }
+value = { input }
+onChangeText = {(text) => {
+  setInput(text);
+  // Advance to step 3 when user types something
+  if (
+    shouldShowTour &&
+    currentStep === 2 &&
+    text.trim().length > 3
+  ) {
+    nextStep();
+  }
+}}
+ref = {(r) => {
+  inputRef.current = r;
+}}
+onFocus = {() => {
+  // Some keyboards/ROMs don't emit keyboardDidShow with sizes.
+  // Ensure the input bar lifts when focused by using an estimated height.
+  if (!keyboardHeight) {
+    const est = Math.max(
+      150,
+      estimatedKeyboardHeight - (insets.bottom || 0)
+    );
+    setKeyboardHeight(est);
+  }
+  // Scroll to end so last messages remain visible. Use multiple
+  // attempts to handle timing differences across keyboards/ROMs.
+  try {
+    requestAnimationFrame(() =>
+      flatRef.current?.scrollToEnd({ animated: true })
+    );
+  } catch (e) { }
 
-                    setTimeout(
-                      () => flatRef.current?.scrollToEnd({ animated: true }),
-                      120
-                    );
-                    setTimeout(
-                      () => flatRef.current?.scrollToEnd({ animated: true }),
-                      420
-                    );
-                    // Also attempt after interactions settle
-                    try {
-                      InteractionManager.runAfterInteractions(() => {
-                        flatRef.current?.scrollToEnd({ animated: true });
-                      });
-                    } catch (e) {}
-                  }}
-                  onBlur={() => {
-                    setKeyboardHeight(0);
-                  }}
-                  style={[
-                    styles.textInput,
-                    {
-                      borderColor: colors.divider,
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                    },
+  setTimeout(
+    () => flatRef.current?.scrollToEnd({ animated: true }),
+    120
+  );
+  setTimeout(
+    () => flatRef.current?.scrollToEnd({ animated: true }),
+    420
+  );
+  // Also attempt after interactions settle
+  try {
+    InteractionManager.runAfterInteractions(() => {
+      flatRef.current?.scrollToEnd({ animated: true });
+    });
+  } catch (e) { }
+}}
+onBlur = {() => {
+  setKeyboardHeight(0);
+}}
+style = {
+  [
+    styles.textInput,
+    {
+      borderColor: colors.divider,
+      backgroundColor: colors.background,
+      color: colors.text,
+    },
                   ]}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSend}
-                />
-              </Tooltip>
-            </Animated.View>
+returnKeyType = "send"
+onSubmitEditing = { handleSend }
+  />
+  </Tooltip>
+  </Animated.View>
 
-            {/* Recording bar (hiện khi đang ghi) */}
-            <Animated.View
-              pointerEvents={isRecording ? "auto" : "none"}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                opacity: inputAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-                transform: [
-                  {
-                    translateY: inputAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-10, 0],
-                    }),
-                  },
-                ],
+{/* Recording bar (hiện khi đang ghi) */ }
+<Animated.View
+              pointerEvents={ isRecording ? "auto" : "none" }
+style = {{
+  position: "absolute",
+    left: 0,
+      right: 0,
+        opacity: inputAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+        }),
+          transform: [
+            {
+              translateY: inputAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-10, 0],
+              }),
+            },
+          ],
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.divider,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
+  <View
+                style={
+  {
+    flexDirection: "row",
+      alignItems: "center",
+        borderRadius: 12,
+          borderWidth: 1,
+            borderColor: colors.divider,
+              paddingHorizontal: 10,
+                paddingVertical: 8,
                   backgroundColor:
-                    mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
-                }}
+    mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
+                }
+}
               >
-                {/* small mic icon at the start while recording */}
-                <View
-                  style={{
-                    width: 32,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 6,
+  {/* small mic icon at the start while recording */ }
+  < View
+style = {{
+  width: 32,
+    alignItems: "center",
+      justifyContent: "center",
+        marginRight: 6,
                   }}
                 >
-                  <Ionicons
+  <Ionicons
                     name="mic"
-                    size={18}
-                    color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
+size = { 18}
+color = { mode === "dark" ? "#60A5FA" : "#3B82F6"}
                   />
-                </View>
+  </View>
 
-                <View style={{ flex: 1, marginHorizontal: 8 }}>
-                  <VoiceWaveformLite
-                    isRecording={isRecording}
-                    color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
+  < View style = {{ flex: 1, marginHorizontal: 8 }}>
+    <VoiceWaveformLite
+                    isRecording={ isRecording }
+color = { mode === "dark" ? "#60A5FA" : "#3B82F6"}
                   />
-                </View>
+  </View>
 
-                {/* X – hủy (framed button) */}
-                <Pressable
-                  onPress={cancelRecording}
-                  disabled={isSubmitting}
-                  style={[
-                    styles.iconBtn,
-                    {
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      marginRight: 8,
-                      backgroundColor:
-                        mode === "dark" ? colors.background : colors.card,
-                      borderColor: colors.divider,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: isSubmitting ? 0.45 : 1,
-                    },
+{/* X – hủy (framed button) */ }
+<Pressable
+                  onPress={ cancelRecording }
+disabled = { isSubmitting }
+style = {
+  [
+    styles.iconBtn,
+    {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      marginRight: 8,
+      backgroundColor:
+        mode === "dark" ? colors.background : colors.card,
+      borderColor: colors.divider,
+      alignItems: "center",
+      justifyContent: "center",
+      opacity: isSubmitting ? 0.45 : 1,
+    },
                   ]}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+hitSlop = {{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="close" size={18} color={colors.subText} />
-                </Pressable>
+  <Ionicons name="close" size = { 18} color = { colors.subText } />
+    </Pressable>
 
-                {/* ✓ – gửi voice (framed button) */}
-                <Pressable
-                  onPress={handleSubmitVoice}
-                  disabled={isSubmitting}
-                  style={[
-                    styles.iconBtn,
-                    {
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      marginLeft: 8,
-                      backgroundColor:
-                        mode === "dark" ? colors.background : colors.card,
-                      borderColor: colors.divider,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: isSubmitting ? 0.45 : 1,
-                    },
+{/* ✓ – gửi voice (framed button) */ }
+<Pressable
+                  onPress={ handleSubmitVoice }
+disabled = { isSubmitting }
+style = {
+  [
+    styles.iconBtn,
+    {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      marginLeft: 8,
+      backgroundColor:
+        mode === "dark" ? colors.background : colors.card,
+      borderColor: colors.divider,
+      alignItems: "center",
+      justifyContent: "center",
+      opacity: isSubmitting ? 0.45 : 1,
+    },
                   ]}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+hitSlop = {{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="checkmark" size={18} color="#10B981" />
-                </Pressable>
-              </View>
-            </Animated.View>
-          </View>
+  <Ionicons name="checkmark" size = { 18} color = "#10B981" />
+    </Pressable>
+    </View>
+    </Animated.View>
+    </View>
 
-          {/* Nút Send text - ẩn khi đang ghi âm */}
-          {!isRecording && (
-            <Tooltip
-              isVisible={shouldShowTour && currentStep === 3}
-              content={
-                <View style={{ padding: 8 }}>
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: "#111",
-                      marginBottom: 8,
-                    }}
+{/* Nút Send text - ẩn khi đang ghi âm */ }
+{
+  !isRecording && (
+    <Tooltip
+              isVisible={ shouldShowTour && currentStep === 3 }
+  content = {
+                < View style = {{ padding: 8 }
+}>
+  <Text
+                    style={
+  {
+    fontSize: 16,
+      fontWeight: "700",
+        color: "#111",
+          marginBottom: 8,
+                    }
+}
                   >
                     🚀 Gửi tin nhắn
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      color: "#666",
-                      marginBottom: 12,
+  </Text>
+  < Text
+style = {{
+  fontSize: 14,
+    color: "#666",
+      marginBottom: 12,
                     }}
                   >
-                    Nhấn nút "Gửi" để AI xử lý giao dịch của bạn. AI sẽ tự động
+  Nhấn nút "Gửi" để AI xử lý giao dịch của bạn.AI sẽ tự động
                     phân loại và tạo giao dịch mới.
                   </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      nextStep();
-                    }}
-                    style={{
-                      backgroundColor: "#10B981",
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 8,
-                      alignItems: "center",
+  < TouchableOpacity
+onPress = {() => {
+  nextStep();
+}}
+style = {{
+  backgroundColor: "#10B981",
+    paddingVertical: 8,
+      paddingHorizontal: 16,
+        borderRadius: 8,
+          alignItems: "center",
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
-                      Hiểu rồi
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+  <Text style={ { color: "#fff", fontWeight: "600" } }>
+    Hiểu rồi
+      </Text>
+      </TouchableOpacity>
+      </View>
               }
-              placement="top"
-              onClose={() => nextStep()}
-              contentStyle={{
-                backgroundColor: "#fff",
-                borderRadius: 12,
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.25,
-                shadowRadius: 8,
-                elevation: 5,
+placement = "top"
+onClose = {() => nextStep()}
+contentStyle = {{
+  backgroundColor: "#fff",
+    borderRadius: 12,
+      shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+    shadowRadius: 8,
+      elevation: 5,
               }}
             >
-              <Pressable
-                style={[
-                  styles.sendBtn,
-                  isSending
-                    ? { backgroundColor: "#9CA3AF" }
-                    : { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
-                ]}
-                onPress={handleSend}
-                disabled={isSending}
-                accessibilityLabel={isSending ? "Đang gửi" : "Gửi"}
-              >
-                {isSending ? (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <ActivityIndicator size="small" color="#fff" />
-                  </View>
+  <Pressable
+                style={
+  [
+    styles.sendBtn,
+    isSending
+      ? { backgroundColor: "#9CA3AF" }
+      : { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+  ]
+}
+onPress = { handleSend }
+disabled = { isSending }
+accessibilityLabel = { isSending? "Đang gửi": "Gửi" }
+  >
+{
+  isSending?(
+                  <View style = {{ flexDirection: "row", alignItems: "center" }} >
+  <ActivityIndicator size="small" color = "#fff" />
+    </View>
                 ) : (
-                  <Text style={styles.sendText}>{t("send")}</Text>
+  <Text style= { styles.sendText } > { t("send") } </Text>
                 )}
-              </Pressable>
-            </Tooltip>
+</Pressable>
+  </Tooltip>
           )}
-        </Animated.View>
+</Animated.View>
 
-        {/* Image Viewer Modal */}
-        <Modal
-          visible={imageViewerVisible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setImageViewerVisible(false)}
+{/* Image Viewer Modal */ }
+<Modal
+          visible={ imageViewerVisible }
+transparent = { true}
+animationType = "fade"
+onRequestClose = {() => setImageViewerVisible(false)}
         >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.9)",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
+  <View
+            style={
+  {
+    flex: 1,
+      backgroundColor: "rgba(0,0,0,0.9)",
+        justifyContent: "center",
+          alignItems: "center",
+            }
+}
           >
-            <TouchableOpacity
-              style={{
-                position: "absolute",
-                top: 50,
-                right: 20,
-                zIndex: 10,
-                backgroundColor: "rgba(255,255,255,0.3)",
-                borderRadius: 25,
+  <TouchableOpacity
+              style={
+  {
+    position: "absolute",
+      top: 50,
+        right: 20,
+          zIndex: 10,
+            backgroundColor: "rgba(255,255,255,0.3)",
+              borderRadius: 25,
                 width: 50,
-                height: 50,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-              onPress={() => setImageViewerVisible(false)}
+                  height: 50,
+                    justifyContent: "center",
+                      alignItems: "center",
+              }
+}
+onPress = {() => setImageViewerVisible(false)}
             >
-              <Ionicons name="close" size={30} color="#fff" />
-            </TouchableOpacity>
+  <Ionicons name="close" size = { 30} color = "#fff" />
+    </TouchableOpacity>
 
-            {selectedImage && (
-              <Image
-                source={{ uri: selectedImage }}
-                style={{
-                  width: screenWidth,
-                  height: screenHeight * 0.8,
-                }}
-                resizeMode="contain"
-              />
+{
+  selectedImage && (
+    <Image
+                source={ { uri: selectedImage } }
+  style = {{
+    width: screenWidth,
+      height: screenHeight * 0.8,
+                }
+}
+resizeMode = "contain"
+  />
             )}
-          </View>
-        </Modal>
+</View>
+  </Modal>
 
-        {/* Floating Scroll to Bottom Button */}
-        {!isAtBottom && !forceHideButton && (
-          <Animated.View
-          style={{
-            position: 'absolute',
-            right: 12, // Position above the send button
-            bottom: inputBarHeight + insets.bottom + 10, // Above the send button
+{/* Floating Scroll to Bottom Button */ }
+{
+  !isAtBottom && !forceHideButton && (
+    <Animated.View
+          style={
+    {
+      position: 'absolute',
+        right: 12, // Position above the send button
+          bottom: inputBarHeight + insets.bottom + 10, // Above the send button
             opacity: scrollButtonAnim.interpolate({
               inputRange: [0, 1],
               outputRange: [0, 0.85], // Slightly transparent for subtle look
             }),
-            transform: [
-              {
-                translateY: scrollButtonAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [20, 0], // Slide up from below
-                }),
-              },
-              {
-                scale: scrollButtonAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1], // Slight scale animation
-                }),
-              },
-            ],
-          }}
+              transform: [
+                {
+                  translateY: scrollButtonAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, 0], // Slide up from below
+                  }),
+                },
+                {
+                  scale: scrollButtonAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1], // Slight scale animation
+                  }),
+                },
+              ],
+          }
+  }
         >
-          <Pressable
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 12, // Match send button borderRadius
-              backgroundColor: mode === 'dark' ? '#3B82F6' : '#2563EB', // Match send button colors
+    <Pressable
+            style={
+    {
+      width: 32,
+        height: 32,
+          borderRadius: 12, // Match send button borderRadius
+            backgroundColor: mode === 'dark' ? '#3B82F6' : '#2563EB', // Match send button colors
               alignItems: 'center',
-              justifyContent: 'center',
-              elevation: 3,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.15,
-              shadowRadius: 2,
-            }}
-            onPress={() => {
-              // Hide button immediately when pressed
-              setForceHideButton(true);
-              setIsScrollingToBottom(true);
-              // Scroll to bottom
-              flatRef.current?.scrollToEnd({ animated: true });
-              // Set isAtBottom to true after scroll completes
-              setTimeout(() => {
-                setIsAtBottom(true);
-                setIsScrollingToBottom(false);
-              }, 300); // Match animation duration
-            }}
+                justifyContent: 'center',
+                  elevation: 3,
+                    shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.15,
+        shadowRadius: 2,
+            }
+  }
+  onPress = {() => {
+    // Hide button immediately when pressed
+    setForceHideButton(true);
+    setIsScrollingToBottom(true);
+    // Scroll to bottom
+    flatRef.current?.scrollToEnd({ animated: true });
+    // Set isAtBottom to true after scroll completes
+    setTimeout(() => {
+      setIsAtBottom(true);
+      setIsScrollingToBottom(false);
+    }, 300); // Match animation duration
+  }
+}
           >
-            <Ionicons name="chevron-down" size={20} color="#fff" />
-          </Pressable>
-        </Animated.View>
+  <Ionicons name="chevron-down" size = { 20} color = "#fff" />
+    </Pressable>
+    </Animated.View>
         )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+</KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }
 

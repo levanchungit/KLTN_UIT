@@ -17,15 +17,9 @@ import Constants from "expo-constants";
 import type { Category } from "@/repos/categoryRepo";
 
 // Backend API configuration
-// Update this IP to your machine's IP for device testing
 const BACKEND_API_URL =
     Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL ||
-    process.env.EXPO_PUBLIC_BACKEND_API_URL ||
-    "http://10.39.155.244:8000"; // Thay YOUR_PC_IP bằng IP thực
-
-// DEBUG: Log actual URL being used
-console.log("🔧 BACKEND_API_URL:", BACKEND_API_URL);
-console.log("🔧 EXPO_PUBLIC_BACKEND_API_URL:", Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL);
+    "http://10.53.108.244:8000";
 
 // Timeout for LLM inference (optimized for 7B model)
 const API_TIMEOUT = 60000; // Reduced from 90s to 60s for better UX
@@ -121,7 +115,7 @@ interface PredictRequest {
  * Individual transaction item from backend
  */
 interface TransactionItem {
-    item: string;
+    note: string;
     amount: number;
     category: string;
     type: "Thu nhập" | "Chi phí";
@@ -236,6 +230,8 @@ function parseDateFromText(text: string): Date {
 
 /**
  * Generate user-friendly message from prediction
+ * NOTE: For multi-transaction, cards will show individual details
+ * Message should only show summary (count + total) to avoid redundancy
  */
 function generateMessage(
     prediction: PredictResponse,
@@ -247,10 +243,8 @@ function generateMessage(
 
     if (isMultiple && prediction.transactions?.length) {
         const count = prediction.transactions.length;
-        const items = prediction.transactions
-            .map((t) => `${t.item} ${t.amount.toLocaleString("vi-VN")}đ`)
-            .join(", ");
-        return `Đã ghi ${count} giao dịch: ${items}. Tổng ${transactionType}: ${formattedAmount}đ ✓`;
+        // Simplified message - cards show individual details
+        return `Đã ghi ${count} giao dịch ${transactionType}. Tổng: ${formattedAmount}đ ✓`;
     }
 
     const confidenceStr =
@@ -367,10 +361,7 @@ export async function checkBackendHealth(): Promise<{
     error?: string;
 }> {
     try {
-        const healthUrl = `${BACKEND_API_URL}/api/v1/health`;
-        console.log("🔍 Health check URL:", healthUrl);
-
-        const fetchPromise = fetch(healthUrl, {
+        const fetchPromise = fetch(`${BACKEND_API_URL}/api/v1/health`, {
             method: "GET",
             headers: { "Accept": "application/json" },
         });
@@ -550,7 +541,7 @@ export async function classifyTransactionWithBackend(
                     categoryName: txMappedCategory?.categoryName || tx.category,
                     io: tx.type === "Thu nhập" ? "IN" as const : "OUT" as const,
                     confidence: tx.confidence,
-                    note: tx.item,
+                    note: tx.note,
                     date: date,
                 };
             });
