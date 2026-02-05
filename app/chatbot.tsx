@@ -25,6 +25,10 @@ import {
   testBackendConnection,
   type MappedPrediction,
 } from "@/services/backendClassificationService";
+import {
+  classificationCacheService,
+  type CachedPrediction,
+} from "@/services/classificationCacheService";
 import useAudioMeter from "@/services/useAudioMeter";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -203,7 +207,23 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
   return today;
 }
 
-type Msg = any;
+type Msg = {
+  role: "user" | "bot" | "card" | "typing";
+  text?: string;
+  imageUri?: string;
+  transactionId?: string;
+  accountId?: string;
+  amount?: number | null;
+  io?: "IN" | "OUT";
+  categoryId?: string;
+  categoryName?: string;
+  categoryIcon?: string;
+  categoryColor?: string;
+  note?: string;
+  when?: string;
+  date?: Date;
+  cacheStatus?: "checking" | "cache_hit" | "cache_miss";
+};
 
 async function getEmotionalReplyDirect(args: {
   io: "IN" | "OUT";
@@ -819,17 +839,51 @@ const parseTransactionWithAI = async (
     categoryName: string;
     confidence: number;
   }>;
+  fromCache?: boolean;
+  cacheLatency?: number;
 } | null> => {
+  const startTime = Date.now();
+
   try {
     // =========================================
-    // PRIORITY 1: Try Backend API (LLM-based classification)
+    // ALWAYS: Call Backend API (LLM-based classification)
     // =========================================
+    console.log("🔍 Processing classification via backend API...");
     console.log("🌐 Attempting backend API classification...");
+    const backendStartTime = Date.now();
     const backendResult = await classifyTransactionWithBackend(text, userCategories);
-    
+    const backendLatency = Date.now() - backendStartTime;
+
+    console.log(`🌐 Backend API completed in ${backendLatency}ms`);
+
     if (!backendResult.error && backendResult.categoryId && backendResult.confidence > 0) {
       console.log(`✅ Backend API success: ${backendResult.categoryName} (${(backendResult.confidence * 100).toFixed(1)}%)`);
-      
+
+      // Cache the result for future use
+      const cachePayload: CachedPrediction = {
+        amount: backendResult.amount,
+        categoryId: backendResult.categoryId,
+        categoryName: backendResult.categoryName,
+        io: backendResult.io,
+        confidence: backendResult.confidence,
+        note: backendResult.note,
+        date: backendResult.date.toISOString(),
+        isMultiple: backendResult.isMultiple,
+        transactions: backendResult.transactions?.map(tx => ({
+          amount: tx.amount,
+          categoryId: tx.categoryId,
+          categoryName: tx.categoryName,
+          io: tx.io,
+          confidence: tx.confidence,
+          note: tx.note,
+          date: tx.date.toISOString(),
+        })),
+        message: backendResult.message,
+        overallConfidence: backendResult.overallConfidence,
+        source: "llm",
+      };
+      await classificationCacheService.cacheResult(text, cachePayload);
+
       // Handle multi-transaction response
       if (backendResult.isMultiple && backendResult.transactions?.length) {
         console.log(`🎯 Multi-transaction detected: ${backendResult.transactions.length} items`);
@@ -853,9 +907,10 @@ const parseTransactionWithAI = async (
           })),
           confidence: backendResult.confidence,
           mlFailed: false,
+          fromCache: false,
         };
       }
-      
+
       // Single transaction from backend
       return {
         action: "CREATE_TRANSACTION",
@@ -869,9 +924,10 @@ const parseTransactionWithAI = async (
         confidence: backendResult.confidence,
         mlFailed: false,
         alternatives: [],
+        fromCache: false,
       };
     }
-    
+
     // Log backend failure reason
     if (backendResult.error) {
       console.warn(`⚠️ Backend API failed: ${backendResult.error}. Falling back to local classification.`);
@@ -1311,7 +1367,7 @@ async function createTransaction(draft: {
 }
 
 /* ---------------- Typing Indicator Component ---------------- */
-function TypingIndicator({ colors }: { colors: any }) {
+function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: string }) {
   const [animations] = useState([
     new Animated.Value(0.3),
     new Animated.Value(0.3),
@@ -1346,28 +1402,53 @@ function TypingIndicator({ colors }: { colors: any }) {
     };
   }, [animations]);
 
+  // Get status text based on cache status
+  const getStatusText = () => {
+    switch (cacheStatus) {
+      case "checking":
+        return "Đang kiểm tra cache...";
+      case "cache_hit":
+        return "Tìm thấy trong cache!";
+      case "cache_miss":
+        return "Đang xử lý AI...";
+      default:
+        return "Đang xử lý...";
+    }
+  };
+
   return (
     <View
       style={[
         styles.bubble,
         styles.left,
         {
-          flexDirection: "row",
-          gap: 4,
+          flexDirection: "column",
+          gap: 8,
           backgroundColor: colors.card,
           borderColor: colors.divider,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          minWidth: 150,
         },
       ]}
     >
-      {animations.map((anim, index) => (
-        <Animated.View
-          key={index}
-          style={[
-            styles.dot,
-            { backgroundColor: colors.subText, opacity: anim },
-          ]}
-        />
-      ))}
+      {/* Animated dots */}
+      <View style={{ flexDirection: "row", gap: 4 }}>
+        {animations.map((anim, index) => (
+          <Animated.View
+            key={index}
+            style={[
+              styles.dot,
+              { backgroundColor: colors.subText, opacity: anim },
+            ]}
+          />
+        ))}
+      </View>
+
+      {/* Status text */}
+      <Text style={{ color: colors.subText, fontSize: 12, fontStyle: "italic" }}>
+        {getStatusText()}
+      </Text>
     </View>
   );
 }
@@ -2427,11 +2508,11 @@ export default function Chatbot() {
       processingTextRef.current = true;
 
       try {
-        // Add typing indicator only if not already present
+        // Add typing indicator with cache status
         setMessages((m) => {
           const last = m[m.length - 1];
           if (last && last.role === "typing") return m;
-          return [...m, { role: "typing" }];
+          return [...m, { role: "typing", cacheStatus: "checking" }];
         });
         scrollToEnd();
 
@@ -2544,7 +2625,7 @@ export default function Chatbot() {
           return;
         }
 
-        // Handle multi-transaction from backend API
+        // Handle multi-transaction from backend API with PROGRESSIVE DISPLAY
         if (aiResult.action === "CREATE_MULTIPLE_TRANSACTIONS") {
           if (!aiResult.transactions || aiResult.transactions.length === 0) {
             setMessages((m) => [
@@ -2558,7 +2639,7 @@ export default function Chatbot() {
             return;
           }
 
-          // Auto-create multiple transactions
+          // Progressive transaction display with streaming UI
           try {
             const userId = await getCurrentUserId();
             if (!userId) throw new Error("No user logged in");
@@ -2568,11 +2649,24 @@ export default function Chatbot() {
             const defaultAccount = accounts.find((acc) => acc.isDefault) || accounts[0];
             if (!defaultAccount) throw new Error("No default account found");
 
-            // Create all transactions
+            const totalTransactions = aiResult.transactions.length;
             const createdTransactions: string[] = [];
             const cardMessages: any[] = [];
 
-            for (const tx of aiResult.transactions) {
+            // Show initial progress message
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `🔄 Đang xử lý ${totalTransactions} giao dịch...\n\n⏳ Vui lòng chờ trong giây lát.`,
+              },
+            ]);
+
+            // Process transactions progressively with staggered delay
+            for (let index = 0; index < aiResult.transactions.length; index++) {
+              const tx = aiResult.transactions[index];
+
+              // Create transaction
               const txn = await addExpense({
                 userId,
                 accountId: defaultAccount.id,
@@ -2588,8 +2682,8 @@ export default function Chatbot() {
               const txCategory = items.find((c) => c.id === tx.categoryId);
               const when = (tx.date || new Date()).toLocaleDateString("vi-VN");
 
-              cardMessages.push({
-                role: "card",
+              const cardMessage = {
+                role: "card" as const,
                 transactionId: txn,
                 accountId: defaultAccount.id,
                 amount: tx.amount,
@@ -2601,7 +2695,13 @@ export default function Chatbot() {
                 note: tx.note,
                 when,
                 date: tx.date,
-              });
+              };
+
+              // Add card progressively with animation
+              setMessages((m) => [
+                ...m,
+                cardMessage,
+              ]);
 
               // Log prediction for learning
               await logPrediction({
@@ -2611,17 +2711,34 @@ export default function Chatbot() {
                 predictedCategoryId: tx.categoryId || null,
                 confidence: tx.confidence || 0.8,
               });
+
+              // Small delay between cards for progressive effect (except last one)
+              if (index < aiResult.transactions.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+              }
             }
 
-            // Update messages with bot response and cards
-            setMessages((m) => [
-              ...m.slice(0, -1), // Remove typing
-              {
-                role: "bot",
-                text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ\n\n${aiResult.message}`,
-              },
-              ...cardMessages,
-            ]);
+            // Update messages with final success message
+            const cacheIndicator = aiResult.fromCache ? " (từ cache)" : "";
+            const latencyInfo = aiResult.cacheLatency
+              ? `\n⏱️ Thời gian: ${aiResult.cacheLatency}ms${cacheIndicator}`
+              : "";
+
+            setMessages((m) => {
+              // Remove the progress message and replace with final result
+              const withoutProgress = m.filter(msg =>
+                !(msg.role === "bot" && msg.text?.includes("Đang xử lý"))
+              );
+
+              return [
+                ...withoutProgress.slice(0, -1), // Remove typing indicator
+                {
+                  role: "bot",
+                  text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!${cacheIndicator}${latencyInfo}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ\n\n${aiResult.message}`,
+                },
+                ...cardMessages,
+              ];
+            });
 
             // Trigger model retraining for first transaction
             if (aiResult.transactions.length > 0) {
@@ -2781,12 +2898,18 @@ export default function Chatbot() {
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
 
+      // Cache indicator for UI feedback
+      const cacheIndicator = aiResult.fromCache ? " ⚡" : "";
+      const latencyInfo = aiResult.cacheLatency
+        ? `\n⏱️ ${aiResult.cacheLatency}ms`
+        : "";
+
       // Remove typing indicator and add bot response + transaction card
       setMessages((m) => [
         ...m.slice(0, -1),
         {
           role: "bot",
-          text: aiResult.message,
+          text: aiResult.message + (cacheIndicator + latencyInfo),
         },
         {
           role: "card",
@@ -3431,7 +3554,7 @@ export default function Chatbot() {
                 );
               }
               if (item.role === "typing") {
-                return <TypingIndicator colors={colors} />;
+                return <TypingIndicator colors={colors} cacheStatus={item.cacheStatus} />;
               }
 
               return (
