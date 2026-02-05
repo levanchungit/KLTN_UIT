@@ -127,9 +127,7 @@ interface TransactionItem {
  */
 interface PredictResponse {
     amount: number;
-    category: string;
-    type: "Thu nhập" | "Chi phí";
-    confidence: number;
+    message: string;
     transactions?: TransactionItem[];
     raw_output?: string;
 }
@@ -515,14 +513,19 @@ export async function classifyTransactionWithBackend(
             () => callBackendAPI(requestBody)
         );
 
-        // Map backend category to local category
+        // Get category/type from first transaction (or use empty for message-only response)
+        const firstTx = prediction.transactions?.[0];
+        const backendCategory = firstTx?.category || "";
+        const backendType = firstTx?.type || "Chi phí";
+
+        // Map backend category to local category (for single transaction)
         const mappedCategory = mapCategoryToLocal(
-            prediction.category,
+            backendCategory,
             localCategories,
-            prediction.type
+            backendType
         );
 
-        const io: "IN" | "OUT" = prediction.type === "Thu nhập" ? "IN" : "OUT";
+        const io: "IN" | "OUT" = backendType === "Thu nhập" ? "IN" : "OUT";
         const isMultiple = prediction.transactions && prediction.transactions.length > 1;
 
         // Map individual transactions if multi-transaction
@@ -539,7 +542,7 @@ export async function classifyTransactionWithBackend(
                     amount: tx.amount,
                     categoryId: txMappedCategory?.categoryId || mappedCategory?.categoryId || "",
                     categoryName: txMappedCategory?.categoryName || tx.category,
-                    io: tx.type === "Thu nhập" ? "IN" as const : "OUT" as const,
+                    io: tx.type === "Thu nhập" ? ("IN" as const) : ("OUT" as const),
                     confidence: tx.confidence,
                     note: tx.note,
                     date: date,
@@ -547,20 +550,26 @@ export async function classifyTransactionWithBackend(
             });
         }
 
-        const message = generateMessage(prediction, isMultiple || false, text);
+        // Use the conversational message from backend (already context-aware)
+        const message = prediction.message || "Giao dịch đã được xử lý!";
+
+        // Calculate overall confidence from transactions
+        const overallConfidence = prediction.transactions?.length
+            ? prediction.transactions.reduce((sum, tx) => sum + (tx.confidence || 0.9), 0) / prediction.transactions.length
+            : 0.9;
 
         return {
             amount: prediction.amount || null,
             categoryId: mappedCategory?.categoryId || "",
-            categoryName: mappedCategory?.categoryName || prediction.category,
+            categoryName: mappedCategory?.categoryName || backendCategory,
             io,
-            confidence: prediction.confidence,
+            confidence: overallConfidence,
             note: text,
             date,
             isMultiple: isMultiple || false,
             transactions: mappedTransactions,
             message,
-            overallConfidence: prediction.confidence,
+            overallConfidence,
             source: "llm",
         };
     } catch (error) {

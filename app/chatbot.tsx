@@ -2715,8 +2715,9 @@ export default function Chatbot() {
               return [
                 ...cleanMessages, // Keep user's message
                 {
+                  // Use conversational message from backend instead of hardcoded text
                   role: "bot",
-                  text: `✅ Tự động tạo ${createdTransactions.length} giao dịch thành công!${latencyInfo}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ`,
+                  text: `✅ ${aiResult.message || "Tự động tạo giao dịch thành công!"}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ${latencyInfo}`,
                 },
                 ...cardMessages, // Add ALL cards ONCE - exactly matching backend count
               ];
