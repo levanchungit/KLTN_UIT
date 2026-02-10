@@ -1,0 +1,6649 @@
+{
+  "metadata": {
+    "description": "Generated Mixed Dataset for AI Evaluation",
+    "total_samples": 510,
+    "generated_at": "2026-02-07T01:08:08.741Z"
+  },
+  "test_samples": [
+    {
+      "id": 1,
+      "text": "di rua xe het 1930k cộng 330 cành bus",
+      "expected": [
+        {
+          "amount": 1930000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 330000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "text": "đi áo thun hết 1080k, đi karaoke hết 2530k thêm mua netflix 3330 cành",
+      "expected": [
+        {
+          "amount": 1080000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2530000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3330000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "text": "mới bóng đèn 3.94 triệu",
+      "expected": [
+        {
+          "amount": 3940000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "text": "đóng thực phẩm 860 ngàn",
+      "expected": [
+        {
+          "amount": 860000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "text": "kính thuốc 1450000",
+      "expected": [
+        {
+          "amount": 1450000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "text": "sách 590.000 thêm di tap chi het 2190 ngan",
+      "expected": [
+        {
+          "amount": 590000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2190000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "text": "9470 canh hoan tien",
+      "expected": [
+        {
+          "amount": 9470000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "text": "đi tiền nhà hết 1560 cành",
+      "expected": [
+        {
+          "amount": 1560000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "text": "đóng cơm tấm 480.000",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "text": "photo tài liệu 9.64 triệu",
+      "expected": [
+        {
+          "amount": 9640000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "text": "lì xì 5490k thêm 890 ngàn vé máy bay",
+      "expected": [
+        {
+          "amount": 5490000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 890000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "text": "netflix 2280k",
+      "expected": [
+        {
+          "amount": 2280000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "text": "đóng taxi 1.92 triệu",
+      "expected": [
+        {
+          "amount": 1920000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "text": "1620 cành điện",
+      "expected": [
+        {
+          "amount": 1620000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "text": "thu tap chi 2.01m",
+      "expected": [
+        {
+          "amount": 2010000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "text": "đi lì xì hết 10640 cành với đi khám bệnh hết 790.000",
+      "expected": [
+        {
+          "amount": 10640000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 790000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "text": "phở 250k",
+      "expected": [
+        {
+          "amount": 250000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "text": "3650 ngàn bowling, 310000 vé xe",
+      "expected": [
+        {
+          "amount": 3650000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 310000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "text": "220.000 ielts",
+      "expected": [
+        {
+          "amount": 220000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "text": "thu bun bo 65000 rồi đi đi chợ hết 510k",
+      "expected": [
+        {
+          "amount": 65000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 510000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "text": "16.84tr thưởng",
+      "expected": [
+        {
+          "amount": 16840000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "text": "váy 1440 ngàn",
+      "expected": [
+        {
+          "amount": 1440000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "text": "3.720.000 ielts",
+      "expected": [
+        {
+          "amount": 3720000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "text": "3300000 tiền điện với mới viện phí 820 ngàn",
+      "expected": [
+        {
+          "amount": 3300000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 820000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "text": "990 canh tien vien phi, được lương 19160 ngàn",
+      "expected": [
+        {
+          "amount": 990000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 19160000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "text": "cơm tấm 220 cành",
+      "expected": [
+        {
+          "amount": 220000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "text": "thu tra sua 400.000 thêm thanh toán thuốc 1730000",
+      "expected": [
+        {
+          "amount": 400000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1730000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "text": "đi nhổ răng hết 1010 cành. đi hủ tiếu hết 430 ngàn",
+      "expected": [
+        {
+          "amount": 1010000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 430000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "text": "đi bút hết 6.44m thêm chi xét nghiệm 130 ngàn",
+      "expected": [
+        {
+          "amount": 6440000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 130000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "text": "đi đổ xăng hết 850 cành",
+      "expected": [
+        {
+          "amount": 850000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "text": "270000 rau củ",
+      "expected": [
+        {
+          "amount": 270000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "text": "có thưởng 1.2 triệu lúc nãy",
+      "expected": [
+        {
+          "amount": 1200000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "text": "toeic 3330000",
+      "expected": [
+        {
+          "amount": 3330000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "text": "rau củ 940000",
+      "expected": [
+        {
+          "amount": 940000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "text": "vé máy bay 650k với chi sửa xe 940k lúc nãy",
+      "expected": [
+        {
+          "amount": 650000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 940000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "text": "1290 cành tiền dịch vụ chung cư",
+      "expected": [
+        {
+          "amount": 1290000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "text": "lương thưởng 3280k",
+      "expected": [
+        {
+          "amount": 3280000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "text": "đi quần áo hết 1910 ngàn, 200000 tiền bảo dưỡng xe",
+      "expected": [
+        {
+          "amount": 1910000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 200000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "text": "2300k tiền siêu thị",
+      "expected": [
+        {
+          "amount": 2300000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "text": "đi vé máy bay hết 1490k",
+      "expected": [
+        {
+          "amount": 1490000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "text": "2.33 triệu tiền giày",
+      "expected": [
+        {
+          "amount": 2330000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "text": "be 280000 sau đó moi cf 50k chieu nay",
+      "expected": [
+        {
+          "amount": 280000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 50000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "text": "đi nước muối hết 210000",
+      "expected": [
+        {
+          "amount": 210000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "text": "970.000 tiền thực phẩm",
+      "expected": [
+        {
+          "amount": 970000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "text": "14.62tr bán đồ cũ. đi xét nghiệm hết 250.000",
+      "expected": [
+        {
+          "amount": 14620000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 250000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "text": "chi khám bệnh 1.33 triệu hôm kia",
+      "expected": [
+        {
+          "amount": 1330000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "text": "kính thuốc 1.11m sau đó thanh toán ielts 6190 ngàn thêm 1840 canh tien bus",
+      "expected": [
+        {
+          "amount": 1110000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 6190000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1840000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "text": "đi vé xem phim hết 95k",
+      "expected": [
+        {
+          "amount": 95000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "text": "game 2630 ngàn sau đó đi gojek hết 600 cành",
+      "expected": [
+        {
+          "amount": 2630000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 600000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "text": "di wifi het 1590 canh",
+      "expected": [
+        {
+          "amount": 1590000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "text": "đi karaoke hết 1740 cành",
+      "expected": [
+        {
+          "amount": 1740000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "text": "thanh toán vé xem phim 4940000 chiều nay",
+      "expected": [
+        {
+          "amount": 4940000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "text": "đi bóng đèn hết 1.430.000",
+      "expected": [
+        {
+          "amount": 1430000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "text": "lì xì 1.770.000",
+      "expected": [
+        {
+          "amount": 1770000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "text": "du lịch 4060k",
+      "expected": [
+        {
+          "amount": 4060000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "text": "2020000 đòi nợ",
+      "expected": [
+        {
+          "amount": 2020000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "text": "đi quần áo hết 1420k - váy 810 cành",
+      "expected": [
+        {
+          "amount": 1420000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 810000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "text": "2770 ngàn đi chợ",
+      "expected": [
+        {
+          "amount": 2770000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "text": "đi nhậu hết 100.000",
+      "expected": [
+        {
+          "amount": 100000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "text": "hoàn tiền 9.19m",
+      "expected": [
+        {
+          "amount": 9190000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "text": "netflix 470.000, nhậu 35 cành với 480 ngàn tiền be",
+      "expected": [
+        {
+          "amount": 470000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 35000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "text": "chi sửa xe 390 ngàn",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "text": "đóng sửa xe 1270 ngàn",
+      "expected": [
+        {
+          "amount": 1270000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "text": "đóng rác 2.35 triệu. wifi 1630k",
+      "expected": [
+        {
+          "amount": 2350000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1630000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "text": "đi gojek hết 1020 cành",
+      "expected": [
+        {
+          "amount": 1020000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "text": "300.000 xăng",
+      "expected": [
+        {
+          "amount": 300000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "text": "rau củ 2.830.000",
+      "expected": [
+        {
+          "amount": 2830000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 68,
+      "text": "thu game 1.130.000",
+      "expected": [
+        {
+          "amount": 1130000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 69,
+      "text": "sách giáo khoa 950.000",
+      "expected": [
+        {
+          "amount": 950000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "text": "túi xách 2.960.000",
+      "expected": [
+        {
+          "amount": 2960000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 71,
+      "text": "di dien het 2920k",
+      "expected": [
+        {
+          "amount": 2920000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "text": "510000 tiền thuốc",
+      "expected": [
+        {
+          "amount": 510000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "text": "700 ngàn tiền bảo hiểm y tế",
+      "expected": [
+        {
+          "amount": 700000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "text": "3.77 triệu toeic",
+      "expected": [
+        {
+          "amount": 3770000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "text": "bảo dưỡng xe 1920k",
+      "expected": [
+        {
+          "amount": 1920000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 76,
+      "text": "9.29 triệu tiền vở",
+      "expected": [
+        {
+          "amount": 9290000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 77,
+      "text": "đi karaoke hết 1560k",
+      "expected": [
+        {
+          "amount": 1560000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "text": "sữa tắm 2.25m",
+      "expected": [
+        {
+          "amount": 2250000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 79,
+      "text": "dong my pham 240k chieu nay và mỹ phẩm 2000 cành - bảo dưỡng xe 1450 ngàn",
+      "expected": [
+        {
+          "amount": 240000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2000000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1450000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "text": "bút 890 ngàn",
+      "expected": [
+        {
+          "amount": 890000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "text": "đi karaoke hết 680.000",
+      "expected": [
+        {
+          "amount": 680000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 82,
+      "text": "đi tiền học hết 160.000",
+      "expected": [
+        {
+          "amount": 160000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 83,
+      "text": "đi xét nghiệm hết 300000",
+      "expected": [
+        {
+          "amount": 300000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 84,
+      "text": "trả cafe 80k. thanh toán du lịch 2330 ngàn lúc nãy và xăng 220 ngàn",
+      "expected": [
+        {
+          "amount": 80000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2330000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 220000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "text": "1.47 trieu bao hiem y te",
+      "expected": [
+        {
+          "amount": 1470000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "text": "thanh toán nước muối 1740 ngàn - 2.610.000 tiền mỹ phẩm",
+      "expected": [
+        {
+          "amount": 1740000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2610000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "text": "netflix 4100k",
+      "expected": [
+        {
+          "amount": 4100000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 88,
+      "text": "xăng 1480k",
+      "expected": [
+        {
+          "amount": 1480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 89,
+      "text": "tiền trọ 2260000 cộng đi túi xách hết 1.38tr",
+      "expected": [
+        {
+          "amount": 2260000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1380000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 90,
+      "text": "sách giáo khoa 390.000",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "text": "đi cơm tấm hết 500000",
+      "expected": [
+        {
+          "amount": 500000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 92,
+      "text": "đi taxi hết 370.000",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 93,
+      "text": "viện phí 1.35 triệu",
+      "expected": [
+        {
+          "amount": 1350000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 94,
+      "text": "nhận hoàn tiền 1.980.000 rồi xem phim 2210 ngàn và đi sửa ống nước hết 1170 ngàn",
+      "expected": [
+        {
+          "amount": 1980000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 2210000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1170000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 95,
+      "text": "mới khóa học online 7.45m",
+      "expected": [
+        {
+          "amount": 7450000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 96,
+      "text": "đi bus hết 820 cành",
+      "expected": [
+        {
+          "amount": 820000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 97,
+      "text": "lì xì 15160 ngàn - nhậu 190 ngàn",
+      "expected": [
+        {
+          "amount": 15160000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 190000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 98,
+      "text": "đi chợ 1.010.000 - sách giáo khoa 5570k",
+      "expected": [
+        {
+          "amount": 1010000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 5570000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 99,
+      "text": "sinh tố 490k",
+      "expected": [
+        {
+          "amount": 490000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 100,
+      "text": "nước muối 1.79tr",
+      "expected": [
+        {
+          "amount": 1790000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "text": "sách giáo khoa 2.53tr. di karaoke het 3.38 trieu với game 690000",
+      "expected": [
+        {
+          "amount": 2530000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3380000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 690000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "text": "đi nhổ răng hết 1.87 triệu",
+      "expected": [
+        {
+          "amount": 1870000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "text": "bus 1220 ngàn",
+      "expected": [
+        {
+          "amount": 1220000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "text": "bảo dưỡng xe 580 cành rồi bảo hiểm y tế 1.710.000, rau cu 2030 canh",
+      "expected": [
+        {
+          "amount": 580000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1710000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2030000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "text": "di internet het 3600 ngan và đi chợ 680.000",
+      "expected": [
+        {
+          "amount": 3600000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 680000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "text": "4440000 vở",
+      "expected": [
+        {
+          "amount": 4440000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "text": "đi bia hết 400.000 - sách giáo khoa 990 ngàn",
+      "expected": [
+        {
+          "amount": 400000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 990000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "text": "đi vở hết 3.98tr và khám bệnh 510 cành",
+      "expected": [
+        {
+          "amount": 3980000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 510000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "text": "chi rau cu 1160 ngan rồi đi khóa học online hết 9200 ngàn",
+      "expected": [
+        {
+          "amount": 1160000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 9200000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "text": "nhận túi xách 240 cành",
+      "expected": [
+        {
+          "amount": 240000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "text": "áo thun 970.000",
+      "expected": [
+        {
+          "amount": 970000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "text": "di tra sua het 430k. 3.620.000 lãi ngân hàng",
+      "expected": [
+        {
+          "amount": 430000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3620000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 113,
+      "text": "nước muối 710000 rồi 45 cành cà phê",
+      "expected": [
+        {
+          "amount": 710000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 45000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 114,
+      "text": "di dung cu hoc tap het 6860000",
+      "expected": [
+        {
+          "amount": 6860000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 115,
+      "text": "đi vé xem phim hết 580.000",
+      "expected": [
+        {
+          "amount": 580000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 116,
+      "text": "đi gà rán hết 290 ngàn với 1320k tiền nước muối",
+      "expected": [
+        {
+          "amount": 290000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1320000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 117,
+      "text": "đóng gojek 680000 sau đó đi cơm tấm hết 450k với vé xem phim 4.54 triệu",
+      "expected": [
+        {
+          "amount": 680000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 450000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4540000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 118,
+      "text": "đi vở hết 4270 ngàn thêm tiền công 8490 cành",
+      "expected": [
+        {
+          "amount": 4270000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 8490000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 119,
+      "text": "du lịch 3890 cành",
+      "expected": [
+        {
+          "amount": 3890000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "text": "đi pizza hết 490k",
+      "expected": [
+        {
+          "amount": 490000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 121,
+      "text": "vừa tiền trọ 4.45 triệu",
+      "expected": [
+        {
+          "amount": 4450000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 122,
+      "text": "480 ngàn tiền gà rán",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 123,
+      "text": "netflix 3860 ngàn",
+      "expected": [
+        {
+          "amount": 3860000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 124,
+      "text": "180 cành tiền bún bò",
+      "expected": [
+        {
+          "amount": 180000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "text": "730 cành kính thuốc",
+      "expected": [
+        {
+          "amount": 730000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 126,
+      "text": "điện 1.34tr",
+      "expected": [
+        {
+          "amount": 1340000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 127,
+      "text": "di bowling het 160.000",
+      "expected": [
+        {
+          "amount": 160000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 128,
+      "text": "2370000 karaoke, rửa xe 890 ngàn",
+      "expected": [
+        {
+          "amount": 2370000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 890000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "text": "đi cf hết 480000",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 130,
+      "text": "thu son 600.000",
+      "expected": [
+        {
+          "amount": 600000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 131,
+      "text": "540k son",
+      "expected": [
+        {
+          "amount": 540000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 132,
+      "text": "đi vở hết 8.220.000",
+      "expected": [
+        {
+          "amount": 8220000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 133,
+      "text": "đi nước muối hết 1510 ngàn",
+      "expected": [
+        {
+          "amount": 1510000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 134,
+      "text": "thu bảo hiểm y tế 1.89m",
+      "expected": [
+        {
+          "amount": 1890000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 135,
+      "text": "3920k tiền spotify",
+      "expected": [
+        {
+          "amount": 3920000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 136,
+      "text": "di tap chi het 2560 canh",
+      "expected": [
+        {
+          "amount": 2560000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 137,
+      "text": "sua xe 1.69tr",
+      "expected": [
+        {
+          "amount": 1690000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 138,
+      "text": "mua học phí 7400000",
+      "expected": [
+        {
+          "amount": 7400000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 139,
+      "text": "390 cành tiền quần áo cộng tiền công 17300 cành",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 17300000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 140,
+      "text": "karaoke 3.770.000",
+      "expected": [
+        {
+          "amount": 3770000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 141,
+      "text": "nhậu 310 cành, 1970k bảo dưỡng xe",
+      "expected": [
+        {
+          "amount": 310000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1970000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 142,
+      "text": "đi thưởng hết 7410k",
+      "expected": [
+        {
+          "amount": 7410000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 143,
+      "text": "đi mỹ phẩm hết 2.780.000",
+      "expected": [
+        {
+          "amount": 2780000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 144,
+      "text": "đi rau củ hết 400.000",
+      "expected": [
+        {
+          "amount": 400000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 145,
+      "text": "1270 ngàn tiền viện phí",
+      "expected": [
+        {
+          "amount": 1270000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 146,
+      "text": "nhận du lịch 720k, nhận gửi xe 1070 cành, điện 2.6 triệu",
+      "expected": [
+        {
+          "amount": 720000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1070000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2600000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 147,
+      "text": "quan ao 2.440.000 với trả nhổ răng 1000 cành",
+      "expected": [
+        {
+          "amount": 2440000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1000000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 148,
+      "text": "đi khám răng hết 400 ngàn - wifi 1000000",
+      "expected": [
+        {
+          "amount": 400000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1000000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 149,
+      "text": "vé xem phim 4130k",
+      "expected": [
+        {
+          "amount": 4130000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 150,
+      "text": "di khoa hoc online het 540k",
+      "expected": [
+        {
+          "amount": 540000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 151,
+      "text": "đi vở hết 7300 ngàn cộng 2310k tiền nhà",
+      "expected": [
+        {
+          "amount": 7300000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2310000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 152,
+      "text": "di internet het 2370 canh",
+      "expected": [
+        {
+          "amount": 2370000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 153,
+      "text": "đi xem phim hết 2790000",
+      "expected": [
+        {
+          "amount": 2790000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 154,
+      "text": "430 cành cơm tấm",
+      "expected": [
+        {
+          "amount": 430000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 155,
+      "text": "đi tạp chí hết 790 cành",
+      "expected": [
+        {
+          "amount": 790000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 156,
+      "text": "giày 2.37 triệu",
+      "expected": [
+        {
+          "amount": 2370000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 157,
+      "text": "mua hủ tiếu 390k",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 158,
+      "text": "di karaoke het 600k",
+      "expected": [
+        {
+          "amount": 600000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 159,
+      "text": "gas 1870 cành và 170 cành tiền quần áo",
+      "expected": [
+        {
+          "amount": 1870000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 170000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 160,
+      "text": "được hoàn tiền 1670000 - thu bóng đèn 1360000 rồi 1440 ngàn mỹ phẩm",
+      "expected": [
+        {
+          "amount": 1670000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1360000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1440000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 161,
+      "text": "trả trà sữa 120.000 lúc nãy. đi sinh tố hết 460.000",
+      "expected": [
+        {
+          "amount": 120000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 460000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 162,
+      "text": "khám răng 940k",
+      "expected": [
+        {
+          "amount": 940000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 163,
+      "text": "sách 220 cành",
+      "expected": [
+        {
+          "amount": 220000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 164,
+      "text": "dụng cụ học tập 5.310.000",
+      "expected": [
+        {
+          "amount": 5310000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 165,
+      "text": "2470 ngàn tiền spotify, hủ tiếu 260 cành rồi 1.830.000 tiền nước muối",
+      "expected": [
+        {
+          "amount": 2470000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 260000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1830000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 166,
+      "text": "đi nhổ răng hết 1.57m",
+      "expected": [
+        {
+          "amount": 1570000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 167,
+      "text": "son 790k",
+      "expected": [
+        {
+          "amount": 790000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 168,
+      "text": "du lich 2160k",
+      "expected": [
+        {
+          "amount": 2160000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 169,
+      "text": "1390 cành tiền bảo hiểm y tế rồi 15950 ngàn được cho",
+      "expected": [
+        {
+          "amount": 1390000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 15950000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 170,
+      "text": "nhận bowling 2.57m",
+      "expected": [
+        {
+          "amount": 2570000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 171,
+      "text": "nhận toeic 8540000",
+      "expected": [
+        {
+          "amount": 8540000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 172,
+      "text": "khau trang 920.000",
+      "expected": [
+        {
+          "amount": 920000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 173,
+      "text": "thanh toán grab 710 cành",
+      "expected": [
+        {
+          "amount": 710000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 174,
+      "text": "chi dầu gội 1750000",
+      "expected": [
+        {
+          "amount": 1750000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 175,
+      "text": "vừa nước muối 1.940.000",
+      "expected": [
+        {
+          "amount": 1940000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 176,
+      "text": "khẩu trang 1.91 triệu",
+      "expected": [
+        {
+          "amount": 1910000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 177,
+      "text": "rửa xe 310.000",
+      "expected": [
+        {
+          "amount": 310000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 178,
+      "text": "son 1.98m",
+      "expected": [
+        {
+          "amount": 1980000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 179,
+      "text": "ielts 6.410.000 rồi 3.26 triệu tiền tiền trọ",
+      "expected": [
+        {
+          "amount": 6410000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3260000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 180,
+      "text": "2.820.000 tien spotify",
+      "expected": [
+        {
+          "amount": 2820000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 181,
+      "text": "vé xe 440k",
+      "expected": [
+        {
+          "amount": 440000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 182,
+      "text": "1310 cành tiền karaoke",
+      "expected": [
+        {
+          "amount": 1310000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 183,
+      "text": "rác 4140 cành",
+      "expected": [
+        {
+          "amount": 4140000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 184,
+      "text": "đi phở hết 140 cành thêm bowling 2.36 triệu",
+      "expected": [
+        {
+          "amount": 140000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2360000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 185,
+      "text": "1450k tiền túi xách và được cho 1550000",
+      "expected": [
+        {
+          "amount": 1450000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1550000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 186,
+      "text": "bút 3.53 triệu",
+      "expected": [
+        {
+          "amount": 3530000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 187,
+      "text": "đi sữa tắm hết 1460 ngàn",
+      "expected": [
+        {
+          "amount": 1460000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 188,
+      "text": "đóng internet 2360000",
+      "expected": [
+        {
+          "amount": 2360000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 189,
+      "text": "4980 ngàn tiền vé xem phim rồi vừa xe ôm 440 ngàn sau đó đi bảo dưỡng xe hết 1810000",
+      "expected": [
+        {
+          "amount": 4980000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 440000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1810000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 190,
+      "text": "đóng xăng 760000",
+      "expected": [
+        {
+          "amount": 760000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 191,
+      "text": "đi nước hết 4.06tr",
+      "expected": [
+        {
+          "amount": 4060000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 192,
+      "text": "đi lì xì hết 13800000 rồi sửa xe 1810 ngàn",
+      "expected": [
+        {
+          "amount": 13800000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1810000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 193,
+      "text": "toeic 95 cành",
+      "expected": [
+        {
+          "amount": 95000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 194,
+      "text": "lương được cho 14.330.000, bia 380 ngàn rồi 4860k tiền toeic",
+      "expected": [
+        {
+          "amount": 14330000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 380000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4860000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 195,
+      "text": "đi bán đồ cũ hết 10570 ngàn",
+      "expected": [
+        {
+          "amount": 10570000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 196,
+      "text": "gojek 1690 ngàn",
+      "expected": [
+        {
+          "amount": 1690000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 197,
+      "text": "đi viện phí hết 1.290.000 - đi taxi hết 1.45m",
+      "expected": [
+        {
+          "amount": 1290000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1450000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 198,
+      "text": "được cho 10.38 triệu",
+      "expected": [
+        {
+          "amount": 10380000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 199,
+      "text": "bún bò 290000",
+      "expected": [
+        {
+          "amount": 290000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "text": "có lãi ngân hàng 9.290.000",
+      "expected": [
+        {
+          "amount": 9290000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 201,
+      "text": "netflix 3640000 và 3.450.000 tiền photo tài liệu",
+      "expected": [
+        {
+          "amount": 3640000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3450000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 202,
+      "text": "mua khẩu trang 1870 ngàn tối qua. vừa spotify 4840k sáng nay",
+      "expected": [
+        {
+          "amount": 1870000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4840000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 203,
+      "text": "cơm tấm 30 ngàn",
+      "expected": [
+        {
+          "amount": 30000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 204,
+      "text": "lương lãi ngân hàng 13.260.000 rồi 1.55m tiền đi chợ",
+      "expected": [
+        {
+          "amount": 13260000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1550000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 205,
+      "text": "đi vé máy bay hết 1.92m",
+      "expected": [
+        {
+          "amount": 1920000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 206,
+      "text": "co duoc cho 15060k",
+      "expected": [
+        {
+          "amount": 15060000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 207,
+      "text": "siêu thị 2.9m",
+      "expected": [
+        {
+          "amount": 2900000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 208,
+      "text": "vừa dụng cụ học tập 7.32m trưa nay",
+      "expected": [
+        {
+          "amount": 7320000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 209,
+      "text": "2020000 tiền mỹ phẩm",
+      "expected": [
+        {
+          "amount": 2020000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 210,
+      "text": "di lai ngan hang het 15.380.000, wifi 4390000",
+      "expected": [
+        {
+          "amount": 15380000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 4390000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 211,
+      "text": "thưởng 12.300.000",
+      "expected": [
+        {
+          "amount": 12300000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 212,
+      "text": "thu wifi 4560k, đi được cho hết 1.42 triệu - có hoàn tiền 8.45 triệu",
+      "expected": [
+        {
+          "amount": 4560000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1420000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 8450000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 213,
+      "text": "110 ngàn tiền phở",
+      "expected": [
+        {
+          "amount": 110000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 214,
+      "text": "200k trà sữa",
+      "expected": [
+        {
+          "amount": 200000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 215,
+      "text": "840000 dịch vụ chung cư. bus 1950k chiều nay",
+      "expected": [
+        {
+          "amount": 840000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1950000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 216,
+      "text": "đi gas hết 4870k. xe ôm 1490k",
+      "expected": [
+        {
+          "amount": 4870000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1490000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 217,
+      "text": "đi book vé hết 3.21 triệu",
+      "expected": [
+        {
+          "amount": 3210000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 218,
+      "text": "bóng đèn 4.29tr",
+      "expected": [
+        {
+          "amount": 4290000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 219,
+      "text": "khẩu trang 1420000",
+      "expected": [
+        {
+          "amount": 1420000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 220,
+      "text": "bia 280 ngàn",
+      "expected": [
+        {
+          "amount": 280000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 221,
+      "text": "đi cà phê hết 140.000",
+      "expected": [
+        {
+          "amount": 140000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 222,
+      "text": "nước muối 540 cành",
+      "expected": [
+        {
+          "amount": 540000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 223,
+      "text": "spotify 3420k",
+      "expected": [
+        {
+          "amount": 3420000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 224,
+      "text": "my pham 2.620.000. đi mỹ phẩm hết 330k với đi kính thuốc hết 1110k",
+      "expected": [
+        {
+          "amount": 2620000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 330000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1110000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 225,
+      "text": "1.71 triệu khẩu trang",
+      "expected": [
+        {
+          "amount": 1710000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 226,
+      "text": "đi giày hết 1.290.000",
+      "expected": [
+        {
+          "amount": 1290000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 227,
+      "text": "đóng khám bệnh 1570000",
+      "expected": [
+        {
+          "amount": 1570000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 228,
+      "text": "gửi xe 480000",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 229,
+      "text": "siêu thị 590.000",
+      "expected": [
+        {
+          "amount": 590000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 230,
+      "text": "trả bus 610k",
+      "expected": [
+        {
+          "amount": 610000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 231,
+      "text": "4.33 triệu tiền dụng cụ học tập",
+      "expected": [
+        {
+          "amount": 4330000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 232,
+      "text": "đi tạp chí hết 2.68m",
+      "expected": [
+        {
+          "amount": 2680000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 233,
+      "text": "thu váy 2250000",
+      "expected": [
+        {
+          "amount": 2250000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 234,
+      "text": "đi bún bò hết 160000",
+      "expected": [
+        {
+          "amount": 160000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 235,
+      "text": "tạp chí 1260000",
+      "expected": [
+        {
+          "amount": 1260000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 236,
+      "text": "đi siêu thị hết 2240000",
+      "expected": [
+        {
+          "amount": 2240000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 237,
+      "text": "nhậu 230 cành, đi rác hết 2060 ngàn",
+      "expected": [
+        {
+          "amount": 230000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2060000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 238,
+      "text": "đi tiền nhà hết 1.25 triệu - book vé 3.57m sau đó nhậu 290.000",
+      "expected": [
+        {
+          "amount": 1250000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3570000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 290000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 239,
+      "text": "thanh toán youtube premium 4190 ngàn",
+      "expected": [
+        {
+          "amount": 4190000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 240,
+      "text": "be 1530k",
+      "expected": [
+        {
+          "amount": 1530000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 241,
+      "text": "1.92 triệu tiền đi chợ",
+      "expected": [
+        {
+          "amount": 1920000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 242,
+      "text": "được lãi ngân hàng 9860k thêm grab 1.240.000. thuốc 1.3tr",
+      "expected": [
+        {
+          "amount": 9860000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1240000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1300000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 243,
+      "text": "đi bus hết 1530 ngàn",
+      "expected": [
+        {
+          "amount": 1530000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 244,
+      "text": "xăng 1910 ngàn sau đó 2930k tiền photo tài liệu",
+      "expected": [
+        {
+          "amount": 1910000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2930000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 245,
+      "text": "đi du lịch hết 4930k",
+      "expected": [
+        {
+          "amount": 4930000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 246,
+      "text": "mới rửa xe 1090k",
+      "expected": [
+        {
+          "amount": 1090000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 247,
+      "text": "be 1.000.000",
+      "expected": [
+        {
+          "amount": 1000000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 248,
+      "text": "nhận internet 4460 cành",
+      "expected": [
+        {
+          "amount": 4460000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 249,
+      "text": "rác 350 ngàn",
+      "expected": [
+        {
+          "amount": 350000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 250,
+      "text": "1.56tr tiền karaoke",
+      "expected": [
+        {
+          "amount": 1560000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 251,
+      "text": "đi đòi nợ hết 2150 cành",
+      "expected": [
+        {
+          "amount": 2150000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 252,
+      "text": "trà sữa 110 ngàn",
+      "expected": [
+        {
+          "amount": 110000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 253,
+      "text": "được tiền công 7890000",
+      "expected": [
+        {
+          "amount": 7890000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 254,
+      "text": "lì xì 16.28m rồi sách 210k",
+      "expected": [
+        {
+          "amount": 16280000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 210000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 255,
+      "text": "9860k vở",
+      "expected": [
+        {
+          "amount": 9860000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 256,
+      "text": "đóng tiền học 3570 cành",
+      "expected": [
+        {
+          "amount": 3570000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 257,
+      "text": "thu kính thuốc 390.000 lúc nãy và đi taxi hết 1.030.000",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1030000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 258,
+      "text": "internet 570k",
+      "expected": [
+        {
+          "amount": 570000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 259,
+      "text": "đi lãi ngân hàng hết 14.97 triệu",
+      "expected": [
+        {
+          "amount": 14970000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 260,
+      "text": "gà rán 100 ngàn",
+      "expected": [
+        {
+          "amount": 100000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 261,
+      "text": "grab 1860000",
+      "expected": [
+        {
+          "amount": 1860000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 262,
+      "text": "thu vé máy bay 620 ngàn sau đó đi book vé hết 2780 ngàn",
+      "expected": [
+        {
+          "amount": 620000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2780000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 263,
+      "text": "mua học phí 4310 ngàn",
+      "expected": [
+        {
+          "amount": 4310000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 264,
+      "text": "spotify 980 ngàn",
+      "expected": [
+        {
+          "amount": 980000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 265,
+      "text": "đi nhổ răng hết 290.000",
+      "expected": [
+        {
+          "amount": 290000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 266,
+      "text": "đi sửa ống nước hết 4.180.000",
+      "expected": [
+        {
+          "amount": 4180000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 267,
+      "text": "đi book vé hết 4310k thêm thu khau trang 210000",
+      "expected": [
+        {
+          "amount": 4310000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 210000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 268,
+      "text": "1480000 đổ xăng, đi gas hết 4.580.000",
+      "expected": [
+        {
+          "amount": 1480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4580000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 269,
+      "text": "1.89tr váy - 1.150.000 xem phim",
+      "expected": [
+        {
+          "amount": 1890000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1150000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 270,
+      "text": "đi bút hết 4.16m",
+      "expected": [
+        {
+          "amount": 4160000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 271,
+      "text": "đi trà sữa hết 430 cành",
+      "expected": [
+        {
+          "amount": 430000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 272,
+      "text": "du lịch 900.000",
+      "expected": [
+        {
+          "amount": 900000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 273,
+      "text": "đi lương hết 6580 ngàn, đi dầu gội hết 1010 cành",
+      "expected": [
+        {
+          "amount": 6580000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1010000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 274,
+      "text": "chi vé xem phim 140000 hôm kia thêm bowling 1920 ngàn sau đó kính thuốc 840k",
+      "expected": [
+        {
+          "amount": 140000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1920000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 840000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 275,
+      "text": "2440k tiền game sau đó mới rác 2060 ngàn tối qua",
+      "expected": [
+        {
+          "amount": 2440000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2060000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 276,
+      "text": "3.760.000 tiền spotify - 2180 ngàn tiền youtube premium cộng đi bắp nước hết 1630 ngàn",
+      "expected": [
+        {
+          "amount": 3760000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2180000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1630000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 277,
+      "text": "chi pizza 230000",
+      "expected": [
+        {
+          "amount": 230000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 278,
+      "text": "vừa wifi 3300k tối qua sau đó khóa học online 5100 ngàn",
+      "expected": [
+        {
+          "amount": 3300000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 5100000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 279,
+      "text": "thu kính thuốc 350k",
+      "expected": [
+        {
+          "amount": 350000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 280,
+      "text": "cafe 470k",
+      "expected": [
+        {
+          "amount": 470000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 281,
+      "text": "trà sữa 85.000 và đi thuốc hết 1.35m",
+      "expected": [
+        {
+          "amount": 85000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1350000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 282,
+      "text": "netflix 890 cành",
+      "expected": [
+        {
+          "amount": 890000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 283,
+      "text": "đi vở hết 2.5 triệu",
+      "expected": [
+        {
+          "amount": 2500000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 284,
+      "text": "di ban do cu het 9.37 trieu",
+      "expected": [
+        {
+          "amount": 9370000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 285,
+      "text": "đi bowling hết 1430k",
+      "expected": [
+        {
+          "amount": 1430000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 286,
+      "text": "trả ielts 9.06tr rồi đi gửi xe hết 1480k",
+      "expected": [
+        {
+          "amount": 9060000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 287,
+      "text": "đi siêu thị hết 2.180.000 thêm lương thưởng 11050k sau đó lương lì xì 6260 cành",
+      "expected": [
+        {
+          "amount": 2180000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 11050000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 6260000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 288,
+      "text": "thanh toán spotify 1.540.000",
+      "expected": [
+        {
+          "amount": 1540000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 289,
+      "text": "1.47tr be",
+      "expected": [
+        {
+          "amount": 1470000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 290,
+      "text": "vừa spotify 1480000",
+      "expected": [
+        {
+          "amount": 1480000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 291,
+      "text": "xem phim 3.310.000",
+      "expected": [
+        {
+          "amount": 3310000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 292,
+      "text": "đi khẩu trang hết 360 ngàn",
+      "expected": [
+        {
+          "amount": 360000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 293,
+      "text": "đi pizza hết 370 ngàn",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 294,
+      "text": "đi xem phim hết 4.010.000 sau đó đi gas hết 4270 ngàn, điện 360k",
+      "expected": [
+        {
+          "amount": 4010000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4270000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 360000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 295,
+      "text": "75 ngàn rửa xe",
+      "expected": [
+        {
+          "amount": 75000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 296,
+      "text": "được lãi ngân hàng 780.000, 9.02tr toeic với xét nghiệm 1.6 triệu",
+      "expected": [
+        {
+          "amount": 780000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 9020000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1600000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 297,
+      "text": "trả sữa tắm 1490k",
+      "expected": [
+        {
+          "amount": 1490000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 298,
+      "text": "chi vé máy bay 180.000 thêm đi được cho hết 13130000",
+      "expected": [
+        {
+          "amount": 180000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 13130000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 299,
+      "text": "đóng túi xách 95.000 lúc nãy",
+      "expected": [
+        {
+          "amount": 95000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 300,
+      "text": "chi tien nha 2.81m",
+      "expected": [
+        {
+          "amount": 2810000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 301,
+      "text": "di ve xe het 1400 ngan",
+      "expected": [
+        {
+          "amount": 1400000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 302,
+      "text": "doi no 9.77 trieu",
+      "expected": [
+        {
+          "amount": 9770000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 303,
+      "text": "áo thun 1820000",
+      "expected": [
+        {
+          "amount": 1820000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 304,
+      "text": "6.14 triệu bút",
+      "expected": [
+        {
+          "amount": 6140000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 305,
+      "text": "đóng vé máy bay 280.000 hôm kia",
+      "expected": [
+        {
+          "amount": 280000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 306,
+      "text": "10.830.000 lì xì",
+      "expected": [
+        {
+          "amount": 10830000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 307,
+      "text": "đi bắp nước hết 2.960.000",
+      "expected": [
+        {
+          "amount": 2960000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 308,
+      "text": "viện phí 670.000",
+      "expected": [
+        {
+          "amount": 670000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 309,
+      "text": "chi netflix 2.3tr chiều nay, được lương 7580 ngàn",
+      "expected": [
+        {
+          "amount": 2300000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 7580000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 310,
+      "text": "1870k tiền khẩu trang",
+      "expected": [
+        {
+          "amount": 1870000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 311,
+      "text": "thu túi xách 1.22 triệu với lương lãi ngân hàng 19330 ngàn",
+      "expected": [
+        {
+          "amount": 1220000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 19330000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 312,
+      "text": "chi bảo hiểm y tế 95 ngàn sáng nay",
+      "expected": [
+        {
+          "amount": 95000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 313,
+      "text": "tiền học 3.22 triệu",
+      "expected": [
+        {
+          "amount": 3220000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 314,
+      "text": "480.000 vé máy bay",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 315,
+      "text": "di dien het 4740 canh",
+      "expected": [
+        {
+          "amount": 4740000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 316,
+      "text": "đi rác hết 2740 ngàn với thanh toán nước muối 1010 ngàn, gas 4430 cành",
+      "expected": [
+        {
+          "amount": 2740000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1010000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4430000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 317,
+      "text": "đi rác hết 1.650.000",
+      "expected": [
+        {
+          "amount": 1650000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 318,
+      "text": "4590k tien tien nha",
+      "expected": [
+        {
+          "amount": 4590000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 319,
+      "text": "kham benh 540000",
+      "expected": [
+        {
+          "amount": 540000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 320,
+      "text": "rau củ 2.560.000",
+      "expected": [
+        {
+          "amount": 2560000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 321,
+      "text": "thanh toán học phí 1570000",
+      "expected": [
+        {
+          "amount": 1570000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 322,
+      "text": "trả xăng 210 ngàn",
+      "expected": [
+        {
+          "amount": 210000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 323,
+      "text": "đi đổ xăng hết 330 cành - khẩu trang 1.270.000",
+      "expected": [
+        {
+          "amount": 330000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1270000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 324,
+      "text": "nhau 150 canh - xe ôm 1930000",
+      "expected": [
+        {
+          "amount": 150000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1930000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 325,
+      "text": "be 1730 cành sau đó đi be hết 880.000 với 2880000 giày",
+      "expected": [
+        {
+          "amount": 1730000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 880000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2880000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 326,
+      "text": "đi tiền trọ hết 2.11m và di ielts het 390 ngan, đi quần áo hết 2.65tr",
+      "expected": [
+        {
+          "amount": 2110000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 390000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2650000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 327,
+      "text": "đi chợ 2170k cộng mới bus 1000 ngàn",
+      "expected": [
+        {
+          "amount": 2170000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1000000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 328,
+      "text": "son 880000",
+      "expected": [
+        {
+          "amount": 880000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 329,
+      "text": "áo thun 60 ngàn",
+      "expected": [
+        {
+          "amount": 60000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 330,
+      "text": "vua rau cu 1870k",
+      "expected": [
+        {
+          "amount": 1870000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 331,
+      "text": "kính thuốc 30 cành",
+      "expected": [
+        {
+          "amount": 30000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 332,
+      "text": "1.22tr ielts",
+      "expected": [
+        {
+          "amount": 1220000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 333,
+      "text": "vừa tiền nhà 3.920.000 với moi kham benh 230.000",
+      "expected": [
+        {
+          "amount": 3920000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 230000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 334,
+      "text": "đi nước hết 710000",
+      "expected": [
+        {
+          "amount": 710000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 335,
+      "text": "75000 tiền sinh tố",
+      "expected": [
+        {
+          "amount": 75000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 336,
+      "text": "đi photo tài liệu hết 3890k với mới bia 130 cành",
+      "expected": [
+        {
+          "amount": 3890000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 130000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 337,
+      "text": "có thưởng 16.87 triệu hôm kia",
+      "expected": [
+        {
+          "amount": 16870000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 338,
+      "text": "thanh toán game 4050 cành hôm kia",
+      "expected": [
+        {
+          "amount": 4050000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 339,
+      "text": "đi youtube premium hết 4420 cành rồi vừa viện phí 1240k",
+      "expected": [
+        {
+          "amount": 4420000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1240000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 340,
+      "text": "đòi nợ 4.01tr",
+      "expected": [
+        {
+          "amount": 4010000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 341,
+      "text": "mua nước 3920 cành tối qua",
+      "expected": [
+        {
+          "amount": 3920000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 342,
+      "text": "đóng nhậu 310k chiều nay rồi bowling 1.42tr",
+      "expected": [
+        {
+          "amount": 310000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1420000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 343,
+      "text": "1430000 dầu gội rồi viện phí 1960k",
+      "expected": [
+        {
+          "amount": 1430000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1960000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 344,
+      "text": "có thưởng 10.47m cộng nhận lãi ngân hàng 4.51m",
+      "expected": [
+        {
+          "amount": 10470000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 4510000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 345,
+      "text": "cơm tấm 370.000",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 346,
+      "text": "đi dịch vụ chung cư hết 2370 ngàn",
+      "expected": [
+        {
+          "amount": 2370000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 347,
+      "text": "5.870.000 tiền lương, 12510 ngàn tiền lãi ngân hàng",
+      "expected": [
+        {
+          "amount": 5870000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 12510000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 348,
+      "text": "đi taxi hết 1520 ngàn cộng mua đổ xăng 610 ngàn",
+      "expected": [
+        {
+          "amount": 1520000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 610000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 349,
+      "text": "sách giáo khoa 6.63tr rồi sửa ống nước 4.390.000",
+      "expected": [
+        {
+          "amount": 6630000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4390000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 350,
+      "text": "đi xét nghiệm hết 1130k",
+      "expected": [
+        {
+          "amount": 1130000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 351,
+      "text": "gà rán 390000",
+      "expected": [
+        {
+          "amount": 390000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 352,
+      "text": "1.480.000 tiền book vé",
+      "expected": [
+        {
+          "amount": 1480000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 353,
+      "text": "đi bán đồ cũ hết 19680 cành - đi gojek hết 1550 ngàn",
+      "expected": [
+        {
+          "amount": 19680000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1550000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 354,
+      "text": "đi bia hết 60 ngàn",
+      "expected": [
+        {
+          "amount": 60000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 355,
+      "text": "mua spotify 250 canh chieu nay",
+      "expected": [
+        {
+          "amount": 250000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 356,
+      "text": "karaoke 950 cành, vở 4.76m",
+      "expected": [
+        {
+          "amount": 950000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4760000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 357,
+      "text": "đi netflix hết 730.000 với đi tạp chí hết 1.180.000. đi grab hết 740.000",
+      "expected": [
+        {
+          "amount": 730000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1180000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 740000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 358,
+      "text": "váy 870000",
+      "expected": [
+        {
+          "amount": 870000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 359,
+      "text": "tiền trọ 3.950.000",
+      "expected": [
+        {
+          "amount": 3950000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 360,
+      "text": "4030000 tiền nước",
+      "expected": [
+        {
+          "amount": 4030000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 361,
+      "text": "nhận váy 320000",
+      "expected": [
+        {
+          "amount": 320000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 362,
+      "text": "chi bảo hiểm y tế 860000",
+      "expected": [
+        {
+          "amount": 860000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 363,
+      "text": "điện 4360k",
+      "expected": [
+        {
+          "amount": 4360000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 364,
+      "text": "đi bảo hiểm y tế hết 1.760.000 sau đó mới bia 100 cành tối qua - đi sữa tắm hết 780 cành",
+      "expected": [
+        {
+          "amount": 1760000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 100000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 780000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 365,
+      "text": "đi sửa ống nước hết 3640k",
+      "expected": [
+        {
+          "amount": 3640000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 366,
+      "text": "thu đi chợ 1220000. 1.630.000 ao thun",
+      "expected": [
+        {
+          "amount": 1220000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1630000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 367,
+      "text": "internet 3.620.000",
+      "expected": [
+        {
+          "amount": 3620000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 368,
+      "text": "vừa siêu thị 2.67tr và đóng gojek 1.8 triệu - đi tiền trọ hết 3090 ngàn",
+      "expected": [
+        {
+          "amount": 2670000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1800000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3090000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 369,
+      "text": "di khau trang het 1440 canh",
+      "expected": [
+        {
+          "amount": 1440000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 370,
+      "text": "đi trà sữa hết 230.000 và xôi 270.000",
+      "expected": [
+        {
+          "amount": 230000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 270000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 371,
+      "text": "photo tài liệu 9.91 triệu cộng be 1980 ngàn",
+      "expected": [
+        {
+          "amount": 9910000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1980000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 372,
+      "text": "vừa tiền học 480 cành với vừa photo tài liệu 6070 ngàn",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 6070000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 373,
+      "text": "3880k tiền toeic",
+      "expected": [
+        {
+          "amount": 3880000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 374,
+      "text": "tiền nhà 2930 ngàn",
+      "expected": [
+        {
+          "amount": 2930000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 375,
+      "text": "mua đi chợ 1620 cành cộng đóng cơm tấm 450.000 hôm kia",
+      "expected": [
+        {
+          "amount": 1620000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 450000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 376,
+      "text": "810000 dầu gội",
+      "expected": [
+        {
+          "amount": 810000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 377,
+      "text": "phở 75 cành và vay 3000 ngan",
+      "expected": [
+        {
+          "amount": 75000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3000000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 378,
+      "text": "tra bao duong xe 820 canh toi qua",
+      "expected": [
+        {
+          "amount": 820000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 379,
+      "text": "spotify 1710 ngàn",
+      "expected": [
+        {
+          "amount": 1710000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 380,
+      "text": "vua thuoc 840 canh",
+      "expected": [
+        {
+          "amount": 840000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 381,
+      "text": "1.57tr nước với túi xách 1.600.000",
+      "expected": [
+        {
+          "amount": 1570000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1600000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 382,
+      "text": "thu du lich 4.4 trieu",
+      "expected": [
+        {
+          "amount": 4400000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 383,
+      "text": "thu khau trang 640000 - netflix 2500k",
+      "expected": [
+        {
+          "amount": 640000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2500000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 384,
+      "text": "di tien nha het 3570k",
+      "expected": [
+        {
+          "amount": 3570000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 385,
+      "text": "đi bún bò hết 210000",
+      "expected": [
+        {
+          "amount": 210000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 386,
+      "text": "đi bán đồ cũ hết 3.030.000",
+      "expected": [
+        {
+          "amount": 3030000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 387,
+      "text": "1820 ngàn tiền viện phí",
+      "expected": [
+        {
+          "amount": 1820000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 388,
+      "text": "được cho 14670 ngàn",
+      "expected": [
+        {
+          "amount": 14670000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 389,
+      "text": "đi bia hết 40000",
+      "expected": [
+        {
+          "amount": 40000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 390,
+      "text": "đi wifi hết 2890 ngàn cộng đi lãi ngân hàng hết 1.390.000",
+      "expected": [
+        {
+          "amount": 2890000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1390000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 391,
+      "text": "đi vở hết 1350000",
+      "expected": [
+        {
+          "amount": 1350000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 392,
+      "text": "mới khám bệnh 1940000",
+      "expected": [
+        {
+          "amount": 1940000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 393,
+      "text": "bánh mì 340 cành",
+      "expected": [
+        {
+          "amount": 340000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 394,
+      "text": "1230 canh tien xe om",
+      "expected": [
+        {
+          "amount": 1230000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 395,
+      "text": "có hoàn tiền 11710000",
+      "expected": [
+        {
+          "amount": 11710000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 396,
+      "text": "1.72m tiền sách",
+      "expected": [
+        {
+          "amount": 1720000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 397,
+      "text": "thanh toán thuốc 790000 sau đó đi khám răng hết 1920 cành",
+      "expected": [
+        {
+          "amount": 790000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1920000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 398,
+      "text": "đi nhổ răng hết 1.510.000, phở 490k",
+      "expected": [
+        {
+          "amount": 1510000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 490000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 399,
+      "text": "2570000 tiền dịch vụ chung cư, mỹ phẩm 2960k",
+      "expected": [
+        {
+          "amount": 2570000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2960000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 400,
+      "text": "2550 ngàn tiền son cộng bún bò 160.000",
+      "expected": [
+        {
+          "amount": 2550000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 160000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 401,
+      "text": "mới dụng cụ học tập 9.430.000",
+      "expected": [
+        {
+          "amount": 9430000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 402,
+      "text": "nhận hủ tiếu 290k",
+      "expected": [
+        {
+          "amount": 290000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 403,
+      "text": "đi nước muối hết 770k",
+      "expected": [
+        {
+          "amount": 770000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 404,
+      "text": "moi ielts 7.46 trieu thêm nhận khám bệnh 1810k",
+      "expected": [
+        {
+          "amount": 7460000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1810000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 405,
+      "text": "đóng gà rán 260 cành lúc nãy - sữa tắm 650 cành",
+      "expected": [
+        {
+          "amount": 260000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 650000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 406,
+      "text": "1.77 triệu grab - quần áo 1890000",
+      "expected": [
+        {
+          "amount": 1770000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1890000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 407,
+      "text": "mua phở 380 cành",
+      "expected": [
+        {
+          "amount": 380000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 408,
+      "text": "đi pizza hết 50k",
+      "expected": [
+        {
+          "amount": 50000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 409,
+      "text": "mua gas 2480 cành",
+      "expected": [
+        {
+          "amount": 2480000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 410,
+      "text": "nhậu 370.000 sau đó khẩu trang 380 cành",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 380000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 411,
+      "text": "xét nghiệm 1.040.000",
+      "expected": [
+        {
+          "amount": 1040000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 412,
+      "text": "rác 160 ngàn. viện phí 1570 cành",
+      "expected": [
+        {
+          "amount": 160000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1570000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 413,
+      "text": "thanh toán internet 1470000, đi bus hết 1.040.000",
+      "expected": [
+        {
+          "amount": 1470000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1040000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 414,
+      "text": "thanh toán khẩu trang 840 ngàn",
+      "expected": [
+        {
+          "amount": 840000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 415,
+      "text": "khẩu trang 1.250.000 và 3.39tr netflix",
+      "expected": [
+        {
+          "amount": 1250000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3390000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 416,
+      "text": "1750k taxi",
+      "expected": [
+        {
+          "amount": 1750000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 417,
+      "text": "ielts 3.29 triệu",
+      "expected": [
+        {
+          "amount": 3290000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 418,
+      "text": "trả điện 860.000 sáng nay",
+      "expected": [
+        {
+          "amount": 860000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 419,
+      "text": "tiền trọ 2.950.000",
+      "expected": [
+        {
+          "amount": 2950000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 420,
+      "text": "chi bia 400 cành rồi son 2900 ngàn",
+      "expected": [
+        {
+          "amount": 400000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2900000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 421,
+      "text": "đi chợ 2640 cành",
+      "expected": [
+        {
+          "amount": 2640000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 422,
+      "text": "thanh toán spotify 3620 cành",
+      "expected": [
+        {
+          "amount": 3620000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 423,
+      "text": "grab 700.000",
+      "expected": [
+        {
+          "amount": 700000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 424,
+      "text": "820 cành tiền nước muối",
+      "expected": [
+        {
+          "amount": 820000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 425,
+      "text": "hủ tiếu 230 ngàn",
+      "expected": [
+        {
+          "amount": 230000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 426,
+      "text": "taxi 500k",
+      "expected": [
+        {
+          "amount": 500000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 427,
+      "text": "thu cf 80 cành rồi 2.630.000 tiền túi xách",
+      "expected": [
+        {
+          "amount": 80000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2630000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 428,
+      "text": "khau trang 830 ngan",
+      "expected": [
+        {
+          "amount": 830000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 429,
+      "text": "360 canh com tam",
+      "expected": [
+        {
+          "amount": 360000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 430,
+      "text": "quần áo 2.7 triệu sau đó nhận xăng 800.000 trưa nay",
+      "expected": [
+        {
+          "amount": 2700000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 800000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 431,
+      "text": "điện 4.24m",
+      "expected": [
+        {
+          "amount": 4240000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 432,
+      "text": "đi du lịch hết 3.24tr",
+      "expected": [
+        {
+          "amount": 3240000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 433,
+      "text": "hủ tiếu 290000 cộng son 720k",
+      "expected": [
+        {
+          "amount": 290000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 720000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 434,
+      "text": "tien cong 2.97m",
+      "expected": [
+        {
+          "amount": 2970000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 435,
+      "text": "di thuoc het 200 canh với sửa xe 1.210.000",
+      "expected": [
+        {
+          "amount": 200000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1210000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 436,
+      "text": "đi giày hết 1290k với 580000 karaoke cộng nhận khóa học online 390 ngàn",
+      "expected": [
+        {
+          "amount": 1290000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 580000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 390000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 437,
+      "text": "karaoke 2030 cành rồi bowling 2130 ngàn với gas 4.24 triệu",
+      "expected": [
+        {
+          "amount": 2030000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2130000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4240000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 438,
+      "text": "200.000 tiền tiền nhà sau đó đi xăng hết 1690000, youtube premium 4210 cành",
+      "expected": [
+        {
+          "amount": 200000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1690000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4210000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 439,
+      "text": "nhận vé xem phim 1.02m",
+      "expected": [
+        {
+          "amount": 1020000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 440,
+      "text": "trả book vé 830000",
+      "expected": [
+        {
+          "amount": 830000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 441,
+      "text": "đi khóa học online hết 3.06m",
+      "expected": [
+        {
+          "amount": 3060000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 442,
+      "text": "đòi nợ 11.070.000",
+      "expected": [
+        {
+          "amount": 11070000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 443,
+      "text": "hoàn tiền 18.020.000",
+      "expected": [
+        {
+          "amount": 18020000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 444,
+      "text": "chi karaoke 3.940.000",
+      "expected": [
+        {
+          "amount": 3940000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 445,
+      "text": "3.29tr tien sach giao khoa, đi tiền công hết 5930 ngàn",
+      "expected": [
+        {
+          "amount": 3290000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 5930000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 446,
+      "text": "3730k sửa ống nước với đi vở hết 8.52m",
+      "expected": [
+        {
+          "amount": 3730000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 8520000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 447,
+      "text": "karaoke 1390k rồi 2350k tiền bóng đèn",
+      "expected": [
+        {
+          "amount": 1390000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2350000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 448,
+      "text": "4.200.000 bowling, bowling 3660 ngan",
+      "expected": [
+        {
+          "amount": 4200000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3660000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 449,
+      "text": "thu cơm tấm 140 cành chiều nay, đi hủ tiếu hết 30 cành rồi 1220000 tiền sửa xe",
+      "expected": [
+        {
+          "amount": 140000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 30000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1220000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 450,
+      "text": "kính thuốc 1280 ngàn. 4.21m internet cộng vở 5.440.000",
+      "expected": [
+        {
+          "amount": 1280000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4210000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 5440000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 451,
+      "text": "đóng tiền nhà 1300 cành",
+      "expected": [
+        {
+          "amount": 1300000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 452,
+      "text": "đi váy hết 1.89m",
+      "expected": [
+        {
+          "amount": 1890000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 453,
+      "text": "nhận cà phê 370000 hôm kia",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 454,
+      "text": "but 1.580.000",
+      "expected": [
+        {
+          "amount": 1580000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 455,
+      "text": "vừa xem phim 1.97m - di tien nha het 1300k",
+      "expected": [
+        {
+          "amount": 1970000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1300000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 456,
+      "text": "mới khám bệnh 1380 cành",
+      "expected": [
+        {
+          "amount": 1380000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 457,
+      "text": "3.57 triệu tiền trọ sau đó mỹ phẩm 1850 ngàn",
+      "expected": [
+        {
+          "amount": 3570000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1850000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 458,
+      "text": "di kinh thuoc het 1.74 trieu - xem phim 4.570.000. đi dụng cụ học tập hết 9.520.000",
+      "expected": [
+        {
+          "amount": 1740000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4570000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 9520000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 459,
+      "text": "thanh toán vé xem phim 1750 ngàn lúc nãy",
+      "expected": [
+        {
+          "amount": 1750000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 460,
+      "text": "đi sữa tắm hết 65 cành",
+      "expected": [
+        {
+          "amount": 65000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 461,
+      "text": "vừa dịch vụ chung cư 1.360.000 với 170 ngàn tiền pizza - mua khóa học online 6.470.000",
+      "expected": [
+        {
+          "amount": 1360000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 170000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 6470000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 462,
+      "text": "6370000 tiền photo tài liệu",
+      "expected": [
+        {
+          "amount": 6370000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 463,
+      "text": "4260 ngàn tiền dịch vụ chung cư sau đó nhận dụng cụ học tập 3910k sau đó đi dầu gội hết 1160 ngàn",
+      "expected": [
+        {
+          "amount": 4260000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3910000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1160000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 464,
+      "text": "lương 19410k",
+      "expected": [
+        {
+          "amount": 19410000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 465,
+      "text": "chi karaoke 4650000 sáng nay rồi vừa cafe 120k",
+      "expected": [
+        {
+          "amount": 4650000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 120000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 466,
+      "text": "đi photo tài liệu hết 5160 ngàn",
+      "expected": [
+        {
+          "amount": 5160000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 467,
+      "text": "mua vé máy bay 170 ngàn, 1070000 viện phí thêm đi xét nghiệm hết 1.01tr",
+      "expected": [
+        {
+          "amount": 170000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1070000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1010000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 468,
+      "text": "được cho 5150 ngàn cộng 210 cành vé xe",
+      "expected": [
+        {
+          "amount": 5150000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 210000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 469,
+      "text": "đi toeic hết 3970 ngàn",
+      "expected": [
+        {
+          "amount": 3970000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 470,
+      "text": "đi xét nghiệm hết 220 cành",
+      "expected": [
+        {
+          "amount": 220000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 471,
+      "text": "wifi 3670 cành - có thưởng 10900 ngàn",
+      "expected": [
+        {
+          "amount": 3670000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 10900000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 472,
+      "text": "gửi xe 370000 - di khoa hoc online het 5010k",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 5010000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 473,
+      "text": "đi cf hết 110000 với 2.06tr tiền sữa tắm",
+      "expected": [
+        {
+          "amount": 110000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2060000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 474,
+      "text": "hủ tiếu 200000",
+      "expected": [
+        {
+          "amount": 200000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 475,
+      "text": "1.81m tiền bowling",
+      "expected": [
+        {
+          "amount": 1810000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 476,
+      "text": "vừa điện 900.000",
+      "expected": [
+        {
+          "amount": 900000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 477,
+      "text": "sách 2760000",
+      "expected": [
+        {
+          "amount": 2760000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 478,
+      "text": "đi sách giáo khoa hết 7450000, bánh mì 220k",
+      "expected": [
+        {
+          "amount": 7450000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 220000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 479,
+      "text": "đi cafe hết 50k, bánh mì 250 cành",
+      "expected": [
+        {
+          "amount": 50000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 250000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 480,
+      "text": "bún bò 190.000",
+      "expected": [
+        {
+          "amount": 190000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 481,
+      "text": "bảo dưỡng xe 1.19tr",
+      "expected": [
+        {
+          "amount": 1190000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 482,
+      "text": "đi nước hết 1.190.000",
+      "expected": [
+        {
+          "amount": 1190000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 483,
+      "text": "mua bowling 770 ngàn sau đó thanh toán bánh mì 210 cành sau đó đi khám răng hết 35 ngàn",
+      "expected": [
+        {
+          "amount": 770000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 210000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 35000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 484,
+      "text": "đi rau củ hết 2980000",
+      "expected": [
+        {
+          "amount": 2980000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 485,
+      "text": "di sach giao khoa het 2.640.000 - đi tiền học hết 4580000",
+      "expected": [
+        {
+          "amount": 2640000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4580000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 486,
+      "text": "mua sinh tố 370k và sách giáo khoa 4.180.000",
+      "expected": [
+        {
+          "amount": 370000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 4180000,
+          "category": "Giáo dục",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 487,
+      "text": "đi gửi xe hết 710 cành",
+      "expected": [
+        {
+          "amount": 710000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 488,
+      "text": "đi lì xì hết 14440 cành",
+      "expected": [
+        {
+          "amount": 14440000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 489,
+      "text": "khám bệnh 1580000",
+      "expected": [
+        {
+          "amount": 1580000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 490,
+      "text": "1.690.000 váy",
+      "expected": [
+        {
+          "amount": 1690000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 491,
+      "text": "thưởng 5.63 triệu",
+      "expected": [
+        {
+          "amount": 5630000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        }
+      ]
+    },
+    {
+      "id": 492,
+      "text": "được đòi nợ 2.39tr thêm đi viện phí hết 1470 ngàn",
+      "expected": [
+        {
+          "amount": 2390000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 1470000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 493,
+      "text": "120000 banh mi với thanh toán phở 470000",
+      "expected": [
+        {
+          "amount": 120000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 470000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 494,
+      "text": "đi be hết 730.000",
+      "expected": [
+        {
+          "amount": 730000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 495,
+      "text": "1480k tiền khám bệnh",
+      "expected": [
+        {
+          "amount": 1480000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 496,
+      "text": "vừa vé xem phim 2440 ngàn",
+      "expected": [
+        {
+          "amount": 2440000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 497,
+      "text": "1.49tr khám bệnh",
+      "expected": [
+        {
+          "amount": 1490000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 498,
+      "text": "thanh toán giày 2.38tr, tiền trọ 2.350.000",
+      "expected": [
+        {
+          "amount": 2380000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 2350000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 499,
+      "text": "tạp chí 500000",
+      "expected": [
+        {
+          "amount": 500000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 500,
+      "text": "xét nghiệm 1.5m. đi phở hết 470k",
+      "expected": [
+        {
+          "amount": 1500000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 470000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 501,
+      "text": "3.330.000 tiền xem phim",
+      "expected": [
+        {
+          "amount": 3330000,
+          "category": "Giải trí",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 502,
+      "text": "cà phê 480 ngàn và đòi nợ 3710 cành cộng 2330k rau củ",
+      "expected": [
+        {
+          "amount": 480000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 3710000,
+          "category": "Thu nhập",
+          "type": "Thu nhập"
+        },
+        {
+          "amount": 2330000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 503,
+      "text": "đi gas hết 2440k",
+      "expected": [
+        {
+          "amount": 2440000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 504,
+      "text": "thu giày 1.85m, bảo dưỡng xe 860 cành",
+      "expected": [
+        {
+          "amount": 1850000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 860000,
+          "category": "Đi lại",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 505,
+      "text": "vừa phở 110 cành",
+      "expected": [
+        {
+          "amount": 110000,
+          "category": "Ăn uống",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 506,
+      "text": "thanh toán điện 2490k chiều nay",
+      "expected": [
+        {
+          "amount": 2490000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 507,
+      "text": "đi khám bệnh hết 1650 cành",
+      "expected": [
+        {
+          "amount": 1650000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 508,
+      "text": "moi tien tro 760 canh - đóng dầu gội 1.960.000",
+      "expected": [
+        {
+          "amount": 760000,
+          "category": "Nhà ở",
+          "type": "Chi phí"
+        },
+        {
+          "amount": 1960000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 509,
+      "text": "xet nghiem 1.000.000",
+      "expected": [
+        {
+          "amount": 1000000,
+          "category": "Y tế",
+          "type": "Chi phí"
+        }
+      ]
+    },
+    {
+      "id": 510,
+      "text": "1030000 giày",
+      "expected": [
+        {
+          "amount": 1030000,
+          "category": "Mua sắm",
+          "type": "Chi phí"
+        }
+      ]
+    }
+  ]
+}

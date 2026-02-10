@@ -13,9 +13,18 @@ import {
   addIncome,
   deleteTx,
   updateTransaction,
+  getTxById,
 } from "@/repos/transactionRepo";
+import { listAccounts } from "@/repos/accountRepo";
 import { phobertExtractor } from "@/services/phobertAmountExtractor";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import {
+  classifyTransactionWithBackend,
+  checkBackendHealth,
+  getBackendApiUrl,
+  testBackendConnection,
+  type MappedPrediction,
+} from "@/services/backendClassificationService";
 import useAudioMeter from "@/services/useAudioMeter";
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
@@ -194,7 +203,23 @@ function parseDateFromAI(aiResponse: string, originalNote: string): Date {
   return today;
 }
 
-type Msg = any;
+type Msg = {
+  role: "user" | "bot" | "card" | "typing";
+  text?: string;
+  imageUri?: string;
+  transactionId?: string;
+  accountId?: string;
+  amount?: number | null;
+  io?: "IN" | "OUT";
+  categoryId?: string;
+  categoryName?: string;
+  categoryIcon?: string;
+  categoryColor?: string;
+  note?: string;
+  when?: string;
+  date?: Date;
+  cacheStatus?: "checking" | "cache_hit" | "cache_miss";
+};
 
 async function getEmotionalReplyDirect(args: {
   io: "IN" | "OUT";
@@ -251,9 +276,8 @@ async function getEmotionalReplyDirect(args: {
 📝 Người dùng nói: "${note}"
 
 ✓ Đã xác định:
-- ${io === "IN" ? "Thu" : "Chi"}: ${
-    amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
-  }
+- ${io === "IN" ? "Thu" : "Chi"}: ${amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
+    }
 - Danh mục: ${categoryName}
 - Ngày: ${dateDisplay}${isFuture ? " (TƯƠNG LAI)" : ""}
 
@@ -318,6 +342,9 @@ function BackBar() {
         borderBottomWidth: 1,
         borderColor: colors.divider,
         backgroundColor: colors.card,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
       }}
     >
       <TouchableOpacity
@@ -332,6 +359,26 @@ function BackBar() {
         />
         <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>
           {t("back")}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Nút đánh giá mô hình */}
+      <TouchableOpacity
+        onPress={() => router.push("/evaluation")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          backgroundColor: "#4CAF50",
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: 16,
+        }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={{ fontSize: 14, color: "#fff" }}>🧪</Text>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: "#fff" }}>
+          Test
         </Text>
       </TouchableOpacity>
     </View>
@@ -777,10 +824,11 @@ const parseTransactionWithAI = async (
   userCategories: Category[]
 ): Promise<{
   action:
-    | "CREATE_TRANSACTION"
-    | "VIEW_STATS"
-    | "EDIT_TRANSACTION"
-    | "DELETE_TRANSACTION";
+  | "CREATE_TRANSACTION"
+  | "CREATE_MULTIPLE_TRANSACTIONS"
+  | "VIEW_STATS"
+  | "EDIT_TRANSACTION"
+  | "DELETE_TRANSACTION";
   amount: number | null;
   note: string;
   categoryId: string;
@@ -788,6 +836,20 @@ const parseTransactionWithAI = async (
   io: "IN" | "OUT";
   date: Date;
   message: string;
+  transactions?: Array<{
+    amount: number;
+    note: string;
+    categoryId: string;
+    categoryName: string;
+    confidence: number;
+    io?: "IN" | "OUT";
+    date?: Date;
+    alternatives?: Array<{
+      categoryId: string;
+      categoryName: string;
+      confidence: number;
+    }>;
+  }>;
   confidence?: number;
   mlFailed?: boolean;
   alternatives?: Array<{
@@ -795,8 +857,79 @@ const parseTransactionWithAI = async (
     categoryName: string;
     confidence: number;
   }>;
+  fromCache?: boolean;
+  cacheLatency?: number;
 } | null> => {
+  const startTime = Date.now();
+
   try {
+    // =========================================
+    // Always call Backend API (LLM-based classification)
+    // =========================================
+    console.log("🌐 Calling backend API...");
+    const backendStartTime = Date.now();
+    const backendResult = await classifyTransactionWithBackend(text, userCategories);
+    const backendLatency = Date.now() - backendStartTime;
+
+    console.log(`🌐 Backend API completed in ${backendLatency}ms`);
+
+    if (!backendResult.error && backendResult.categoryId && backendResult.confidence > 0) {
+      console.log(`✅ Backend API success: ${backendResult.categoryName} (${(backendResult.confidence * 100).toFixed(1)}%)`);
+
+      // Handle multi-transaction response
+      if (backendResult.isMultiple && backendResult.transactions?.length) {
+        console.log(`🎯 Multi-transaction detected: ${backendResult.transactions.length} items`);
+        return {
+          action: "CREATE_MULTIPLE_TRANSACTIONS",
+          amount: backendResult.amount,
+          note: backendResult.note,
+          categoryId: backendResult.categoryId,
+          categoryName: backendResult.categoryName,
+          io: backendResult.io,
+          date: backendResult.date,
+          message: backendResult.message,
+          transactions: backendResult.transactions.map(tx => ({
+            amount: tx.amount,
+            note: tx.note,
+            categoryId: tx.categoryId,
+            categoryName: tx.categoryName,
+            confidence: tx.confidence,
+            io: tx.io,
+            date: tx.date,
+          })),
+          confidence: backendResult.confidence,
+          mlFailed: false,
+          fromCache: false,
+        };
+      }
+
+      // Single transaction from backend
+      return {
+        action: "CREATE_TRANSACTION",
+        amount: backendResult.amount,
+        note: text,
+        categoryId: backendResult.categoryId,
+        categoryName: backendResult.categoryName,
+        io: backendResult.io,
+        date: backendResult.date,
+        message: backendResult.message,
+        confidence: backendResult.confidence,
+        mlFailed: false,
+        alternatives: [],
+        fromCache: false,
+      };
+    }
+
+    // Log backend failure reason
+    if (backendResult.error) {
+      console.warn(`⚠️ Backend API failed: ${backendResult.error}. Falling back to local classification.`);
+    }
+
+    // =========================================
+    // PRIORITY 2: Fallback to Local TensorFlow Parser
+    // =========================================
+    console.log("🔄 Falling back to local TensorFlow parser...");
+
     // Parse transaction locally with TensorFlow (for amount and date only!)
     const result = await tfTransactionParser.parseTransaction(
       text,
@@ -828,7 +961,7 @@ const parseTransactionWithAI = async (
     if (mlPrediction && mlPrediction.confidence > MIN_AUTO_CONFIDENCE) {
       // ML has a good prediction - use it instead!
       console.log(
-        `✅ Auto-creating with ${(mlPrediction.confidence * 100).toFixed(
+        `✅ Local ML auto-creating with ${(mlPrediction.confidence * 100).toFixed(
           1
         )}% confidence`
       );
@@ -857,8 +990,7 @@ const parseTransactionWithAI = async (
     } else {
       // ML prediction is too low or model not ready - will show suggestion UI
       console.log(
-        `⚠️ Low confidence (${
-          mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
+        `⚠️ Low confidence (${mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
         }%) - showing suggestions`
       );
       mlFailed = true;
@@ -871,8 +1003,8 @@ const parseTransactionWithAI = async (
       resolvedCategory?.type === "income"
         ? "IN"
         : resolvedCategory?.type === "expense"
-        ? "OUT"
-        : result.io;
+          ? "OUT"
+          : result.io;
 
     // Include confidence and alternatives from the parser.
     // Important: preserve the original user input as `note` so UI and storage
@@ -893,7 +1025,7 @@ const parseTransactionWithAI = async (
       })),
     };
   } catch (error) {
-    console.error("❌ TensorFlow parser error:", error);
+    console.error("❌ Transaction parser error:", error);
     return null;
   }
 };
@@ -1104,8 +1236,8 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
         /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang|thu cung|y te|giao duc)/.test(
           normalizedCatName
         )
-      ? 0.1
-      : 0;
+        ? 0.1
+        : 0;
 
   // Weighted scoring:
   // - Token overlap: 40% (most important for multi-word matching)
@@ -1226,7 +1358,7 @@ async function createTransaction(draft: {
 }
 
 /* ---------------- Typing Indicator Component ---------------- */
-function TypingIndicator({ colors }: { colors: any }) {
+function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: string }) {
   const [animations] = useState([
     new Animated.Value(0.3),
     new Animated.Value(0.3),
@@ -1261,28 +1393,58 @@ function TypingIndicator({ colors }: { colors: any }) {
     };
   }, [animations]);
 
+  // Get status text based on cache status
+  const getStatusText = () => {
+    switch (cacheStatus) {
+      case "checking":
+        return "Đang kiểm tra cache...";
+      case "cache_hit":
+        return "Tìm thấy trong cache!";
+      case "cache_miss":
+        return "Đang xử lý AI...";
+      default:
+        return "Đang xử lý...";
+    }
+  };
+
   return (
     <View
-      style={[
-        styles.bubble,
-        styles.left,
-        {
-          flexDirection: "row",
-          gap: 4,
-          backgroundColor: colors.card,
-          borderColor: colors.divider,
-        },
-      ]}
+      style={
+        [
+          styles.bubble,
+          styles.left,
+          {
+            flexDirection: "column",
+            gap: 8,
+            backgroundColor: colors.card,
+            borderColor: colors.divider,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            minWidth: 150,
+          },
+        ]}
     >
-      {animations.map((anim, index) => (
-        <Animated.View
-          key={index}
-          style={[
-            styles.dot,
-            { backgroundColor: colors.subText, opacity: anim },
-          ]}
-        />
-      ))}
+      {/* Animated dots */}
+      < View style={{ flexDirection: "row", gap: 4 }
+      }>
+        {
+          animations.map((anim, index) => (
+            <Animated.View
+              key={index}
+              style={
+                [
+                  styles.dot,
+                  { backgroundColor: colors.subText, opacity: anim },
+                ]}
+            />
+          ))
+        }
+      </View>
+
+      {/* Status text */}
+      <Text style={{ color: colors.subText, fontSize: 12, fontStyle: "italic" }}>
+        {getStatusText()}
+      </Text>
     </View>
   );
 }
@@ -1476,7 +1638,7 @@ export default function Chatbot() {
       // Ensure previous sessions are stopped cleanly before starting a new one
       try {
         await ExpoSpeechRecognitionModule.stop();
-      } catch {}
+      } catch { }
 
       // reset UI
       if (recordTimerRef.current) {
@@ -1634,7 +1796,7 @@ export default function Chatbot() {
     if (pendingFinalRef.current) {
       try {
         setMessages((m) => m.slice(0, -1));
-      } catch {}
+      } catch { }
       pendingFinalRef.current = false;
     }
     try {
@@ -1642,8 +1804,8 @@ export default function Chatbot() {
         await ExpoSpeechRecognitionModule.stop();
         // Wait briefly for any in-flight result events to arrive and be ignored
         await new Promise((r) => setTimeout(r, 200));
-      } catch {}
-    } catch {}
+      } catch { }
+    } catch { }
 
     setIsRecording(false);
     setRecognizing(false);
@@ -1673,6 +1835,22 @@ export default function Chatbot() {
     const rows = await getCachedCategories();
     setItems(rows);
 
+    // Test backend connection on load (for debugging)
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(async () => {
+        console.log("🔌 Testing backend API connection...");
+        const connTest = await testBackendConnection();
+        if (connTest.success) {
+          console.log(`✅ Backend connected! URL: ${connTest.url}, Latency: ${connTest.latency}ms`);
+        } else {
+          console.warn(`⚠️ Backend unreachable: ${connTest.error}`);
+          if (connTest.suggestion) {
+            console.warn(`💡 ${connTest.suggestion}`);
+          }
+        }
+      }, 500);
+    });
+
     // Defer model training to background (after UI loads)
     InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
@@ -1682,8 +1860,7 @@ export default function Chatbot() {
           .then((result) => {
             if (result.success) {
               console.log(
-                `✅ Background training complete: ${
-                  result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
+                `✅ Background training complete: ${result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
                 }% accuracy`
               );
             } else {
@@ -1745,7 +1922,7 @@ export default function Chatbot() {
             return out;
           };
           setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
-        } catch (e) {}
+        } catch (e) { }
       }, 1500);
     });
   }, []);
@@ -1767,7 +1944,7 @@ export default function Chatbot() {
             // Fire-and-forget cancel to stop audio + recognition
             cancelRecording();
           }
-        } catch (e) {}
+        } catch (e) { }
       };
     }, [isRecording, params?.mode])
   );
@@ -1806,14 +1983,14 @@ export default function Chatbot() {
           clearTimeout(t2);
           try {
             showListener.remove();
-          } catch (e) {}
+          } catch (e) { }
         };
       });
 
       return () => {
         try {
           interaction.cancel();
-        } catch (e) {}
+        } catch (e) { }
       };
     }, [isRecording])
   );
@@ -2245,9 +2422,8 @@ export default function Chatbot() {
           ...m.slice(0, -1),
           {
             role: "bot",
-            text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${
-              ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
-            }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
+            text: `❌ Không đọc được số tiền từ hóa đơn.\n\n${ocrResult.text ? `📄 Text nhận được:\n${ocrResult.text}\n\n` : ""
+              }Vui lòng thử ảnh khác có kích thước nhỏ hơn 1MB và độ phân giải cao hơn.`,
           },
         ]);
         scrollToEnd();
@@ -2302,9 +2478,8 @@ export default function Chatbot() {
         },
         {
           role: "bot",
-          text: `✅ Tạo giao dịch thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${
-            selectedCategory?.name || "Mua sắm"
-          }\n\nNhấn Edit nếu cần sửa.`,
+          text: `✅ Tạo giao dịch thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${selectedCategory?.name || "Mua sắm"
+            }\n\nNhấn Edit nếu cần sửa.`,
         },
       ]);
       scrollToEnd();
@@ -2326,11 +2501,11 @@ export default function Chatbot() {
       processingTextRef.current = true;
 
       try {
-        // Add typing indicator only if not already present
+        // Add typing indicator with cache status
         setMessages((m) => {
           const last = m[m.length - 1];
           if (last && last.role === "typing") return m;
-          return [...m, { role: "typing" }];
+          return [...m, { role: "typing", cacheStatus: "checking" }];
         });
         scrollToEnd();
 
@@ -2443,6 +2618,158 @@ export default function Chatbot() {
           return;
         }
 
+        // Handle multi-transaction from backend API with PROGRESSIVE DISPLAY
+        if (aiResult.action === "CREATE_MULTIPLE_TRANSACTIONS") {
+          if (!aiResult.transactions || aiResult.transactions.length === 0) {
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Không thể phân tích các giao dịch từ: "${userText}"\n\nVui lòng thử lại với định dạng khác.`,
+              },
+            ]);
+            scrollToEnd();
+            return;
+          }
+
+          // Progressive transaction display with streaming UI
+          try {
+            const userId = await getCurrentUserId();
+            if (!userId) throw new Error("No user logged in");
+
+            // Get default account
+            const accounts = await listAccounts(userId);
+            const defaultAccount = accounts.find((acc) => acc.isDefault) || accounts[0];
+            if (!defaultAccount) throw new Error("No default account found");
+
+            const totalTransactions = aiResult.transactions.length;
+            const createdTransactions: string[] = [];
+            const cardMessages: any[] = [];
+
+            // Show initial progress message
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `🔄 Đang xử lý ${totalTransactions} giao dịch...\n\n⏳ Vui lòng chờ trong giây lát.`,
+              },
+            ]);
+
+            // Process transactions - collect cards, update progress incrementally
+            for (let index = 0; index < aiResult.transactions.length; index++) {
+              const tx = aiResult.transactions[index];
+
+              // Create transaction
+              const txn = await addExpense({
+                userId,
+                accountId: defaultAccount.id,
+                amount: tx.amount,
+                categoryId: tx.categoryId,
+                note: tx.note,
+                when: tx.date || new Date(),
+                updatedAt: new Date(),
+              });
+              createdTransactions.push(txn);
+
+              // Get category info for display
+              const txCategory = items.find((c) => c.id === tx.categoryId);
+              const when = (tx.date || new Date()).toLocaleDateString("vi-VN");
+
+              const cardMessage = {
+                role: "card" as const,
+                transactionId: txn,
+                accountId: defaultAccount.id,
+                amount: tx.amount,
+                io: tx.io || "OUT",
+                categoryId: tx.categoryId,
+                categoryName: tx.categoryName || txCategory?.name || "",
+                categoryIcon: txCategory?.icon || "wallet",
+                categoryColor: txCategory?.color || "#6366F1",
+                note: tx.note,
+                when,
+                date: tx.date,
+              };
+
+              // Collect card message - will be added ONCE at the end
+              cardMessages.push(cardMessage);
+
+              // Update progress message with current count (progressive feedback)
+              const processedCount = index + 1;
+              if (processedCount < totalTransactions) {
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.role === "bot" && msg.text?.includes("Đang xử lý")
+                      ? { ...msg, text: `🔄 Đang xử lý ${processedCount}/${totalTransactions} giao dịch...\n\n⏳ Vui lòng chờ trong giây lát.` }
+                      : msg
+                  )
+                );
+              }
+
+              // Log prediction for learning
+              await logPrediction({
+                text: tx.note,
+                amount: tx.amount || null,
+                io: tx.io || "OUT",
+                predictedCategoryId: tx.categoryId || null,
+                confidence: tx.confidence || 0.8,
+              });
+            }
+
+            // Validate: ensure card count matches backend transactions exactly
+            const expectedCount = aiResult.transactions.length;
+            const actualCardCount = cardMessages.length;
+            if (actualCardCount !== expectedCount) {
+              console.warn(`⚠️ Card count mismatch: expected ${expectedCount}, got ${actualCardCount}`);
+            }
+
+            // Final update: remove progress, show success + all cards ONCE
+            const latencyInfo = aiResult.cacheLatency
+              ? `\n⏱️ Thời gian: ${aiResult.cacheLatency}ms`
+              : "";
+
+            setMessages((m) => {
+              // Keep user's message, remove progress and typing indicator
+              const cleanMessages = m.filter(
+                (msg) =>
+                  !(msg.role === "bot" && (msg.text?.includes("Đang xử lý") || msg.text === "..."))
+              );
+
+              return [
+                ...cleanMessages, // Keep user's message
+                {
+                  // Use conversational message from backend instead of hardcoded text
+                  role: "bot",
+                  text: `✅ ${aiResult.message || "Tự động tạo giao dịch thành công!"}\n\n💰 Tổng: ${aiResult.amount?.toLocaleString("vi-VN")}đ${latencyInfo}`,
+                },
+                ...cardMessages, // Add ALL cards ONCE - exactly matching backend count
+              ];
+            });
+
+            // Trigger model retraining for first transaction
+            if (aiResult.transactions.length > 0) {
+              transactionClassifier.learnFromNewTransaction(
+                userText,
+                aiResult.transactions[0].categoryId
+              );
+            }
+
+            scrollToEnd();
+          } catch (error: any) {
+            console.error("❌ Error creating multiple transactions:", error);
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              {
+                role: "bot",
+                text: `❌ Lỗi khi tạo giao dịch: ${error.message}\n\nVui lòng thử lại.`,
+              },
+            ]);
+            scrollToEnd();
+          }
+
+          processingTextRef.current = false;
+          return;
+        }
+
         // Default: CREATE_TRANSACTION
         // Define minimum confidence for auto-creation (safety threshold)
         const MIN_AUTO_CREATE_CONFIDENCE = 0.6; // 60% - balance between automation and accuracy
@@ -2542,10 +2869,10 @@ export default function Chatbot() {
   const autoCreateTransactionDirect = async (
     aiResult: {
       action:
-        | "CREATE_TRANSACTION"
-        | "VIEW_STATS"
-        | "EDIT_TRANSACTION"
-        | "DELETE_TRANSACTION";
+      | "CREATE_TRANSACTION"
+      | "VIEW_STATS"
+      | "EDIT_TRANSACTION"
+      | "DELETE_TRANSACTION";
       amount: number | null;
       note: string;
       categoryName: string;
@@ -2571,17 +2898,22 @@ export default function Chatbot() {
       setTimeout(() => {
         transactionClassifier
           .learnFromNewTransaction(aiResult.note, categoryId)
-          .catch(() => {});
+          .catch(() => { });
       }, 100);
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
+
+      // Latency info for UI feedback
+      const latencyInfo = aiResult.cacheLatency
+        ? `\n⏱️ ${aiResult.cacheLatency}ms`
+        : "";
 
       // Remove typing indicator and add bot response + transaction card
       setMessages((m) => [
         ...m.slice(0, -1),
         {
           role: "bot",
-          text: aiResult.message,
+          text: aiResult.message + latencyInfo,
         },
         {
           role: "card",
@@ -2798,15 +3130,15 @@ export default function Chatbot() {
         msgs.map((m) =>
           m.role === "card" && m.transactionId === editingTx.transactionId
             ? {
-                ...m,
-                amount: newAmount,
-                note: editNote,
-                categoryId: editCategoryId,
-                io: editingTx.io, // Update io type
-                categoryName: updatedCategory?.name || m.categoryName,
-                categoryIcon: updatedCategory?.icon || m.categoryIcon, // Update icon
-                categoryColor: updatedCategory?.color || m.categoryColor, // Update color
-              }
+              ...m,
+              amount: newAmount,
+              note: editNote,
+              categoryId: editCategoryId,
+              io: editingTx.io, // Update io type
+              categoryName: updatedCategory?.name || m.categoryName,
+              categoryIcon: updatedCategory?.icon || m.categoryIcon, // Update icon
+              categoryColor: updatedCategory?.color || m.categoryColor, // Update color
+            }
             : m
         )
       );
@@ -2905,50 +3237,56 @@ export default function Chatbot() {
           alignItems: "center",
           justifyContent: "center",
           height: 44,
-        }}
+        }
+        }
       >
         <View
-          style={{
-            width: "100%",
-            flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: "center",
-            gap: 2,
-            height: 44,
-            paddingHorizontal: 4,
-            borderRadius: 14,
-            backgroundColor: "rgba(255,255,255,0.06)",
-            overflow: "hidden",
-          }}
+          style={
+            {
+              width: "100%",
+              flexDirection: "row",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              gap: 2,
+              height: 44,
+              paddingHorizontal: 4,
+              borderRadius: 14,
+              backgroundColor: "rgba(255,255,255,0.06)",
+              overflow: "hidden",
+            }
+          }
         >
-          {Array.from({ length: NUM_BARS }).map((_, i) => {
-            const symmetry = Math.sin((Math.PI * i) / (NUM_BARS - 1));
-            const base = 0.35 + 0.65 * symmetry;
-            const peak = Math.max(MIN_H + 1, MAX_H * base * peaks[i]);
+          {
+            Array.from({ length: NUM_BARS }).map((_, i) => {
+              const symmetry = Math.sin((Math.PI * i) / (NUM_BARS - 1));
+              const base = 0.35 + 0.65 * symmetry;
+              const peak = Math.max(MIN_H + 1, MAX_H * base * peaks[i]);
 
-            const h = anim.interpolate({
-              inputRange: [0, 0.25, 0.5, 0.75, 1],
-              outputRange: [MIN_H, peak * 0.7, peak * 1.05, peak * 0.75, MIN_H],
-            });
+              const h = anim.interpolate({
+                inputRange: [0, 0.25, 0.5, 0.75, 1],
+                outputRange: [MIN_H, peak * 0.7, peak * 1.05, peak * 0.75, MIN_H],
+              });
 
-            return (
-              <Animated.View
-                key={i}
-                style={{
-                  flex: 1,
-                  borderRadius: 3,
-                  backgroundColor: color,
-                  height: h,
-                  opacity: 0.55 + 0.45 * base,
-                  shadowColor: color,
-                  shadowOpacity: 0.16,
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowRadius: 4,
-                  elevation: 2,
-                }}
-              />
-            );
-          })}
+              return (
+                <Animated.View
+                  key={i}
+                  style={{
+                    flex: 1,
+                    borderRadius: 3,
+                    backgroundColor: color,
+                    height: h,
+                    opacity: 0.55 + 0.45 * base,
+                    shadowColor: color,
+                    shadowOpacity: 0.16,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowRadius: 4,
+                    elevation: 2,
+                  }
+                  }
+                />
+              );
+            })
+          }
         </View>
       </View>
     );
@@ -3019,10 +3357,10 @@ export default function Chatbot() {
     return () => {
       try {
         subShow.remove();
-      } catch (e) {}
+      } catch (e) { }
       try {
         subHide.remove();
-      } catch (e) {}
+      } catch (e) { }
     };
   }, [insets.bottom]);
 
@@ -3063,7 +3401,7 @@ export default function Chatbot() {
       if (pendingFinalRef.current || processingSessionRef.current != null) {
         try {
           await stopVoice({ skipFallback: true });
-        } catch {}
+        } catch { }
         return;
       }
 
@@ -3119,27 +3457,29 @@ export default function Chatbot() {
           keyExtractor={(_, i) => String(i)}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: new Animated.Value(0) } } }],
-            {
-              useNativeDriver: false,
-              listener: (event: any) => {
-                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                // More accurate bottom detection - check if within 50px of bottom
-                const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-                const isCloseToBottom = distanceFromBottom <= 50; // Within 50px of bottom
-                setIsAtBottom(isCloseToBottom);
-                // Reset force hide only when user manually scrolls (not when scrolling to bottom via button)
-                if (!isCloseToBottom && !isScrollingToBottom) {
-                  setForceHideButton(false);
-                }
-                // Reset scrolling flag when reached bottom
-                if (isCloseToBottom) {
-                  setIsScrollingToBottom(false);
-                }
-              },
-            }
-          )}
+          onScroll={
+            Animated.event(
+              [{ nativeEvent: { contentOffset: { y: new Animated.Value(0) } } }],
+              {
+                useNativeDriver: false,
+                listener: (event: any) => {
+                  const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                  // More accurate bottom detection - check if within 50px of bottom
+                  const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+                  const isCloseToBottom = distanceFromBottom <= 50; // Within 50px of bottom
+                  setIsAtBottom(isCloseToBottom);
+                  // Reset force hide only when user manually scrolls (not when scrolling to bottom via button)
+                  if (!isCloseToBottom && !isScrollingToBottom) {
+                    setForceHideButton(false);
+                  }
+                  // Reset scrolling flag when reached bottom
+                  if (isCloseToBottom) {
+                    setIsScrollingToBottom(false);
+                  }
+                },
+              }
+            )
+          }
           contentContainerStyle={{
             padding: 16,
             gap: 12,
@@ -3162,62 +3502,67 @@ export default function Chatbot() {
               if (item.role === "user") {
                 return (
                   <View
-                    style={[
-                      styles.bubble,
-                      styles.right,
-                      {
-                        backgroundColor:
-                          mode === "dark" ? "#1E3A8A" : "#E5F5F9",
-                        borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
-                      },
-                    ]}
+                    style={
+                      [
+                        styles.bubble,
+                        styles.right,
+                        {
+                          backgroundColor:
+                            mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+                          borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+                        },
+                      ]}
                   >
-                    {item.imageUri === "voice-recording" ? (
-                      <View
-                        style={{
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: 20,
-                        }}
-                      >
-                        <Ionicons name="mic" size={48} color="#3B82F6" />
-                      </View>
-                    ) : item.imageUri ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setSelectedImage(item.imageUri!);
-                          setImageViewerVisible(true);
-                        }}
-                      >
-                        <Image
-                          source={{ uri: item.imageUri }}
+                    {
+                      item.imageUri === "voice-recording" ? (
+                        <View
                           style={{
-                            width: 200,
-                            height: 200,
-                            borderRadius: 8,
-                          }}
-                          resizeMode="cover"
-                        />
-                      </TouchableOpacity>
-                    ) : (
-                      <Text style={[styles.text, { color: colors.text }]}>
-                        {item.text}
-                      </Text>
-                    )}
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 20,
+                          }
+                          }
+                        >
+                          <Ionicons name="mic" size={48} color="#3B82F6" />
+                        </View>
+                      ) : item.imageUri ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedImage(item.imageUri!);
+                            setImageViewerVisible(true);
+                          }
+                          }
+                        >
+                          <Image
+                            source={{ uri: item.imageUri }}
+                            style={{
+                              width: 200,
+                              height: 200,
+                              borderRadius: 8,
+                            }}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <Text style={[styles.text, { color: colors.text }]} >
+                          {item.text}
+                        </Text>
+                      )}
                   </View>
                 );
               }
               if (item.role === "bot") {
                 return (
                   <View
-                    style={[
-                      styles.bubble,
-                      styles.left,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.divider,
-                      },
-                    ]}
+                    style={
+                      [
+                        styles.bubble,
+                        styles.left,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.divider,
+                        },
+                      ]}
                   >
                     <Text style={[styles.text, { color: colors.text }]}>
                       {item.text}
@@ -3226,31 +3571,36 @@ export default function Chatbot() {
                 );
               }
               if (item.role === "typing") {
-                return <TypingIndicator colors={colors} />;
+                return <TypingIndicator colors={colors} cacheStatus={item.cacheStatus} />;
               }
 
               return (
                 <View
-                  style={[
-                    styles.card,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.divider,
-                    },
-                  ]}
+                  style={
+                    [
+                      styles.card,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.divider,
+                      },
+                    ]}
                 >
                   <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+                    style={
+                      {
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }
+                    }
                   >
                     <View
-                      style={[
-                        styles.iconCircle,
-                        { backgroundColor: item.categoryColor || "#6366F1" },
-                      ]}
+                      style={
+                        [
+                          styles.iconCircle,
+                          { backgroundColor: item.categoryColor || "#6366F1" },
+                        ]
+                      }
                     >
                       <MaterialCommunityIcons
                         name={fixIconName(item.categoryIcon) as any}
@@ -3258,13 +3608,13 @@ export default function Chatbot() {
                         color="#fff"
                       />
                     </View>
-                    <View style={{ flex: 1 }}>
+                    < View style={{ flex: 1 }}>
                       <Text style={{ color: colors.subText, marginBottom: 2 }}>
                         {t("recorded")}{" "}
                         {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
                         {item.when}
                       </Text>
-                      <Text
+                      < Text
                         style={{
                           fontWeight: "700",
                           fontSize: 18,
@@ -3273,11 +3623,11 @@ export default function Chatbot() {
                       >
                         {item.categoryName}
                       </Text>
-                      <Text style={{ marginTop: 2, color: colors.text }}>
+                      < Text style={{ marginTop: 2, color: colors.text }}>
                         {item.note}
                       </Text>
                     </View>
-                    <Text
+                    < Text
                       style={{
                         fontWeight: "700",
                         fontSize: 16,
@@ -3289,28 +3639,31 @@ export default function Chatbot() {
                   </View>
                   {/* Action buttons */}
                   <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 10,
-                      marginTop: 16,
-                      justifyContent: "flex-end",
-                    }}
+                    style={
+                      {
+                        flexDirection: "row",
+                        gap: 10,
+                        marginTop: 16,
+                        justifyContent: "flex-end",
+                      }
+                    }
                   >
                     <TouchableOpacity
                       onPress={() => handleEditTransaction(item)}
-                      style={[
-                        styles.actionBtn,
-                        {
-                          backgroundColor:
-                            mode === "dark" ? "#1E40AF" : "#DBEAFE",
-                          borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
-                          shadowColor: "#3B82F6",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.15,
-                          shadowRadius: 3,
-                          elevation: 2,
-                        },
-                      ]}
+                      style={
+                        [
+                          styles.actionBtn,
+                          {
+                            backgroundColor:
+                              mode === "dark" ? "#1E40AF" : "#DBEAFE",
+                            borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+                            shadowColor: "#3B82F6",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.15,
+                            shadowRadius: 3,
+                            elevation: 2,
+                          },
+                        ]}
                       activeOpacity={0.7}
                     >
                       <Ionicons
@@ -3318,7 +3671,7 @@ export default function Chatbot() {
                         size={18}
                         color={mode === "dark" ? "#93C5FD" : "#2563EB"}
                       />
-                      <Text
+                      < Text
                         style={{
                           color: mode === "dark" ? "#93C5FD" : "#2563EB",
                           fontSize: 13,
@@ -3328,7 +3681,7 @@ export default function Chatbot() {
                         {t("edit")}
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    < TouchableOpacity
                       onPress={() => {
                         Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
                           { text: t("cancel"), style: "cancel" },
@@ -3340,19 +3693,20 @@ export default function Chatbot() {
                           },
                         ]);
                       }}
-                      style={[
-                        styles.actionBtn,
-                        {
-                          backgroundColor:
-                            mode === "dark" ? "#7F1D1D" : "#FEE2E2",
-                          borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
-                          shadowColor: "#EF4444",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.15,
-                          shadowRadius: 3,
-                          elevation: 2,
-                        },
-                      ]}
+                      style={
+                        [
+                          styles.actionBtn,
+                          {
+                            backgroundColor:
+                              mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+                            borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+                            shadowColor: "#EF4444",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.15,
+                            shadowRadius: 3,
+                            elevation: 2,
+                          },
+                        ]}
                       activeOpacity={0.7}
                     >
                       <Ionicons
@@ -3360,7 +3714,7 @@ export default function Chatbot() {
                         size={18}
                         color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
                       />
-                      <Text
+                      < Text
                         style={{
                           color: mode === "dark" ? "#FCA5A5" : "#DC2626",
                           fontSize: 13,
@@ -3382,38 +3736,39 @@ export default function Chatbot() {
         {
           <Animated.View
             pointerEvents={pendingPick ? "auto" : "none"}
-            style={[
-              styles.suggestBar,
-              {
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: (insets.bottom || 0) + keyboardHeight + 70,
-                zIndex: 60,
-                // full-width + no outer background/border/shadow
-                backgroundColor: "transparent",
-                borderRadius: 0,
-                paddingVertical: 6,
-                paddingHorizontal: 0,
-                borderWidth: 0,
-                borderColor: "transparent",
-                elevation: 0,
-                // animated opacity + translate
-                opacity: suggestAnim,
-                transform: [
-                  {
-                    translateY: suggestAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [8, 0],
-                    }),
-                  },
-                ],
-                shadowColor: "transparent",
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 0,
-                shadowRadius: 0,
-              },
-            ]}
+            style={
+              [
+                styles.suggestBar,
+                {
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: (insets.bottom || 0) + keyboardHeight + 70,
+                  zIndex: 60,
+                  // full-width + no outer background/border/shadow
+                  backgroundColor: "transparent",
+                  borderRadius: 0,
+                  paddingVertical: 6,
+                  paddingHorizontal: 0,
+                  borderWidth: 0,
+                  borderColor: "transparent",
+                  elevation: 0,
+                  // animated opacity + translate
+                  opacity: suggestAnim,
+                  transform: [
+                    {
+                      translateY: suggestAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [8, 0],
+                      }),
+                    },
+                  ],
+                  shadowColor: "transparent",
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0,
+                  shadowRadius: 0,
+                },
+              ]}
           >
             <ScrollView
               horizontal
@@ -3421,76 +3776,83 @@ export default function Chatbot() {
               contentContainerStyle={{
                 alignItems: "center",
                 paddingLeft: insets.left || 4,
-              }}
+              }
+              }
             >
-              {pendingPick?.choices.map((c, index) => (
-                <Pressable
-                  key={c.categoryId}
-                  onPress={() => chooseCategory(c)}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor: colors.divider,
-                      backgroundColor:
-                        index === 0 && c.score > 0.5 ? "#16A34A" : colors.card,
-                      borderWidth: index === 0 && c.score > 0.5 ? 0 : 1,
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      marginRight: 8,
-                      flexDirection: "row",
-                      alignItems: "center",
-                    },
-                  ]}
-                >
-                  {index === 0 && c.score > 0.5 && (
-                    <MaterialCommunityIcons
-                      name="robot"
-                      size={14}
-                      color="#fff"
-                      style={{ marginRight: 8 }}
-                    />
-                  )}
-                  <Text
-                    style={[
-                      styles.chipText,
-                      {
-                        color:
-                          index === 0 && c.score > 0.5 ? "#fff" : colors.text,
-                      },
-                    ]}
+              {
+                pendingPick?.choices.map((c, index) => (
+                  <Pressable
+                    key={c.categoryId}
+                    onPress={() => chooseCategory(c)}
+                    style={
+                      [
+                        styles.chip,
+                        {
+                          borderColor: colors.divider,
+                          backgroundColor:
+                            index === 0 && c.score > 0.5 ? "#16A34A" : colors.card,
+                          borderWidth: index === 0 && c.score > 0.5 ? 0 : 1,
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          marginRight: 8,
+                          flexDirection: "row",
+                          alignItems: "center",
+                        },
+                      ]}
                   >
-                    {c.name}
-                  </Text>
-                  <View
-                    style={{
-                      marginLeft: 8,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 8,
-                      backgroundColor:
-                        index === 0 && c.score > 0.5
-                          ? "rgba(255,255,255,0.12)"
-                          : "transparent",
-                    }}
-                  >
+                    {index === 0 && c.score > 0.5 && (
+                      <MaterialCommunityIcons
+                        name="robot"
+                        size={14}
+                        color="#fff"
+                        style={{ marginRight: 8 }}
+                      />
+                    )}
                     <Text
+                      style={
+                        [
+                          styles.chipText,
+                          {
+                            color:
+                              index === 0 && c.score > 0.5 ? "#fff" : colors.text,
+                          },
+                        ]
+                      }
+                    >
+                      {c.name}
+                    </Text>
+                    < View
                       style={{
-                        color:
+                        marginLeft: 8,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                        backgroundColor:
                           index === 0 && c.score > 0.5
-                            ? "#fff"
-                            : colors.subText,
-                        fontSize: 12,
+                            ? "rgba(255,255,255,0.12)"
+                            : "transparent",
                       }}
                     >
-                      {(c as any).isFromML
-                        ? `🎓 ${Math.round(
+                      <Text
+                        style={
+                          {
+                            color:
+                              index === 0 && c.score > 0.5
+                                ? "#fff"
+                                : colors.subText,
+                            fontSize: 12,
+                          }
+                        }
+                      >
+                        {(c as any).isFromML
+                          ? `🎓 ${Math.round(
                             ((c as any).mlConfidence || c.score) * 100
                           )}%`
-                        : `${Math.round(c.score * 100)}%`}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
+                          : `${Math.round(c.score * 100)}%`}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
             </ScrollView>
           </Animated.View>
         }
@@ -3503,40 +3865,48 @@ export default function Chatbot() {
           onRequestClose={() => setEditingTx(null)}
         >
           <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "flex-end",
-            }}
+            style={
+              {
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.5)",
+                justifyContent: "flex-end",
+              }
+            }
           >
             <SafeAreaView
-              style={{
-                backgroundColor: colors.card,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                padding: 20,
-                maxHeight: "80%",
-              }}
+              style={
+                {
+                  backgroundColor: colors.card,
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                  padding: 20,
+                  maxHeight: "80%",
+                }
+              }
               edges={["bottom"]}
             >
               <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16,
-                }}
+                style={
+                  {
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 16,
+                  }
+                }
               >
                 <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.text,
-                  }}
+                  style={
+                    {
+                      fontSize: 18,
+                      fontWeight: "700",
+                      color: colors.text,
+                    }
+                  }
                 >
                   {t("editTransaction")}
                 </Text>
-                <TouchableOpacity onPress={() => setEditingTx(null)}>
+                < TouchableOpacity onPress={() => setEditingTx(null)}>
                   <Ionicons name="close" size={24} color={colors.icon} />
                 </TouchableOpacity>
               </View>
@@ -3545,24 +3915,28 @@ export default function Chatbot() {
                 {/* Transaction Type Toggle */}
                 <View style={{ marginBottom: 16 }}>
                   <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 8,
-                      color: colors.text,
-                    }}
+                    style={
+                      {
+                        fontSize: 14,
+                        fontWeight: "600",
+                        marginBottom: 8,
+                        color: colors.text,
+                      }
+                    }
                   >
                     Loại giao dịch
                   </Text>
-                  <View style={{ flexDirection: "row", gap: 12 }}>
+                  < View style={{ flexDirection: "row", gap: 12 }}>
                     <TouchableOpacity
-                      onPress={() => {
-                        if (editingTx) {
-                          setEditingTx({ ...editingTx, io: "OUT" });
-                          // Reset category khi đổi loại
-                          setEditCategoryId("");
+                      onPress={
+                        () => {
+                          if (editingTx) {
+                            setEditingTx({ ...editingTx, io: "OUT" });
+                            // Reset category khi đổi loại
+                            setEditCategoryId("");
+                          }
                         }
-                      }}
+                      }
                       style={{
                         flex: 1,
                         flexDirection: "row",
@@ -3589,7 +3963,7 @@ export default function Chatbot() {
                           editingTx?.io === "OUT" ? "#EF4444" : colors.subText
                         }
                       />
-                      <Text
+                      < Text
                         style={{
                           fontSize: 15,
                           fontWeight: "700",
@@ -3603,7 +3977,7 @@ export default function Chatbot() {
                       </Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
+                    < TouchableOpacity
                       onPress={() => {
                         if (editingTx) {
                           setEditingTx({ ...editingTx, io: "IN" });
@@ -3637,7 +4011,7 @@ export default function Chatbot() {
                           editingTx?.io === "IN" ? "#10B981" : colors.subText
                         }
                       />
-                      <Text
+                      < Text
                         style={{
                           fontSize: 15,
                           fontWeight: "700",
@@ -3654,16 +4028,18 @@ export default function Chatbot() {
                 {/* Amount */}
                 <View style={{ marginBottom: 16 }}>
                   <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
-                    }}
+                    style={
+                      {
+                        fontSize: 14,
+                        fontWeight: "600",
+                        marginBottom: 6,
+                        color: colors.text,
+                      }
+                    }
                   >
                     {t("amount")}
                   </Text>
-                  <TextInput
+                  < TextInput
                     value={editAmount}
                     onChangeText={(text) => {
                       // Format with commas
@@ -3692,16 +4068,18 @@ export default function Chatbot() {
                 {/* Note */}
                 <View style={{ marginBottom: 16 }}>
                   <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
-                    }}
+                    style={
+                      {
+                        fontSize: 14,
+                        fontWeight: "600",
+                        marginBottom: 6,
+                        color: colors.text,
+                      }
+                    }
                   >
                     {t("note")}
                   </Text>
-                  <TextInput
+                  < TextInput
                     value={editNote}
                     onChangeText={setEditNote}
                     multiline
@@ -3723,16 +4101,18 @@ export default function Chatbot() {
                 {/* Category */}
                 <View style={{ marginBottom: 16 }}>
                   <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      marginBottom: 6,
-                      color: colors.text,
-                    }}
+                    style={
+                      {
+                        fontSize: 14,
+                        fontWeight: "600",
+                        marginBottom: 6,
+                        color: colors.text,
+                      }
+                    }
                   >
                     {t("category")}
                   </Text>
-                  <ScrollView
+                  < ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{
@@ -3741,48 +4121,51 @@ export default function Chatbot() {
                       paddingVertical: 4,
                     }}
                   >
-                    {items
-                      .filter((c) => {
-                        if (!editingTx) return false;
-                        const type =
-                          editingTx.io === "OUT" ? "expense" : "income";
-                        return c.type === type;
-                      })
-                      .map((cat) => (
-                        <TouchableOpacity
-                          key={cat.id}
-                          onPress={() => setEditCategoryId(cat.id)}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor:
-                              editCategoryId === cat.id
-                                ? "#10B981"
-                                : colors.divider,
-                            backgroundColor:
-                              editCategoryId === cat.id
-                                ? mode === "dark"
-                                  ? "#065F46"
-                                  : "#D1FAE5"
-                                : colors.background,
-                          }}
-                        >
-                          <Text
+                    {
+                      items
+                        .filter((c) => {
+                          if (!editingTx) return false;
+                          const type =
+                            editingTx.io === "OUT" ? "expense" : "income";
+                          return c.type === type;
+                        })
+                        .map((cat) => (
+                          <TouchableOpacity
+                            key={cat.id}
+                            onPress={() => setEditCategoryId(cat.id)}
                             style={{
-                              fontSize: 14,
-                              fontWeight: "600",
-                              color:
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor:
                                 editCategoryId === cat.id
                                   ? "#10B981"
-                                  : colors.text,
+                                  : colors.divider,
+                              backgroundColor:
+                                editCategoryId === cat.id
+                                  ? mode === "dark"
+                                    ? "#065F46"
+                                    : "#D1FAE5"
+                                  : colors.background,
                             }}
                           >
-                            {cat.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                            <Text
+                              style={
+                                {
+                                  fontSize: 14,
+                                  fontWeight: "600",
+                                  color:
+                                    editCategoryId === cat.id
+                                      ? "#10B981"
+                                      : colors.text,
+                                }
+                              }
+                            >
+                              {cat.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
                   </ScrollView>
                 </View>
               </ScrollView>
@@ -3804,10 +4187,12 @@ export default function Chatbot() {
               >
                 {isSaving && (
                   <Animated.View
-                    style={{
-                      marginRight: 8,
-                      transform: [{ rotate: spin }],
-                    }}
+                    style={
+                      {
+                        marginRight: 8,
+                        transform: [{ rotate: spin }],
+                      }
+                    }
                   >
                     <Ionicons name="sync" size={20} color="#fff" />
                   </Animated.View>
@@ -3822,70 +4207,82 @@ export default function Chatbot() {
           </View>
         </Modal>
 
-            {/* Input Bar (ẩn khi đang thu âm) */}
-            <Animated.View
-              onLayout={(e) =>
-                setInputBarHeight(Math.max(0, e.nativeEvent.layout.height || 0))
-              }
-              style={[
-                styles.inputBar,
-                {
-                  borderColor: colors.divider,
-                  backgroundColor: colors.card,
-                  marginBottom: (keyboardHeight || 0) + (insets.bottom || 0),
-                  paddingBottom: 12,
-                },
-              ]}
-            >
+        {/* Input Bar (ẩn khi đang thu âm) */}
+        <Animated.View
+          onLayout={
+            (e) =>
+              setInputBarHeight(Math.max(0, e.nativeEvent.layout.height || 0))
+          }
+          style={
+            [
+              styles.inputBar,
+              {
+                borderColor: colors.divider,
+                backgroundColor: colors.card,
+                marginBottom: (keyboardHeight || 0) + (insets.bottom || 0),
+                paddingBottom: 12,
+              },
+            ]}
+        >
           {/* Nút Voice (ẩn khi đang ghi âm) */}
-          {!isRecording && (
-            <Pressable
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor:
-                    mode === "dark" ? colors.background : "#F3F4F6",
-                  borderColor: colors.divider,
-                  opacity: isProcessingVoice ? 0.4 : 1,
-                },
-              ]}
-              onPress={startVoice}
-              disabled={isProcessingVoice}
-            >
-              <Ionicons name={"mic"} size={22} color={colors.icon} />
-            </Pressable>
-          )}
+          {
+            !isRecording && (
+              <Pressable
+                style={
+                  [
+                    styles.iconBtn,
+                    {
+                      backgroundColor:
+                        mode === "dark" ? colors.background : "#F3F4F6",
+                      borderColor: colors.divider,
+                      opacity: isProcessingVoice ? 0.4 : 1,
+                    },
+                  ]
+                }
+                onPress={startVoice}
+                disabled={isProcessingVoice}
+              >
+                <Ionicons name={"mic"} size={22} color={colors.icon} />
+              </Pressable>
+            )
+          }
 
           {/* Nút Image - ẩn khi đang ghi âm */}
-          {!isRecording && (
-            <Pressable
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor:
-                    mode === "dark" ? colors.background : "#F3F4F6",
-                  borderColor: colors.divider,
-                },
-              ]}
-              onPress={handleImagePress}
-              disabled={isProcessingVoice}
-            >
-              <Ionicons name="image" size={22} color={colors.icon} />
-            </Pressable>
-          )}
+          {
+            !isRecording && (
+              <Pressable
+                style={
+                  [
+                    styles.iconBtn,
+                    {
+                      backgroundColor:
+                        mode === "dark" ? colors.background : "#F3F4F6",
+                      borderColor: colors.divider,
+                    },
+                  ]
+                }
+                onPress={handleImagePress}
+                disabled={isProcessingVoice}
+              >
+                <Ionicons name="image" size={22} color={colors.icon} />
+              </Pressable>
+            )
+          }
 
           {/* Vùng giữa: TextInput <-> RecordingBar */}
           <View
-            style={{
-              flex: 1,
-              marginHorizontal: 4,
-              position: "relative",
-              minHeight: 44,
-              justifyContent: "center",
-            }}
+            style={
+              {
+                flex: 1,
+                marginHorizontal: 4,
+                position: "relative",
+                minHeight: 44,
+                justifyContent: "center",
+              }
+            }
           >
             {/* TextInput (hiện khi không ghi) */}
-            <Animated.View
+            < Animated.View
               pointerEvents={isRecording ? "none" : "auto"}
               style={{
                 position: "absolute",
@@ -3908,28 +4305,30 @@ export default function Chatbot() {
               <Tooltip
                 isVisible={shouldShowTour && currentStep === 2}
                 content={
-                  <View style={{ padding: 8 }}>
+                  < View style={{ padding: 8 }}>
                     <Text
-                      style={{
-                        fontSize: 16,
-                        fontWeight: "700",
-                        color: "#111",
-                        marginBottom: 8,
-                      }}
+                      style={
+                        {
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: "#111",
+                          marginBottom: 8,
+                        }
+                      }
                     >
                       📝 Nhập giao dịch
                     </Text>
-                    <Text
+                    < Text
                       style={{
                         fontSize: 14,
                         color: "#666",
                         marginBottom: 12,
                       }}
                     >
-                      Nhập nội dung giao dịch của bạn tại đây. Ví dụ: "Trà sữa
+                      Nhập nội dung giao dịch của bạn tại đây.Ví dụ: "Trà sữa
                       60k" rồi nhấn nút gửi.
                     </Text>
-                    <TouchableOpacity
+                    < TouchableOpacity
                       onPress={() => {
                         nextStep();
                         inputRef.current?.focus();
@@ -3994,7 +4393,7 @@ export default function Chatbot() {
                       requestAnimationFrame(() =>
                         flatRef.current?.scrollToEnd({ animated: true })
                       );
-                    } catch (e) {}
+                    } catch (e) { }
 
                     setTimeout(
                       () => flatRef.current?.scrollToEnd({ animated: true }),
@@ -4009,19 +4408,20 @@ export default function Chatbot() {
                       InteractionManager.runAfterInteractions(() => {
                         flatRef.current?.scrollToEnd({ animated: true });
                       });
-                    } catch (e) {}
+                    } catch (e) { }
                   }}
                   onBlur={() => {
                     setKeyboardHeight(0);
                   }}
-                  style={[
-                    styles.textInput,
-                    {
-                      borderColor: colors.divider,
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                    },
-                  ]}
+                  style={
+                    [
+                      styles.textInput,
+                      {
+                        borderColor: colors.divider,
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                      },
+                    ]}
                   returnKeyType="send"
                   onSubmitEditing={handleSend}
                 />
@@ -4050,20 +4450,22 @@ export default function Chatbot() {
               }}
             >
               <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.divider,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  backgroundColor:
-                    mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
-                }}
+                style={
+                  {
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    backgroundColor:
+                      mode === "dark" ? "rgba(37, 99, 235, 0.15)" : "#E5F5F9",
+                  }
+                }
               >
                 {/* small mic icon at the start while recording */}
-                <View
+                < View
                   style={{
                     width: 32,
                     alignItems: "center",
@@ -4078,7 +4480,7 @@ export default function Chatbot() {
                   />
                 </View>
 
-                <View style={{ flex: 1, marginHorizontal: 8 }}>
+                < View style={{ flex: 1, marginHorizontal: 8 }}>
                   <VoiceWaveformLite
                     isRecording={isRecording}
                     color={mode === "dark" ? "#60A5FA" : "#3B82F6"}
@@ -4089,21 +4491,22 @@ export default function Chatbot() {
                 <Pressable
                   onPress={cancelRecording}
                   disabled={isSubmitting}
-                  style={[
-                    styles.iconBtn,
-                    {
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      marginRight: 8,
-                      backgroundColor:
-                        mode === "dark" ? colors.background : colors.card,
-                      borderColor: colors.divider,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: isSubmitting ? 0.45 : 1,
-                    },
-                  ]}
+                  style={
+                    [
+                      styles.iconBtn,
+                      {
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        marginRight: 8,
+                        backgroundColor:
+                          mode === "dark" ? colors.background : colors.card,
+                        borderColor: colors.divider,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: isSubmitting ? 0.45 : 1,
+                      },
+                    ]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="close" size={18} color={colors.subText} />
@@ -4113,21 +4516,22 @@ export default function Chatbot() {
                 <Pressable
                   onPress={handleSubmitVoice}
                   disabled={isSubmitting}
-                  style={[
-                    styles.iconBtn,
-                    {
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      marginLeft: 8,
-                      backgroundColor:
-                        mode === "dark" ? colors.background : colors.card,
-                      borderColor: colors.divider,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: isSubmitting ? 0.45 : 1,
-                    },
-                  ]}
+                  style={
+                    [
+                      styles.iconBtn,
+                      {
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        marginLeft: 8,
+                        backgroundColor:
+                          mode === "dark" ? colors.background : colors.card,
+                        borderColor: colors.divider,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: isSubmitting ? 0.45 : 1,
+                      },
+                    ]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="checkmark" size={18} color="#10B981" />
@@ -4137,82 +4541,89 @@ export default function Chatbot() {
           </View>
 
           {/* Nút Send text - ẩn khi đang ghi âm */}
-          {!isRecording && (
-            <Tooltip
-              isVisible={shouldShowTour && currentStep === 3}
-              content={
-                <View style={{ padding: 8 }}>
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: "#111",
-                      marginBottom: 8,
-                    }}
-                  >
-                    🚀 Gửi tin nhắn
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      color: "#666",
-                      marginBottom: 12,
-                    }}
-                  >
-                    Nhấn nút "Gửi" để AI xử lý giao dịch của bạn. AI sẽ tự động
-                    phân loại và tạo giao dịch mới.
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      nextStep();
-                    }}
-                    style={{
-                      backgroundColor: "#10B981",
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
-                      Hiểu rồi
+          {
+            !isRecording && (
+              <Tooltip
+                isVisible={shouldShowTour && currentStep === 3}
+                content={
+                  < View style={{ padding: 8 }
+                  }>
+                    <Text
+                      style={
+                        {
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: "#111",
+                          marginBottom: 8,
+                        }
+                      }
+                    >
+                      🚀 Gửi tin nhắn
                     </Text>
-                  </TouchableOpacity>
-                </View>
-              }
-              placement="top"
-              onClose={() => nextStep()}
-              contentStyle={{
-                backgroundColor: "#fff",
-                borderRadius: 12,
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.25,
-                shadowRadius: 8,
-                elevation: 5,
-              }}
-            >
-              <Pressable
-                style={[
-                  styles.sendBtn,
-                  isSending
-                    ? { backgroundColor: "#9CA3AF" }
-                    : { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
-                ]}
-                onPress={handleSend}
-                disabled={isSending}
-                accessibilityLabel={isSending ? "Đang gửi" : "Gửi"}
-              >
-                {isSending ? (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <ActivityIndicator size="small" color="#fff" />
+                    < Text
+                      style={{
+                        fontSize: 14,
+                        color: "#666",
+                        marginBottom: 12,
+                      }}
+                    >
+                      Nhấn nút "Gửi" để AI xử lý giao dịch của bạn.AI sẽ tự động
+                      phân loại và tạo giao dịch mới.
+                    </Text>
+                    < TouchableOpacity
+                      onPress={() => {
+                        nextStep();
+                      }}
+                      style={{
+                        backgroundColor: "#10B981",
+                        paddingVertical: 8,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>
+                        Hiểu rồi
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                ) : (
-                  <Text style={styles.sendText}>{t("send")}</Text>
-                )}
-              </Pressable>
-            </Tooltip>
-          )}
+                }
+                placement="top"
+                onClose={() => nextStep()}
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  borderRadius: 12,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 8,
+                  elevation: 5,
+                }}
+              >
+                <Pressable
+                  style={
+                    [
+                      styles.sendBtn,
+                      isSending
+                        ? { backgroundColor: "#9CA3AF" }
+                        : { backgroundColor: mode === "dark" ? "#3B82F6" : "#111" },
+                    ]
+                  }
+                  onPress={handleSend}
+                  disabled={isSending}
+                  accessibilityLabel={isSending ? "Đang gửi" : "Gửi"}
+                >
+                  {
+                    isSending ? (
+                      <View style={{ flexDirection: "row", alignItems: "center" }} >
+                        <ActivityIndicator size="small" color="#fff" />
+                      </View>
+                    ) : (
+                      <Text style={styles.sendText} > {t("send")} </Text>
+                    )}
+                </Pressable>
+              </Tooltip>
+            )}
         </Animated.View>
 
         {/* Image Viewer Modal */}
@@ -4223,102 +4634,114 @@ export default function Chatbot() {
           onRequestClose={() => setImageViewerVisible(false)}
         >
           <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.9)",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <TouchableOpacity
-              style={{
-                position: "absolute",
-                top: 50,
-                right: 20,
-                zIndex: 10,
-                backgroundColor: "rgba(255,255,255,0.3)",
-                borderRadius: 25,
-                width: 50,
-                height: 50,
+            style={
+              {
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.9)",
                 justifyContent: "center",
                 alignItems: "center",
-              }}
+              }
+            }
+          >
+            <TouchableOpacity
+              style={
+                {
+                  position: "absolute",
+                  top: 50,
+                  right: 20,
+                  zIndex: 10,
+                  backgroundColor: "rgba(255,255,255,0.3)",
+                  borderRadius: 25,
+                  width: 50,
+                  height: 50,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }
+              }
               onPress={() => setImageViewerVisible(false)}
             >
               <Ionicons name="close" size={30} color="#fff" />
             </TouchableOpacity>
 
-            {selectedImage && (
-              <Image
-                source={{ uri: selectedImage }}
-                style={{
-                  width: screenWidth,
-                  height: screenHeight * 0.8,
-                }}
-                resizeMode="contain"
-              />
-            )}
+            {
+              selectedImage && (
+                <Image
+                  source={{ uri: selectedImage }}
+                  style={{
+                    width: screenWidth,
+                    height: screenHeight * 0.8,
+                  }
+                  }
+                  resizeMode="contain"
+                />
+              )}
           </View>
         </Modal>
 
         {/* Floating Scroll to Bottom Button */}
-        {!isAtBottom && !forceHideButton && (
-          <Animated.View
-          style={{
-            position: 'absolute',
-            right: 12, // Position above the send button
-            bottom: inputBarHeight + insets.bottom + 10, // Above the send button
-            opacity: scrollButtonAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 0.85], // Slightly transparent for subtle look
-            }),
-            transform: [
-              {
-                translateY: scrollButtonAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [20, 0], // Slide up from below
-                }),
-              },
-              {
-                scale: scrollButtonAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1], // Slight scale animation
-                }),
-              },
-            ],
-          }}
-        >
-          <Pressable
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 12, // Match send button borderRadius
-              backgroundColor: mode === 'dark' ? '#3B82F6' : '#2563EB', // Match send button colors
-              alignItems: 'center',
-              justifyContent: 'center',
-              elevation: 3,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.15,
-              shadowRadius: 2,
-            }}
-            onPress={() => {
-              // Hide button immediately when pressed
-              setForceHideButton(true);
-              setIsScrollingToBottom(true);
-              // Scroll to bottom
-              flatRef.current?.scrollToEnd({ animated: true });
-              // Set isAtBottom to true after scroll completes
-              setTimeout(() => {
-                setIsAtBottom(true);
-                setIsScrollingToBottom(false);
-              }, 300); // Match animation duration
-            }}
-          >
-            <Ionicons name="chevron-down" size={20} color="#fff" />
-          </Pressable>
-        </Animated.View>
-        )}
+        {
+          !isAtBottom && !forceHideButton && (
+            <Animated.View
+              style={
+                {
+                  position: 'absolute',
+                  right: 12, // Position above the send button
+                  bottom: inputBarHeight + insets.bottom + 10, // Above the send button
+                  opacity: scrollButtonAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.85], // Slightly transparent for subtle look
+                  }),
+                  transform: [
+                    {
+                      translateY: scrollButtonAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0], // Slide up from below
+                      }),
+                    },
+                    {
+                      scale: scrollButtonAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1], // Slight scale animation
+                      }),
+                    },
+                  ],
+                }
+              }
+            >
+              <Pressable
+                style={
+                  {
+                    width: 32,
+                    height: 32,
+                    borderRadius: 12, // Match send button borderRadius
+                    backgroundColor: mode === 'dark' ? '#3B82F6' : '#2563EB', // Match send button colors
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    elevation: 3,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 2,
+                  }
+                }
+                onPress={() => {
+                  // Hide button immediately when pressed
+                  setForceHideButton(true);
+                  setIsScrollingToBottom(true);
+                  // Scroll to bottom
+                  flatRef.current?.scrollToEnd({ animated: true });
+                  // Set isAtBottom to true after scroll completes
+                  setTimeout(() => {
+                    setIsAtBottom(true);
+                    setIsScrollingToBottom(false);
+                  }, 300); // Match animation duration
+                }
+                }
+              >
+                <Ionicons name="chevron-down" size={20} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
