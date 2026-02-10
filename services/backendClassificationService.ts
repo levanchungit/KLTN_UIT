@@ -17,9 +17,11 @@ import Constants from "expo-constants";
 import type { Category } from "@/repos/categoryRepo";
 
 // Backend API configuration
-const BACKEND_API_URL =
-    Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL ||
-    "http://10.53.108.244:8000";
+// DEBUG: Log what Constants is loading
+console.log('🔧 Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL:', Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL);
+
+// Temporarily hardcode to bypass Expo cache issue
+const BACKEND_API_URL = "http://10.186.216.244:8000";
 
 // Timeout for LLM inference (optimized for 7B model)
 const API_TIMEOUT = 60000; // Reduced from 90s to 60s for better UX
@@ -448,13 +450,17 @@ async function callBackendAPI(
     retries: number = MAX_RETRIES
 ): Promise<PredictResponse> {
     let lastError: Error | null = null;
+    const apiUrl = `${BACKEND_API_URL}/api/v1/predict`;
+
+    console.log(`🔗 Calling API: ${apiUrl}`);
+    console.log(`📦 Request body:`, JSON.stringify(requestBody, null, 2));
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-            const response = await fetch(`${BACKEND_API_URL}/api/v1/predict`, {
+            const response = await fetch(apiUrl, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -468,12 +474,16 @@ async function callBackendAPI(
 
             if (!response.ok) {
                 const errorText = await response.text();
+                console.log(`❌ API response not OK: ${response.status} - ${errorText}`);
                 throw new Error(`API error: ${response.status} - ${errorText}`);
             }
 
-            return await response.json();
+            const result = await response.json();
+            console.log(`✅ API success:`, JSON.stringify(result, null, 2));
+            return result;
         } catch (error) {
             lastError = error instanceof Error ? error : new Error("Unknown error");
+            console.log(`❌ API attempt ${attempt + 1} error:`, lastError.message);
 
             if (attempt < retries) {
                 const delay = getRetryDelay(attempt);
