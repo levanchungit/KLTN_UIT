@@ -21,7 +21,7 @@ import type { Category } from "@/repos/categoryRepo";
 console.log('🔧 Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL:', Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_API_URL);
 
 // Temporarily hardcode to bypass Expo cache issue
-const BACKEND_API_URL = "http://10.186.216.244:8000";
+const BACKEND_API_URL = "http://10.186.216.227:8000";
 
 // Timeout for LLM inference (optimized for 7B model)
 const API_TIMEOUT = 60000; // Reduced from 90s to 60s for better UX

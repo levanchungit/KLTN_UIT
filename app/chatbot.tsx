@@ -389,9 +389,11 @@ async function processReceiptImage(imageUri: string): Promise<{
   amount: number | null;
   text: string;
   merchantName?: string;
+  category?: string;
+  message?: string;
 }> {
   try {
-    // Sử dụng ML Kit Text Recognition để nhận diện text từ ảnh
+    // Step 1: ML Kit Text Recognition — extract text from image on-device
     const result = await TextRecognition.recognize(imageUri);
 
     console.log("=== ML Kit Text Recognition Results ===");
@@ -407,410 +409,91 @@ async function processReceiptImage(imageUri: string): Promise<{
 
     const blocks = result.blocks || [];
 
-    // Log boundingBox để debug
-    blocks.forEach((block: any, index: any) => {
-      console.log(`\nBlock ${index + 1}:`);
-      console.log("  Text:", block.text);
-      console.log(
-        "  BoundingBox (frame):",
-        JSON.stringify(block.frame, null, 2)
-      );
+    // Log blocks for debug
+    blocks.forEach((block: any, index: number) => {
+      console.log(`Block ${index + 1}: "${block.text}" (top=${block.frame?.top})`);
     });
-    console.log("=== End of Recognition Results ===\n");
 
     const ocrText = result.text;
 
-    // Helper: Extract số tiền từ text
-    const extractNumber = (text: string): number => {
-      const normalized = text.replace(/[oOlI]/g, (m) =>
-        m === "o" || m === "O" ? "0" : "1"
-      );
-      const matches = normalized.match(
-        /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?|\d{4,}/g
-      );
-      if (!matches) return 0;
+    // Step 2: Send OCR text + block positions to backend LLM for intelligent analysis
+    try {
+      const apiUrl = `${getBackendApiUrl()}/api/v1/predict-receipt`;
+      console.log(`🧾 Calling receipt AI: ${apiUrl}`);
 
-      const nums = matches
-        .map((raw) => {
-          const n = parseInt(raw.replace(/[,\.]/g, ""), 10);
-          if (isNaN(n) || n < 1000 || n > 100000000000) return 0;
-          // Filter phone numbers (9-11 digits)
-          if (n >= 900000000 && n < 10000000000) return 0;
-          return n;
-        })
-        .filter((n) => n > 0);
+      // Get user categories for context-aware classification
+      const categories = await listCategories();
+      const userCategoryNames = categories.map((c) => c.name);
 
-      return Math.max(...nums, 0);
-    };
+      const ocrBlocks = blocks.map((b: any) => ({
+        text: b.text || "",
+        top: b.frame?.top || 0,
+        left: b.frame?.left || 0,
+        width: b.frame?.width || 0,
+        height: b.frame?.height || 0,
+      }));
 
-    // Extract merchant name - Tìm tên công ty/cơ sở từ blocks
-    const extractMerchant = (blocks: any[]): string => {
-      // Priority 1: Tìm block ở phần top section (top < 150) có company keyword
-      // Đây là vùng tiêu đề/header chứa tên công ty chính thức
-      const companyKeywords =
-        /công ty|cơ sở|xí nghiệp|shop|cửa hàng|nhà hàng|khách sạn|bệnh viện|trường|trung tâm/i;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      const topHeaderBlocks = blocks.filter(
-        (b: any) => b.frame?.top !== undefined && b.frame.top < 150
-      );
+      //console body
+      console.log("=== Receipt AI Request Body ===");
+      console.log("OCR Text ocrText.substring(0, 3000):", ocrText.substring(0, 3000));
+      console.log("blocks: ocrBlocks:", ocrBlocks);
+      console.log("User Categories:", userCategoryNames);
 
-      const topCompanyBlocks = topHeaderBlocks.filter((b: any) =>
-        companyKeywords.test(b.text)
-      );
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ocr_text: ocrText.substring(0, 3000),
+          blocks: ocrBlocks,
+          user_categories: userCategoryNames,
+        }),
+        signal: controller.signal,
+      });
 
-      if (topCompanyBlocks.length > 0) {
-        // Lấy block có text dài nhất, ưu tiên block ở top nhất
-        const bestBlock = topCompanyBlocks.sort((a: any, b: any) => {
-          // Priority 1: Sort by position (ở trên cùng)
-          if (a.frame.top !== b.frame.top) {
-            return a.frame.top - b.frame.top;
-          }
-          // Priority 2: Sort by length (text dài hơn = tên đầy đủ hơn)
-          return (b.text?.length || 0) - (a.text?.length || 0);
-        })[0];
-        const name = bestBlock.text?.trim() || "Hóa đơn";
-        if (name.length > 5 && !/thanh toán|payment|thông tin/i.test(name))
-          return name;
-      }
+      console.log("=== Receipt AI Response ===");
+      console.log("Status:", response.status);
 
-      // Priority 2: Tìm trong header rộng hơn (top < 400), loại "thông tin thanh toán"
-      const headerBlocks = blocks.filter(
-        (b: any) => b.frame?.top !== undefined && b.frame.top < 400
-      );
 
-      const headerCompanyBlocks = headerBlocks.filter(
-        (b: any) =>
-          companyKeywords.test(b.text) &&
-          !/thanh toán|payment|thông tin/i.test(b.text)
-      );
+      clearTimeout(timeoutId);
 
-      if (headerCompanyBlocks.length > 0) {
-        const bestBlock = headerCompanyBlocks.sort((a: any, b: any) => {
-          if (a.frame.top !== b.frame.top) {
-            return a.frame.top - b.frame.top;
-          }
-          return (b.text?.length || 0) - (a.text?.length || 0);
-        })[0];
-        const name = bestBlock.text?.trim() || "Hóa đơn";
-        if (name.length > 5) return name;
-      }
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`🎯 AI Receipt Result:`, data);
 
-      // Priority 3: Tìm company blocks ở toàn bộ tài liệu, loại signature area
-      const allCompanyBlocks = blocks.filter(
-        (b: any) =>
-          companyKeywords.test(b.text) &&
-          !/thanh toán|payment|thông tin|ký bởi|dược ký|ngày ký/i.test(b.text)
-      );
-
-      if (allCompanyBlocks.length > 0) {
-        const bestBlock = allCompanyBlocks.sort((a: any, b: any) => {
-          // Ưu tiên block ở trên cùng
-          if (a.frame?.top && b.frame?.top && a.frame.top !== b.frame.top) {
-            return a.frame.top - b.frame.top;
-          }
-          return (b.text?.length || 0) - (a.text?.length || 0);
-        })[0];
-        const name = bestBlock.text?.trim() || "Hóa đơn";
-        if (name.length > 5) return name;
-      }
-
-      return "Hóa đơn";
-    };
-
-    // Tính chiều cao ảnh
-    const imageHeight = Math.max(
-      ...blocks.map((b: any) => (b.frame?.top || 0) + (b.frame?.height || 0))
-    );
-
-    // STRATEGY 1: Tìm cặp (Label + Amount) theo vị trí ngang
-    const findTotalByHorizontalPair = (): number => {
-      const totalZone = blocks.filter(
-        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.6
-      );
-
-      const totalKeywords =
-        /total|tổng|sum|cộng|thanh\s*toán|phải\s*trả|grand|amount|due|balance/i;
-      const taxKeywords = /thuế|vat|gtgt|%|chịu\s*thuế/i;
-
-      let bestAmount = 0;
-      const MIN_TOTAL = 0; // tránh nhặt nhầm các số rất nhỏ
-
-      for (const labelBlock of totalZone) {
-        if (!totalKeywords.test(labelBlock.text)) continue;
-        if (taxKeywords.test(labelBlock.text)) continue; // bỏ các dòng thuế
-
-        // Tìm block chứa số ở cùng hàng (Y tương đương) và bên phải
-        // Tăng tolerance Y lên 50px vì có thể không hoàn toàn cùng hàng
-        const sameRowBlocks = totalZone.filter(
-          (b: any) =>
-            Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0)) < 50 && // Increased from 30 to 50
-            (b.frame?.left || 0) > (labelBlock.frame?.left || 0) - 50 && // Cho phép overlap nhỏ
-            !taxKeywords.test(b.text) // bỏ các block thuế/percent
-        );
-
-        // Sort by Y distance (gần hơn có priority cao hơn)
-        const sortedBlocks = sameRowBlocks.sort(
-          (a: any, b: any) =>
-            Math.abs((a.frame?.top || 0) - (labelBlock.frame?.top || 0)) -
-            Math.abs((b.frame?.top || 0) - (labelBlock.frame?.top || 0))
-        );
-
-        for (const amountBlock of sortedBlocks) {
-          const amount = extractNumber(amountBlock.text);
-          if (amount > MIN_TOTAL && amount > bestAmount) {
-            bestAmount = amount;
-          }
+        if (data.total_amount && data.total_amount > 0) {
+          return {
+            amount: data.total_amount,
+            text: ocrText.substring(0, 500),
+            merchantName: data.merchant_name || "Hoá đơn",
+            category: data.category || undefined,
+            message: data.message,
+          };
         }
-
-        // Fallback: Tìm số trong chính label block
-        const amount = extractNumber(labelBlock.text);
-        if (amount > MIN_TOTAL && amount > bestAmount) {
-          bestAmount = amount;
-        }
+      } else {
+        console.warn(`⚠️ Receipt AI returned ${response.status}`);
       }
-
-      if (bestAmount > 0) {
-        console.log(`✅ Strategy 1 (Best Candidate): ${bestAmount}`);
-        return bestAmount;
-      }
-
-      return 0;
-    };
-
-    // STRATEGY 0 (HIGHEST PRIORITY): Tìm số tiền từ "Số tiền bằng chữ" (Amount in words)
-    const findByAmountInWords = (): number => {
-      // Tìm block có "số tiền bằng chữ" hoặc "amount in words"
-      const amountInWordsKeywords =
-        /số\s*tiền\s*bằng\s*chữ|amount\s*in\s*words/i;
-
-      const amountBlocks = blocks.filter((b: any) =>
-        amountInWordsKeywords.test(b.text)
-      );
-
-      if (amountBlocks.length > 0) {
-        // Lấy block đầu tiên (thường là block chứa text chữ và số)
-        const blockWithAmount = amountBlocks[0];
-
-        if (blockWithAmount && blockWithAmount.text) {
-          const amount = extractNumber(blockWithAmount.text);
-          if (amount > 0 && amount < 100000000) {
-            console.log(
-              `✅ Strategy 0 (Amount in Words): ${amount} from "${blockWithAmount.text.substring(
-                0,
-                80
-              )}..."`
-            );
-            return amount;
-          }
-        }
-      }
-
-      return 0;
-    };
-
-    // STRATEGY 0 (NEW - PRIORITY): Tìm "Tổng tiền thanh toán" và lấy số bên cạnh
-    const findFinalTotal = (): number => {
-      // Tìm block có "Tổng tiền thanh toán" keyword (đây là dấu hiệu tổng tiền)
-      const totalKeywords = /tổng\s*tiền\s*thanh\s*toán|total|tổng\s*cộng/i;
-      const totalLabelBlocks = blocks.filter((b: any) =>
-        totalKeywords.test(b.text)
-      );
-
-      if (totalLabelBlocks.length > 0) {
-        // Lấy block gần cuối (nếu có nhiều, lấy cái dưới nhất)
-        const labelBlock = totalLabelBlocks.sort(
-          (a: any, b: any) => (b.frame?.top || 0) - (a.frame?.top || 0)
-        )[0];
-
-        console.log(
-          `🔍 Strategy 0: Found "Tổng tiền thanh toán" at top=${labelBlock.frame?.top}`
-        );
-
-        // Tìm các blocks gần label này (cùng hàng, bên phải, hoặc dưới gần)
-        const nearbyBlocks = blocks.filter((b: any) => {
-          const topDiff = Math.abs(
-            (b.frame?.top || 0) - (labelBlock.frame?.top || 0)
-          );
-          const leftDiff = (b.frame?.left || 0) - (labelBlock.frame?.left || 0);
-
-          // Block bên phải cùng hàng hoặc phía dưới gần
-          return (
-            (topDiff < 40 && leftDiff > 50) || // Cùng hàng, bên phải
-            (topDiff < 50 && topDiff > 0 && leftDiff > 0) // Phía dưới một chút, bên phải
-          );
-        });
-
-        // Lọc và tìm số hợp lệ (không phải năm, địa chỉ, v.v.)
-        const validAmounts = nearbyBlocks
-          .map((b: any) => ({
-            value: extractNumber(b.text),
-            text: b.text,
-            top: b.frame?.top || 0,
-          }))
-          .filter(
-            (a: any) =>
-              a.value > 0 &&
-              a.value < 100000000 && // Không quá lớn (năm, ID)
-              !/2025|2024|2023|địa|địa chỉ|đường|quận|phố|hotline|https/i.test(
-                a.text
-              )
-          )
-          .sort((a: any, b: any) => {
-            // Ưu tiên giá trị lớn nhất trước, sau đó mới xét độ gần nhãn
-            if (a.value !== b.value) return b.value - a.value;
-            const topDiffA = Math.abs(a.top - (labelBlock.frame?.top || 0));
-            const topDiffB = Math.abs(b.top - (labelBlock.frame?.top || 0));
-            return topDiffA - topDiffB;
-          });
-
-        if (validAmounts.length > 0) {
-          console.log(
-            `✅ Strategy 0 (Total Label): ${validAmounts[0].value} from "${validAmounts[0].text}"`
-          );
-          return validAmounts[0].value;
-        }
-      }
-
-      // Fallback: Lấy 20% phía dưới và tìm số lớn nhất (không có "tổng" keyword)
-      const finalZone = blocks.filter(
-        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.8
-      );
-
-      if (finalZone.length > 0) {
-        const excludeKeywords =
-          /mst|mã\s*số\s*thuế|thuế|chịu\s*thuế|vat|gtgt|%|phone|tel|sdt|hotline|đường|địa|quốc|gia|2025|2024|2023|ký|dấu|chứng/i;
-        const validBlocks = finalZone.filter(
-          (b: any) => !excludeKeywords.test(b.text)
-        );
-
-        const amounts = validBlocks
-          .map((b: any) => ({
-            value: extractNumber(b.text),
-            text: b.text,
-            top: b.frame?.top || 0,
-            isTotal: /tổng|cộng|thanh\s*toán|sau\s*thuế/i.test(b.text) || false,
-          }))
-          .filter((a: any) => a.value > 0 && a.value < 100000000)
-          .sort((a: any, b: any) => {
-            // Ưu tiên dòng có từ khóa tổng/thanh toán/sau thuế, rồi đến giá trị lớn nhất
-            if (a.isTotal !== b.isTotal) return a.isTotal ? -1 : 1;
-            return b.value - a.value;
-          });
-
-        if (amounts.length > 0) {
-          console.log(
-            `✅ Strategy 0 (Final Zone): ${amounts[0].value} from "${amounts[0].text}"`
-          );
-          return amounts[0].value;
-        }
-      }
-
-      return 0;
-    };
-
-    // STRATEGY 2: Tìm số lớn nhất ở 60% phía dưới nhưng ưu tiên "Tổng tiền"
-    const findLargestAmountInBottom = (): number => {
-      const bottomZone = blocks.filter(
-        (b: any) => (b.frame?.top || 0) >= imageHeight * 0.6
-      );
-
-      // Filter ra các keywords không liên quan đến tổng tiền
-      const excludeKeywords =
-        /mst|mã\s*số\s*thuế|tax\s*code|thuế|chịu\s*thuế|vat|gtgt|%|phone|tel|sdt|hotline|thanh\s*toán/i;
-      const validBlocks = bottomZone.filter(
-        (b: any) => !excludeKeywords.test(b.text)
-      );
-
-      // Tách blocks thành 2 nhóm: có "Tổng tiền" vs không có
-      const totalKeywords = /tổng\s*tiền|total|tổng/i;
-      const totalBlocks = validBlocks.filter((b: any) =>
-        totalKeywords.test(b.text)
-      );
-      const otherBlocks = validBlocks.filter(
-        (b: any) => !totalKeywords.test(b.text)
-      );
-
-      // Ưu tiên tìm trong blocks có "Tổng tiền"
-      const blocksToSearch = totalBlocks.length > 0 ? totalBlocks : otherBlocks;
-
-      const amounts = blocksToSearch
-        .map((b: any) => ({
-          value: extractNumber(b.text),
-          text: b.text,
-          y: b.frame?.top || 0,
-        }))
-        .filter((a: any) => a.value > 0)
-        .sort((a: any, b: any) => b.value - a.value);
-
-      if (amounts.length > 0) {
-        console.log(
-          `✅ Strategy 2 (Largest Bottom): ${amounts[0].value} from "${amounts[0].text}"`
-        );
-        return amounts[0].value;
-      }
-
-      return 0;
-    };
-
-    // STRATEGY 3: Tìm số lớn nhất trong các block có từ khóa total
-    const findByKeywords = (): number => {
-      const keywords = /total|tổng|cộng|thanh\s*toán|phải\s*trả/i;
-      const matchingBlocks = blocks.filter((b: any) => keywords.test(b.text));
-
-      let maxAmount = 0;
-      let maxText = "";
-
-      for (const block of matchingBlocks) {
-        const amount = extractNumber(block.text);
-        if (amount > maxAmount) {
-          maxAmount = amount;
-          maxText = block.text;
-        }
-      }
-
-      if (maxAmount > 0) {
-        console.log(
-          `✅ Strategy 3 (Keyword Match): ${maxAmount} from "${maxText}"`
-        );
-      }
-
-      return maxAmount;
-    };
-
-    // Thực thi các strategies theo thứ tự ưu tiên
-    let amount = findByAmountInWords(); // Strategy 0 - Ưu tiên "Số tiền bằng chữ"
-
-    if (!amount || amount === 0) {
-      amount = findFinalTotal(); // Strategy 1 - "Tổng tiền thanh toán"
+    } catch (aiError) {
+      console.warn("⚠️ Receipt AI unavailable, falling back to local extraction:", aiError);
     }
 
-    if (!amount || amount === 0) {
-      amount = findTotalByHorizontalPair();
-    }
+    // Step 3: Fallback — smart local extraction if backend unavailable
+    const fallbackAmount = extractTotalFromBlocks(blocks);
+    const fallbackMerchant = extractMerchantFromBlocks(blocks);
 
-    if (!amount || amount === 0) {
-      amount = findLargestAmountInBottom();
-    }
-
-    if (!amount || amount === 0) {
-      amount = findByKeywords();
-    }
-
-    const merchantName = extractMerchant(blocks);
-
-    console.log(`🎯 Final Amount: ${amount}`);
-    console.log(`🏪 Merchant: ${merchantName}`);
+    console.log(`🎯 Fallback Amount: ${fallbackAmount}`);
+    console.log(`🏪 Fallback Merchant: ${fallbackMerchant}`);
 
     return {
-      amount: amount || null,
+      amount: fallbackAmount || null,
       text: ocrText.substring(0, 500),
-      merchantName,
+      merchantName: fallbackMerchant,
     };
   } catch (error) {
     console.error("ML Kit Text Recognition error:", error);
-    const errorMsg =
-      error instanceof Error ? error.message : "Lỗi nhận diện text";
-
+    const errorMsg = error instanceof Error ? error.message : "Lỗi nhận diện text";
     return {
       amount: null,
       text: `❌ ${errorMsg}\n\nVui lòng thử lại với ảnh rõ hơn.`,
@@ -818,6 +501,98 @@ async function processReceiptImage(imageUri: string): Promise<{
     };
   }
 }
+
+// ── Fallback helpers (used when backend AI is unavailable) ──
+
+/** Extract a valid VND amount from a text string */
+function parseVNDAmount(text: string): number {
+  // Match Vietnamese currency patterns: 85.330 or 1,250,000 or 50000
+  const matches = text.match(/\d{1,3}(?:[.,]\d{3})+|\d{4,}/g);
+  if (!matches) return 0;
+  const nums = matches
+    .map((raw: string) => {
+      const n = parseInt(raw.replace(/[,.]/g, ""), 10);
+      if (isNaN(n) || n < 1000 || n > 500000000) return 0;
+      // Filter phone/fax numbers: 8+ consecutive digits without dot separators
+      // Vietnamese amounts always have dots/commas every 3 digits (85.330, 1.250.000)
+      // Phone/fax like 39555282 or 0908123456 don't have separators
+      if (n >= 10000000 && !/[.,]/.test(raw)) return 0;
+      return n;
+    })
+    .filter((n: number) => n > 0);
+  return nums.length > 0 ? Math.max(...nums) : 0;
+}
+
+/** Smart fallback: find amount near "tổng cộng" label using block positions */
+function extractTotalFromBlocks(blocks: any[]): number {
+  const totalKeywords = /tổng\s*cộng|tổng\s*tiền|total|thanh\s*toán|phải\s*trả/i;
+  const excludeKeywords = /thuế|vat|gtgt|bvmt|tạm\s*tính|subtotal|giảm|discount/i;
+
+  // Strategy 1: Find "tổng cộng" label, then find amount block nearby
+  const totalLabels = blocks.filter((b: any) =>
+    totalKeywords.test(b.text) && !excludeKeywords.test(b.text)
+  );
+
+  if (totalLabels.length > 0) {
+    // Pick the lowest total label (most likely the final total)
+    const label = totalLabels.sort((a: any, b: any) =>
+      (b.frame?.top || 0) - (a.frame?.top || 0)
+    )[0];
+    const labelTop = label.frame?.top || 0;
+
+    // Find nearby amount blocks (same row ±40px, or just below)
+    const nearbyAmounts = blocks
+      .filter((b: any) => {
+        const topDiff = Math.abs((b.frame?.top || 0) - labelTop);
+        return topDiff < 40 && b.text !== label.text;
+      })
+      .map((b: any) => ({ value: parseVNDAmount(b.text), text: b.text }))
+      .filter((a: { value: number }) => a.value > 0)
+      .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
+
+    if (nearbyAmounts.length > 0) {
+      console.log(`✅ Fallback Strategy 1: ${nearbyAmounts[0].value} near "${label.text}"`);
+      return nearbyAmounts[0].value;
+    }
+
+    // Check if amount is inside the label text itself
+    const inlineAmount = parseVNDAmount(label.text);
+    if (inlineAmount > 0) {
+      console.log(`✅ Fallback Strategy 1b: ${inlineAmount} in "${label.text}"`);
+      return inlineAmount;
+    }
+  }
+
+  // Strategy 2: Find the largest amount in the bottom 40% of the receipt
+  const maxTop = Math.max(...blocks.map((b: any) => (b.frame?.top || 0) + (b.frame?.height || 0)), 1);
+  const bottomBlocks = blocks.filter((b: any) => (b.frame?.top || 0) >= maxTop * 0.6);
+  const bottomAmounts = bottomBlocks
+    .filter((b: any) => !(/mst|mã\s*số|phone|tel|sdt|fax|hotline|đường|địa|\d{4}\/\d|028\./i.test(b.text)))
+    .map((b: any) => ({ value: parseVNDAmount(b.text), text: b.text }))
+    .filter((a: { value: number }) => a.value > 0)
+    .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
+
+  if (bottomAmounts.length > 0) {
+    console.log(`✅ Fallback Strategy 2: ${bottomAmounts[0].value} from "${bottomAmounts[0].text}"`);
+    return bottomAmounts[0].value;
+  }
+
+  return 0;
+}
+
+function extractMerchantFromBlocks(blocks: any[]): string {
+  const companyKeywords = /công ty|cơ sở|xí nghiệp|shop|cửa hàng|nhà hàng|khách sạn|bệnh viện|trường|trung tâm|tông cty|tổng cty/i;
+  const topBlocks = blocks
+    .filter((b: any) => b.frame?.top !== undefined && b.frame.top < 300)
+    .filter((b: any) => companyKeywords.test(b.text) && !/thanh toán|payment/i.test(b.text))
+    .sort((a: any, b: any) => (a.frame?.top || 0) - (b.frame?.top || 0));
+  if (topBlocks.length > 0) {
+    const name = topBlocks[0].text?.trim();
+    if (name && name.length > 5) return name;
+  }
+  return "Hóa đơn";
+}
+
 
 const parseTransactionWithAI = async (
   text: string,
@@ -2432,12 +2207,58 @@ export default function Chatbot() {
 
       // OCR successful - Auto create transaction
       const amount = ocrResult.amount;
-      const merchantName = ocrResult.merchantName || "Hóa đơn";
+      const merchantName = ocrResult.merchantName;
       const note = `${merchantName}`;
 
-      // Classify category
-      const { ranked } = await classifyToUserCategoriesAI(merchantName);
-      const finalCategoryId = ranked[0]?.categoryId;
+      // Refresh categories to ensure we have the latest list (avoid stale closure)
+      const currentCategories = await listCategories();
+
+      let finalCategoryId: string | undefined;
+
+      // Helper: Normalize strings (lowercase + NFC + remove accents for robust matching)
+      const robustNormalize = (s: string) => {
+        return s.trim().toLowerCase()
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/g, "d").replace(/Đ/g, "D");
+      };
+
+      const aiCategoryRaw = ocrResult.category || "";
+      const aiCategoryNorm = robustNormalize(aiCategoryRaw);
+
+      if (aiCategoryRaw) {
+        console.log(`🔍 Matching AI Category: "${aiCategoryRaw}" (Norm: "${aiCategoryNorm}")`);
+
+        // 1. Exact Match (Accent-Insensitive)
+        let matchedCategory = currentCategories.find(c => robustNormalize(c.name) === aiCategoryNorm);
+
+        // 2. Fuzzy Match (Contains)
+        if (!matchedCategory) {
+          matchedCategory = currentCategories.find(c => {
+            const cName = robustNormalize(c.name);
+            return cName.includes(aiCategoryNorm) || aiCategoryNorm.includes(cName);
+          });
+        }
+
+        if (matchedCategory) {
+          console.log(`✅ Direct Category Match: "${matchedCategory.name}" (ID: ${matchedCategory.id})`);
+          finalCategoryId = matchedCategory.id;
+        } else {
+          console.log(`⚠️ No match found in user categories: ${currentCategories.map(c => c.name).join(", ")}`);
+        }
+      }
+
+      if (!finalCategoryId) {
+        // 3. Fallback: Local AI Model
+        console.log("⚠️ Using Local AI Classification as fallback.");
+        let classificationInput = merchantName || "";
+        if (ocrResult.category && ocrResult.category !== "Chưa xác định") {
+          classificationInput = `${ocrResult.category} ${classificationInput}`;
+        }
+
+        console.log(`🧠 Local AI Input: "${classificationInput}"`);
+        const { ranked } = await classifyToUserCategoriesAI(classificationInput);
+        finalCategoryId = ranked[0]?.categoryId;
+      }
 
       if (!finalCategoryId) {
         setMessages((m) => [
@@ -2464,22 +2285,23 @@ export default function Chatbot() {
       setMessages((m) => [
         ...m.slice(0, -1),
         {
+          role: "bot",
+          text: (ocrResult as any).message
+            ? (ocrResult as any).message
+            : "Đã lưu hoá đơn thành công! Bạn có thể nhấn vào thẻ bên trên để chỉnh sửa nếu cần nhé.",
+        },
+        {
           role: "card",
           transactionId: txn.id,
           accountId: txn.accountId,
           amount: txn.amount ?? null,
           io: "OUT",
           categoryId: finalCategoryId,
-          categoryName: selectedCategory?.name || "Mua sắm",
+          categoryName: selectedCategory?.name || "Chưa xác định",
           categoryIcon: selectedCategory?.icon || "cart",
           categoryColor: selectedCategory?.color || "#6366F1",
           note,
           when,
-        },
-        {
-          role: "bot",
-          text: `✅ Tạo giao dịch thành công!\n\n💰 ${amount.toLocaleString()}đ\n🏪 ${merchantName}\n📂 ${selectedCategory?.name || "Mua sắm"
-            }\n\nNhấn Edit nếu cần sửa.`,
         },
       ]);
       scrollToEnd();
