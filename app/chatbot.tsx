@@ -419,7 +419,7 @@ async function processReceiptImage(imageUri: string): Promise<{
     // Step 2: Send OCR text + block positions to backend LLM for intelligent analysis
     try {
       const apiUrl = `${getBackendApiUrl()}/api/v1/predict-receipt`;
-      console.log(`🧾 Calling receipt AI: ${apiUrl}`);
+      console.log(`🧾 Calling receipt AI (NO TIMEOUT - DEMO MODE): ${apiUrl}`);
 
       // Get user categories for context-aware classification
       const categories = await listCategories();
@@ -433,13 +433,13 @@ async function processReceiptImage(imageUri: string): Promise<{
         height: b.frame?.height || 0,
       }));
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      // REMOVE TIMEOUT: Let it wait for backend as long as needed
+      // const controller = new AbortController();
+      // const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      //console body
       console.log("=== Receipt AI Request Body ===");
       console.log("OCR Text ocrText.substring(0, 3000):", ocrText.substring(0, 3000));
-      console.log("blocks: ocrBlocks:", ocrBlocks);
+      // console.log("blocks: ocrBlocks:", ocrBlocks);
       console.log("User Categories:", userCategoryNames);
 
       const response = await fetch(apiUrl, {
@@ -450,14 +450,13 @@ async function processReceiptImage(imageUri: string): Promise<{
           blocks: ocrBlocks,
           user_categories: userCategoryNames,
         }),
-        signal: controller.signal,
+        // signal: controller.signal, // No signal to allow long processing
       });
 
       console.log("=== Receipt AI Response ===");
       console.log("Status:", response.status);
 
-
-      clearTimeout(timeoutId);
+      // clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -472,25 +471,28 @@ async function processReceiptImage(imageUri: string): Promise<{
             message: data.message,
           };
         }
+
+        // Backend replied 200 OK but no amount found
+        return {
+          amount: null,
+          text: `⚠️ AI đã xử lý nhưng không tìm thấy số tiền.\n\nPhản hồi từ Server:\n${JSON.stringify(data)}`,
+          merchantName: "",
+        };
+
       } else {
-        console.warn(`⚠️ Receipt AI returned ${response.status}`);
+        throw new Error(`Server status: ${response.status}`);
       }
-    } catch (aiError) {
-      console.warn("⚠️ Receipt AI unavailable, falling back to local extraction:", aiError);
+    } catch (aiError: any) {
+      console.error("❌ Receipt AI failed (DEMO MODE - NO FALLBACK):", aiError);
+
+      // Step 3: NO FALLBACK - Return error directly
+      // This ensures we don't get wrong "Food" categories from local extraction.
+      return {
+        amount: null,
+        text: `❌ Lỗi kết nối Server AI.\n\nChi tiết: ${aiError.message || "Unknown Error"}\n\n(Chế độ Demo: Đã tắt Fallback để tránh đoán sai)`,
+        merchantName: "",
+      };
     }
-
-    // Step 3: Fallback — smart local extraction if backend unavailable
-    const fallbackAmount = extractTotalFromBlocks(blocks);
-    const fallbackMerchant = extractMerchantFromBlocks(blocks);
-
-    console.log(`🎯 Fallback Amount: ${fallbackAmount}`);
-    console.log(`🏪 Fallback Merchant: ${fallbackMerchant}`);
-
-    return {
-      amount: fallbackAmount || null,
-      text: ocrText.substring(0, 500),
-      merchantName: fallbackMerchant,
-    };
   } catch (error) {
     console.error("ML Kit Text Recognition error:", error);
     const errorMsg = error instanceof Error ? error.message : "Lỗi nhận diện text";
@@ -1223,6 +1225,229 @@ function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: s
     </View>
   );
 }
+
+/* ---------------- Chat Message Item (Memoized) ---------------- */
+const ChatMessageItem = React.memo(
+  ({
+    item,
+    colors,
+    mode,
+    t,
+    onEdit,
+    onDelete,
+    onImagePress,
+  }: {
+    item: any;
+    colors: any;
+    mode: any;
+    t: (key: string) => string;
+    onEdit: (item: any) => void;
+    onDelete: (id: string) => void;
+    onImagePress: (uri: string) => void;
+  }) => {
+    const { role } = item;
+
+    if (role === "user") {
+      return (
+        <View
+          style={[
+            styles.bubble,
+            styles.right,
+            {
+              backgroundColor: mode === "dark" ? "#1E3A8A" : "#E5F5F9",
+              borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
+            },
+          ]}
+        >
+          {item.imageUri === "voice-recording" ? (
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 20,
+              }}
+            >
+              <Ionicons name="mic" size={48} color="#3B82F6" />
+            </View>
+          ) : item.imageUri ? (
+            <TouchableOpacity onPress={() => onImagePress(item.imageUri!)}>
+              <Image
+                source={{ uri: item.imageUri }}
+                style={{
+                  width: 200,
+                  height: 200,
+                  borderRadius: 8,
+                }}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          ) : (
+            <Text style={[styles.text, { color: colors.text }]}>{item.text}</Text>
+          )}
+        </View>
+      );
+    }
+
+    if (role === "bot") {
+      return (
+        <View
+          style={[
+            styles.bubble,
+            styles.left,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+            },
+          ]}
+        >
+          <Text style={[styles.text, { color: colors.text }]}>{item.text}</Text>
+        </View>
+      );
+    }
+
+    if (role === "typing") {
+      return <TypingIndicator colors={colors} cacheStatus={item.cacheStatus} />;
+    }
+
+    // Card
+    return (
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.divider,
+          },
+        ]}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <View
+            style={[
+              styles.iconCircle,
+              { backgroundColor: item.categoryColor || "#6366F1" },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={fixIconName(item.categoryIcon) as any}
+              size={26}
+              color="#fff"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.subText, marginBottom: 2 }}>
+              {t("recorded")} {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
+              {item.when}
+            </Text>
+            <Text
+              style={{
+                fontWeight: "700",
+                fontSize: 18,
+                color: colors.text,
+              }}
+            >
+              {item.categoryName}
+            </Text>
+            <Text style={{ marginTop: 2, color: colors.text }}>{item.note}</Text>
+          </View>
+          <Text
+            style={{
+              fontWeight: "700",
+              fontSize: 16,
+              color: colors.text,
+            }}
+          >
+            {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
+          </Text>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 10,
+            marginTop: 16,
+            justifyContent: "flex-end",
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => onEdit(item)}
+            style={[
+              styles.actionBtn,
+              {
+                backgroundColor: mode === "dark" ? "#1E40AF" : "#DBEAFE",
+                borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
+                shadowColor: "#3B82F6",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 3,
+                elevation: 2,
+              },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="create-outline"
+              size={18}
+              color={mode === "dark" ? "#93C5FD" : "#2563EB"}
+            />
+            <Text
+              style={{
+                color: mode === "dark" ? "#93C5FD" : "#2563EB",
+                fontSize: 13,
+                fontWeight: "600",
+              }}
+            >
+              {t("edit")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onDelete(item.transactionId)}
+            style={[
+              styles.actionBtn,
+              {
+                backgroundColor: mode === "dark" ? "#7F1D1D" : "#FEE2E2",
+                borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
+                shadowColor: "#EF4444",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 3,
+                elevation: 2,
+              },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="trash-outline"
+              size={18}
+              color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
+            />
+            <Text
+              style={{
+                color: mode === "dark" ? "#FCA5A5" : "#DC2626",
+                fontSize: 13,
+                fontWeight: "600",
+              }}
+            >
+              {t("delete")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.item === next.item &&
+      prev.mode === next.mode &&
+      prev.colors === next.colors &&
+      prev.t === next.t
+    );
+  }
+);
 
 /* ---------------- Component ---------------- */
 export default function Chatbot() {
@@ -2247,6 +2472,29 @@ export default function Chatbot() {
         }
       }
 
+      // NEW: Heuristic Mapping for "Hoá đơn" / Utilities
+      if (!finalCategoryId) {
+        const merchantNorm = robustNormalize(merchantName || "");
+
+        // 1. Utilities (Electricity, Water, Internet) -> Nhà ở
+        if (
+          merchantNorm.includes("dien") || merchantNorm.includes("evn") ||
+          merchantNorm.includes("nuoc") || merchantNorm.includes("internet") ||
+          merchantNorm.includes("vnpt") || merchantNorm.includes("fpt") ||
+          merchantNorm.includes("viettel")
+        ) {
+          const housingCat = currentCategories.find(c => {
+            const name = robustNormalize(c.name);
+            return name === "nha o" || name === "house" || name === "living" || name === "bill";
+          });
+
+          if (housingCat) {
+            console.log(`💡 Heuristic Helper: Map "${merchantName}" -> "${housingCat.name}" (Utilities)`);
+            finalCategoryId = housingCat.id;
+          }
+        }
+      }
+
       if (!finalCategoryId) {
         // 3. Fallback: Local AI Model
         console.log("⚠️ Using Local AI Classification as fallback.");
@@ -2259,6 +2507,7 @@ export default function Chatbot() {
         const { ranked } = await classifyToUserCategoriesAI(classificationInput);
         finalCategoryId = ranked[0]?.categoryId;
       }
+
 
       if (!finalCategoryId) {
         setMessages((m) => [
@@ -2647,7 +2896,7 @@ export default function Chatbot() {
           }
 
           if (matchedCategory) {
-            await autoCreateTransactionDirect(aiResult, matchedCategory.id);
+            await autoCreateTransactionDirect(aiResult as any, matchedCategory.id);
             return;
           }
         }
@@ -2868,7 +3117,7 @@ export default function Chatbot() {
       ]);
     }
   }; // Edit transaction handlers
-  const handleEditTransaction = (item: Extract<Msg, { role: "card" }>) => {
+  const handleEditTransaction = useCallback((item: any) => {
     // Ensure io is properly set from the card data
     const txType = item.io || "OUT"; // default to OUT if not set
     setEditingTx({
@@ -2885,7 +3134,7 @@ export default function Chatbot() {
     setEditAmount(formattedAmount);
     setEditNote(item.note);
     setEditCategoryId(item.categoryId);
-  };
+  }, []);
 
   const handleSaveEdit = async () => {
     if (!editingTx) return;
@@ -2977,7 +3226,7 @@ export default function Chatbot() {
     }
   };
 
-  const handleDeleteTransaction = async (transactionId: string) => {
+  const handleDeleteTransaction = useCallback(async (transactionId: string) => {
     try {
       await deleteTx(transactionId);
       // Remove card and its associated bot message from messages
@@ -3007,7 +3256,26 @@ export default function Chatbot() {
     } catch (e: any) {
       alert("Không thể xóa: " + (e?.message || "Lỗi"));
     }
-  };
+  }, []);
+
+  const handleConfirmDelete = useCallback(
+    (id: string) => {
+      Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
+        { text: t("cancel"), style: "cancel" },
+        {
+          text: t("delete"),
+          style: "destructive",
+          onPress: () => handleDeleteTransaction(id),
+        },
+      ]);
+    },
+    [t, handleDeleteTransaction]
+  );
+
+  const handleViewImage = useCallback((uri: string) => {
+    setSelectedImage(uri);
+    setImageViewerVisible(true);
+  }, []);
 
   function VoiceWaveformLite({
     isRecording,
@@ -3320,237 +3588,25 @@ export default function Chatbot() {
             });
           }}
           renderItem={useCallback(
-            ({ item }: { item: any }) => {
-              if (item.role === "user") {
-                return (
-                  <View
-                    style={
-                      [
-                        styles.bubble,
-                        styles.right,
-                        {
-                          backgroundColor:
-                            mode === "dark" ? "#1E3A8A" : "#E5F5F9",
-                          borderColor: mode === "dark" ? "#1E40AF" : "#D0EEF6",
-                        },
-                      ]}
-                  >
-                    {
-                      item.imageUri === "voice-recording" ? (
-                        <View
-                          style={{
-                            alignItems: "center",
-                            justifyContent: "center",
-                            padding: 20,
-                          }
-                          }
-                        >
-                          <Ionicons name="mic" size={48} color="#3B82F6" />
-                        </View>
-                      ) : item.imageUri ? (
-                        <TouchableOpacity
-                          onPress={() => {
-                            setSelectedImage(item.imageUri!);
-                            setImageViewerVisible(true);
-                          }
-                          }
-                        >
-                          <Image
-                            source={{ uri: item.imageUri }}
-                            style={{
-                              width: 200,
-                              height: 200,
-                              borderRadius: 8,
-                            }}
-                            resizeMode="cover"
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        <Text style={[styles.text, { color: colors.text }]} >
-                          {item.text}
-                        </Text>
-                      )}
-                  </View>
-                );
-              }
-              if (item.role === "bot") {
-                return (
-                  <View
-                    style={
-                      [
-                        styles.bubble,
-                        styles.left,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.divider,
-                        },
-                      ]}
-                  >
-                    <Text style={[styles.text, { color: colors.text }]}>
-                      {item.text}
-                    </Text>
-                  </View>
-                );
-              }
-              if (item.role === "typing") {
-                return <TypingIndicator colors={colors} cacheStatus={item.cacheStatus} />;
-              }
-
-              return (
-                <View
-                  style={
-                    [
-                      styles.card,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.divider,
-                      },
-                    ]}
-                >
-                  <View
-                    style={
-                      {
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 12,
-                      }
-                    }
-                  >
-                    <View
-                      style={
-                        [
-                          styles.iconCircle,
-                          { backgroundColor: item.categoryColor || "#6366F1" },
-                        ]
-                      }
-                    >
-                      <MaterialCommunityIcons
-                        name={fixIconName(item.categoryIcon) as any}
-                        size={26}
-                        color="#fff"
-                      />
-                    </View>
-                    < View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.subText, marginBottom: 2 }}>
-                        {t("recorded")}{" "}
-                        {item.io === "OUT" ? t("expense") : t("income")} ·{" "}
-                        {item.when}
-                      </Text>
-                      < Text
-                        style={{
-                          fontWeight: "700",
-                          fontSize: 18,
-                          color: colors.text,
-                        }}
-                      >
-                        {item.categoryName}
-                      </Text>
-                      < Text style={{ marginTop: 2, color: colors.text }}>
-                        {item.note}
-                      </Text>
-                    </View>
-                    < Text
-                      style={{
-                        fontWeight: "700",
-                        fontSize: 16,
-                        color: colors.text,
-                      }}
-                    >
-                      {item.amount ? item.amount.toLocaleString() + "đ" : "—"}
-                    </Text>
-                  </View>
-                  {/* Action buttons */}
-                  <View
-                    style={
-                      {
-                        flexDirection: "row",
-                        gap: 10,
-                        marginTop: 16,
-                        justifyContent: "flex-end",
-                      }
-                    }
-                  >
-                    <TouchableOpacity
-                      onPress={() => handleEditTransaction(item)}
-                      style={
-                        [
-                          styles.actionBtn,
-                          {
-                            backgroundColor:
-                              mode === "dark" ? "#1E40AF" : "#DBEAFE",
-                            borderColor: mode === "dark" ? "#2563EB" : "#93C5FD",
-                            shadowColor: "#3B82F6",
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.15,
-                            shadowRadius: 3,
-                            elevation: 2,
-                          },
-                        ]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="create-outline"
-                        size={18}
-                        color={mode === "dark" ? "#93C5FD" : "#2563EB"}
-                      />
-                      < Text
-                        style={{
-                          color: mode === "dark" ? "#93C5FD" : "#2563EB",
-                          fontSize: 13,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {t("edit")}
-                      </Text>
-                    </TouchableOpacity>
-                    < TouchableOpacity
-                      onPress={() => {
-                        Alert.alert(t("confirmDelete"), t("confirmDeleteMsg"), [
-                          { text: t("cancel"), style: "cancel" },
-                          {
-                            text: t("delete"),
-                            style: "destructive",
-                            onPress: () =>
-                              handleDeleteTransaction(item.transactionId),
-                          },
-                        ]);
-                      }}
-                      style={
-                        [
-                          styles.actionBtn,
-                          {
-                            backgroundColor:
-                              mode === "dark" ? "#7F1D1D" : "#FEE2E2",
-                            borderColor: mode === "dark" ? "#991B1B" : "#FCA5A5",
-                            shadowColor: "#EF4444",
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.15,
-                            shadowRadius: 3,
-                            elevation: 2,
-                          },
-                        ]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color={mode === "dark" ? "#FCA5A5" : "#DC2626"}
-                      />
-                      < Text
-                        style={{
-                          color: mode === "dark" ? "#FCA5A5" : "#DC2626",
-                          fontSize: 13,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {t("delete")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            },
-            [colors, mode, items, t, editingTx]
+            ({ item }: { item: any }) => (
+              <ChatMessageItem
+                item={item}
+                colors={colors}
+                mode={mode}
+                t={t}
+                onEdit={handleEditTransaction}
+                onDelete={handleConfirmDelete}
+                onImagePress={handleViewImage}
+              />
+            ),
+            [
+              colors,
+              mode,
+              t,
+              handleEditTransaction,
+              handleConfirmDelete,
+              handleViewImage,
+            ]
           )}
         />
 
