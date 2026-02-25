@@ -3624,6 +3624,9 @@ export default function Chatbot() {
                       currentStep === 2 &&
                       text.trim().length > 3
                     ) {
+                      Keyboard.dismiss();
+                      setKeyboardHeight(0);
+                      inputRef.current?.blur();
                       nextStep();
                     }
                   }}
@@ -3673,6 +3676,7 @@ export default function Chatbot() {
                         borderColor: colors.divider,
                         backgroundColor: colors.background,
                         color: colors.text,
+                        paddingHorizontal: 20
                       },
                     ]}
                   returnKeyType="send"
