@@ -13,8 +13,7 @@ import {
   deleteTx,
   updateTransaction,
 } from "@/repos/transactionRepo";
-import { transactionClassifier } from "@/services/transactionClassifier";
-import { phobertExtractor } from "@/services/phobertAmountExtractor";
+
 import { getCurrentUserId } from "@/utils/auth";
 import { fixIconName } from "@/utils/iconMapper";
 import { parseAmountVN, parseTransactionText } from "@/utils/textPreprocessing";
@@ -48,7 +47,6 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { tfTransactionParser } from "../../services/tensorflowTransactionParser";
 
 // Minimal placeholders (keeps file compiling if config values/helpers missing)
 const HUGGINGFACE_API_KEY =
@@ -240,9 +238,8 @@ async function getEmotionalReplyDirect(args: {
 📝 Người dùng nói: "${note}"
 
 ✓ Đã xác định:
-- ${io === "IN" ? "Thu" : "Chi"}: ${
-    amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
-  }
+- ${io === "IN" ? "Thu" : "Chi"}: ${amount ? amount.toLocaleString("vi-VN") + "đ" : "?"
+    }
 - Danh mục: ${categoryName}
 - Ngày: ${dateDisplay}${isFuture ? " (TƯƠNG LAI)" : ""}
 
@@ -358,11 +355,7 @@ const parseTransactionWithAI = async (
   text: string,
   userCategories: Category[]
 ): Promise<{
-  action:
-    | "CREATE_TRANSACTION"
-    | "VIEW_STATS"
-    | "EDIT_TRANSACTION"
-    | "DELETE_TRANSACTION";
+  action: | "CREATE_TRANSACTION" | "VIEW_STATS" | "EDIT_TRANSACTION" | "DELETE_TRANSACTION";
   amount: number | null;
   note: string;
   categoryId: string;
@@ -372,112 +365,8 @@ const parseTransactionWithAI = async (
   message: string;
   confidence?: number;
   mlFailed?: boolean;
-  alternatives?: Array<{
-    categoryId: string;
-    categoryName: string;
-    confidence: number;
-  }>;
 } | null> => {
-  try {
-    // Parse transaction locally with TensorFlow (for amount and date only!)
-    const result = await tfTransactionParser.parseTransaction(
-      text,
-      userCategories
-    );
-
-    if (!result) {
-      return null;
-    }
-
-    // Try ML prediction with amount context (fast - returns null if model not ready)
-    const mlPrediction = await transactionClassifier.predictCategory(
-      result.note,
-      result.amount
-    );
-
-    let categoryId = result.categoryId;
-    let categoryName = result.categoryName;
-    let confidence = result.primary?.confidence || 0;
-    let alternatives = result.alternatives || [];
-    let message = result.message;
-    let mlFailed = !mlPrediction; // Model not ready or prediction failed
-
-    // Define minimum confidence threshold for auto-creation
-    // Raised to 60% to ensure high accuracy and reduce wrong classifications
-    // User can still correct via suggestions if confidence is lower
-    const MIN_AUTO_CONFIDENCE = 0.6;
-
-    if (mlPrediction && mlPrediction.confidence > MIN_AUTO_CONFIDENCE) {
-      // ML has a good prediction - use it instead!
-      console.log(
-        `✅ Auto-creating with ${(mlPrediction.confidence * 100).toFixed(
-          1
-        )}% confidence`
-      );
-      categoryId = mlPrediction.categoryId;
-      categoryName = mlPrediction.categoryName || result.categoryName;
-      confidence = mlPrediction.confidence;
-      // Clear alternatives since we're using ML prediction
-      alternatives = [];
-
-      // 🔥 REGENERATE MESSAGE with ML category!
-      const mlCategory = userCategories.find((c) => c.id === categoryId);
-      if (result.action === "CREATE_TRANSACTION" && result.amount) {
-        const formattedAmount = result.amount.toLocaleString("vi-VN");
-        const dateStr = result.date.toLocaleDateString("vi-VN");
-        const emoji = mlCategory?.icon || "✅";
-        const transactionType = mlCategory?.type === "income" ? "thu" : "chi";
-        const confidenceStr =
-          confidence < 0.75
-            ? ` (${(confidence * 100).toFixed(0)}% chắc chắn)`
-            : " ✓";
-
-        // Use original user text in the message to keep bot response identical
-        // to what the user sent (preserve casing/spacing).
-        message = `Đã ghi ${transactionType} ${formattedAmount}đ cho ${text} vào ${dateStr}. Phân loại: ${categoryName}${confidenceStr}.`;
-      }
-    } else {
-      // ML prediction is too low or model not ready - will show suggestion UI
-      console.log(
-        `⚠️ Low confidence (${
-          mlPrediction ? (mlPrediction.confidence * 100).toFixed(1) : 0
-        }%) - showing suggestions`
-      );
-      mlFailed = true;
-      confidence = 0.05; // Trigger suggestion UI
-    }
-
-    // Derive IO from the resolved category type (AI-first, no keyword rules)
-    const resolvedCategory = userCategories.find((c) => c.id === categoryId);
-    const resolvedIo: "IN" | "OUT" =
-      resolvedCategory?.type === "income"
-        ? "IN"
-        : resolvedCategory?.type === "expense"
-        ? "OUT"
-        : result.io;
-
-    // Include confidence and alternatives from the parser.
-    // Important: preserve the original user input as `note` so UI and storage
-    // show exactly what user sent (e.g., "Trà sữa 50k" stays unchanged).
-    return {
-      ...result,
-      note: text,
-      categoryId,
-      categoryName,
-      confidence,
-      message, // Use regenerated message
-      mlFailed, // Flag indicating ML prediction failed
-      io: resolvedIo,
-      alternatives: alternatives.map((alt) => ({
-        categoryId: alt.categoryId,
-        categoryName: alt.categoryName,
-        confidence: alt.confidence,
-      })),
-    };
-  } catch (error) {
-    console.error("❌ TensorFlow parser error:", error);
-    return null;
-  }
+  return null; // Force fallback to processTextInput's simple logic
 };
 
 // IO is derived from the resolved category type (income/expense)
@@ -865,8 +754,8 @@ const heuristicScore = (text: string, cat: Category, io: "IN" | "OUT") => {
         /(hoa don|dien|nuoc|internet|wifi|mua sam|an uong|di chuyen|xang|thu cung|y te|giao duc)/.test(
           normalizedCatName
         )
-      ? 0.1
-      : 0;
+        ? 0.1
+        : 0;
 
   // Weighted scoring:
   // - Token overlap: 40% (most important for multi-word matching)
@@ -913,32 +802,8 @@ export default function ChatbotIntro() {
     const rows = await getCachedCategories();
     setItems(rows);
 
-    // Defer model training to background (after UI loads)
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(() => {
-        console.log("🚀 Starting background model training...");
-        transactionClassifier
-          .trainModel(false)
-          .then((result) => {
-            if (result.success) {
-              console.log(
-                `✅ Background training complete: ${
-                  result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
-                }% accuracy`
-              );
-            } else {
-              console.warn(
-                `⚠️ Background training skipped/failed: ${result.message}`
-              );
-            }
-          })
-          .catch((err) => {
-            console.error("❌ Background training error:", err);
-          });
-      }, 2000);
-    });
+    // Background training disabled to remove TensorFlow dependencies.
   }, []);
-
   // Build simple category priors from user's history - deferred to background
   useEffect(() => {
     InteractionManager.runAfterInteractions(() => {
@@ -981,7 +846,7 @@ export default function ChatbotIntro() {
             return out;
           };
           setPriors({ IN: norm(inP, sumIn), OUT: norm(outP, sumOut) });
-        } catch (e) {}
+        } catch (e) { }
       }, 1500);
     });
   }, []);
@@ -1036,10 +901,10 @@ export default function ChatbotIntro() {
     return () => {
       try {
         subShow.remove();
-      } catch (e) {}
+      } catch (e) { }
       try {
         subHide.remove();
-      } catch (e) {}
+      } catch (e) { }
     };
   }, [insets.bottom]);
 
@@ -1051,84 +916,27 @@ export default function ChatbotIntro() {
   // Core: classify to user's categories with AI (memoized to avoid recalculation)
   const classifyToUserCategoriesAI = useCallback(
     async (text: string, expectedIO?: "IN" | "OUT") => {
-      // PRIORITY 1: Neural on-device model (learned from user's history)
-      try {
-        const pred =
-          await transactionClassifier.predictCategoryWithAlternatives(text);
-
-        const candidates = [pred.primary, ...pred.alternatives]
-          .filter((p) => p && p.categoryId)
-          .map((p) => {
-            const cat = items.find((c) => c.id === p.categoryId);
-            return {
-              categoryId: p.categoryId,
-              name: cat?.name || p.categoryName || "",
-              score: p.confidence,
-              io: cat?.type === "income" ? ("IN" as const) : ("OUT" as const),
-            };
-          })
-          .filter((x) => x.name)
-          // Filter by expected IO type if provided
-          .filter((x) => !expectedIO || x.io === expectedIO);
-
-        if (candidates.length > 0) {
-          // Ensure unique ids, keep highest score
-          const byId = new Map<string, (typeof candidates)[number]>();
-          for (const c of candidates) {
-            const prev = byId.get(c.categoryId);
-            if (!prev || c.score > prev.score) byId.set(c.categoryId, c);
-          }
-          const ranked = Array.from(byId.values()).sort(
-            (a, b) => b.score - a.score
-          );
-          const topIo = expectedIO || ranked[0]?.io || "OUT";
-          return {
-            io: topIo,
-            ranked: ranked.map(({ io: _io, ...rest }) => rest),
-          };
-        }
-      } catch (error) {
-        console.warn(
-          "Neural classification failed, falling back to priors:",
-          error
-        );
-      }
-
-      // PRIORITY 2: Priors-only fallback (no keyword/regex scoring)
+      // Fallback: search by name locally
       const actualIO = expectedIO || "OUT";
-      const ranked = [...items]
-        .filter(
-          (c) =>
-            !expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO
-        )
-        .map((c) => ({
+      const matchingCategories = items.filter(
+        (c) =>
+          (!expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO) &&
+          (c.name.toLowerCase().includes(text.toLowerCase()) ||
+            text.toLowerCase().includes(c.name.toLowerCase()))
+      );
+
+      const ranked = matchingCategories.length > 0 ? matchingCategories : items.filter(
+        (c) =>
+          !expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO
+      );
+
+      return {
+        io: actualIO,
+        ranked: ranked.slice(0, 6).map((c) => ({
           categoryId: c.id,
           name: c.name,
-          score: (priors.IN[c.id] ?? priors.OUT[c.id] ?? 0) as number,
-          io: c.type === "income" ? ("IN" as const) : ("OUT" as const),
-        }))
-        .sort((a, b) => b.score - a.score);
-
-      // If priors are empty (new user), just return first few categories matching IO type
-      if ((ranked[0]?.score || 0) <= 0) {
-        const matchingCategories = items.filter(
-          (c) =>
-            !expectedIO || (c.type === "income" ? "IN" : "OUT") === expectedIO
-        );
-        return {
-          io: actualIO,
-          ranked: matchingCategories.slice(0, 6).map((c) => ({
-            categoryId: c.id,
-            name: c.name,
-            score: 0.01,
-          })),
-        };
-      }
-
-      const topIo = ranked[0]?.io || "OUT";
-      return {
-        io: topIo,
-        ranked: ranked.slice(0, 6).map(({ io: _io, ...rest }) => rest),
+          score: matchingCategories.includes(c) ? 0.9 : 0.01,
+        })),
       };
     },
     [items, priors]
@@ -1226,11 +1034,7 @@ export default function ChatbotIntro() {
 
           // Defer training to background (after UI interactions complete)
           InteractionManager.runAfterInteractions(() => {
-            transactionClassifier
-              .learnFromCorrection(pendingPick.text, c.categoryId)
-              .catch((err) =>
-                console.warn("⚠️ Background training failed:", err)
-              );
+            // Model training disabled
           });
         } else if (topSuggestion && topSuggestion.categoryId === c.categoryId) {
           // Still log as a positive example (user confirmed the prediction was correct)
@@ -1277,10 +1081,10 @@ export default function ChatbotIntro() {
   const autoCreateTransactionDirect = async (
     aiResult: {
       action:
-        | "CREATE_TRANSACTION"
-        | "VIEW_STATS"
-        | "EDIT_TRANSACTION"
-        | "DELETE_TRANSACTION";
+      | "CREATE_TRANSACTION"
+      | "VIEW_STATS"
+      | "EDIT_TRANSACTION"
+      | "DELETE_TRANSACTION";
       amount: number | null;
       note: string;
       categoryName: string;
@@ -1295,9 +1099,7 @@ export default function ChatbotIntro() {
 
       // Tạo demo transaction thay vì transaction thật
       setTimeout(() => {
-        transactionClassifier
-          .learnFromNewTransaction(aiResult.note, categoryId)
-          .catch(() => {});
+        // ML learning removed
       }, 100);
 
       const when = aiResult.date.toLocaleDateString("vi-VN");
@@ -1425,21 +1227,7 @@ export default function ChatbotIntro() {
         const aiResult = await parseTransactionWithAI(userText, items);
 
         if (!aiResult) {
-          let amountFromOriginal: number | null = null;
-          try {
-            const phobertResult = await phobertExtractor.extractAmount(
-              userText
-            );
-            if (phobertResult.amount && phobertResult.confidence > 0.5) {
-              amountFromOriginal = phobertResult.amount;
-            } else {
-              // Low confidence, fallback to regex
-              amountFromOriginal = parseAmountVN(userText);
-            }
-          } catch (error) {
-            console.warn("❌ PhoBERT failed, using regex:", error);
-            amountFromOriginal = parseAmountVN(userText);
-          }
+          let amountFromOriginal: number | null = parseAmountVN(userText);
 
           // Clean text for category prediction
           const parsed = parseTransactionText(userText);
@@ -1956,8 +1744,8 @@ export default function ChatbotIntro() {
                     >
                       {(c as any).isFromML
                         ? `🎓 ${Math.round(
-                            ((c as any).mlConfidence || c.score) * 100
-                          )}%`
+                          ((c as any).mlConfidence || c.score) * 100
+                        )}%`
                         : `${Math.round(c.score * 100)}%`}
                     </Text>
                   </View>

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 
 const MODEL_STORAGE_KEY = "budget_prediction_v1_weights";
 const TRAINING_HISTORY_KEY = "budget_prediction_v1_history";
@@ -337,8 +337,7 @@ class BudgetPredictionModel {
         callbacks: {
           onEpochEnd: (epoch, logs) => {
             console.log(
-              `[BudgetPredictionModel] Epoch ${
-                epoch + 1
+              `[BudgetPredictionModel] Epoch ${epoch + 1
               }: loss=${logs?.loss.toFixed(4)}, acc=${logs?.acc.toFixed(4)}`
             );
             if (logs) {

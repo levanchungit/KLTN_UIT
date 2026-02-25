@@ -1,8 +1,8 @@
 import { db, openDb } from "@/db";
 import type { Category } from "@/repos/categoryRepo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 
 interface TrainingData {
   note: string;
@@ -144,8 +144,8 @@ function augmentNoteWithAmount(note: string, amount?: number | null): string {
     amount >= 1000000
       ? `${(amount / 1000000).toFixed(1)}tr`
       : amount >= 1000
-      ? `${Math.round(amount / 1000)}k`
-      : `${amount}`;
+        ? `${Math.round(amount / 1000)}k`
+        : `${amount}`;
 
   // Append amount to note if not already present
   if (!note.match(/\d+k|\d+tr|\d+đ/i)) {
@@ -480,8 +480,7 @@ class TransactionClassifier {
       // Optimized epochs for faster training (reduced for better UX)
       const epochs = needNewModel ? 15 : 20;
       console.log(
-        `🔄 Training for ${epochs} epochs (${
-          needNewModel ? "new model" : "warm-start"
+        `🔄 Training for ${epochs} epochs (${needNewModel ? "new model" : "warm-start"
         })`
       );
 
@@ -526,15 +525,12 @@ class TransactionClassifier {
       this.lastTrainAt = Date.now();
 
       console.log(
-        `✅ Training completed: ${xsArr.length} samples (${
-          corrections.size
-        } corrections), accuracy: ${
-          accuracy ? (accuracy * 100).toFixed(1) : "N/A"
+        `✅ Training completed: ${xsArr.length} samples (${corrections.size
+        } corrections), accuracy: ${accuracy ? (accuracy * 100).toFixed(1) : "N/A"
         }%`
       );
       console.log(
-        `📊 Model now knows ${
-          this.labelCategoryIds.length
+        `📊 Model now knows ${this.labelCategoryIds.length
         } categories: ${this.labelCategoryIds
           .map((id) => categories.find((c) => c.id === id)?.name || id)
           .join(", ")}`
@@ -544,11 +540,10 @@ class TransactionClassifier {
         success: true,
         accuracy,
         samples: xsArr.length,
-        message: `Neural model trained (on-device)${
-          accuracy != null
+        message: `Neural model trained (on-device)${accuracy != null
             ? ` with ${(accuracy * 100).toFixed(1)}% accuracy`
             : ""
-        }`,
+          }`,
       };
     } catch (error) {
       console.warn("Error training model:", error);
@@ -714,8 +709,7 @@ class TransactionClassifier {
     // CRITICAL: Skip if model not ready - don't block UI!
     if (!this.isModelReady || !this.model) {
       console.warn(
-        `⚠️ Model not ready for prediction: ready=${
-          this.isModelReady
+        `⚠️ Model not ready for prediction: ready=${this.isModelReady
         }, model=${!!this.model}`
       );
       return {
@@ -874,7 +868,7 @@ class TransactionClassifier {
       if (this.retrainTimer) return;
       this.retrainTimer = setTimeout(() => {
         this.retrainTimer = null;
-        this.trainModel(true).catch(() => {});
+        this.trainModel(true).catch(() => { });
       }, delayMs);
       return;
     }
@@ -883,7 +877,7 @@ class TransactionClassifier {
       clearTimeout(this.retrainTimer);
       this.retrainTimer = null;
     }
-    this.trainModel(true).catch(() => {});
+    this.trainModel(true).catch(() => { });
   }
 
   /**
@@ -928,8 +922,7 @@ class TransactionClassifier {
       const result = await this.trainModel(true);
       if (result.success) {
         console.log(
-          `✅ 🎓 Model updated! Accuracy: ${
-            result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
+          `✅ 🎓 Model updated! Accuracy: ${result.accuracy ? (result.accuracy * 100).toFixed(1) : "N/A"
           }% (🛡️ UI remained smooth)`
         );
       } else {
