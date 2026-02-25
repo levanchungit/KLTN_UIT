@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { categoryBreakdown, totalInRange } from "@/repos/transactionRepo";
 import {
   Ionicons,
@@ -7,7 +8,7 @@ import {
 } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -23,32 +24,29 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-type TimeRange = "Ngày" | "Tuần" | "Tháng" | "Năm" | "Khoảng thời gian";
+type TimeRange = "day" | "week" | "month" | "year" | "dateRange";
 type TransactionType = "expense" | "income";
 
-const VI_MONTHS = [
-  "tháng 1",
-  "tháng 2",
-  "tháng 3",
-  "tháng 4",
-  "tháng 5",
-  "tháng 6",
-  "tháng 7",
-  "tháng 8",
-  "tháng 9",
-  "tháng 10",
-  "tháng 11",
-  "tháng 12",
+const MONTH_KEYS = [
+  "month1", "month2", "month3", "month4",
+  "month5", "month6", "month7", "month8",
+  "month9", "month10", "month11", "month12",
 ];
-const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-const fmtMoney = (n: number) =>
-  (n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 0 }) + "₫";
+const fmtMoney = (n: number, lang: string) =>
+  lang === "en"
+    ? "$" + (n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 })
+    : (n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 0 }) + "₫";
 
-// Format số tiền theo kiểu Việt Nam (1tr, 12tr, 1.2tỷ)
-const fmtMoneyVN = (n: number) => {
-  if (n >= 1000000000)
-    return `${(n / 1000000000).toFixed(1).replace(".0", "")}tỷ`;
+const fmtMoneyShort = (n: number, lang: string) => {
+  if (lang === "en") {
+    if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace(".0", "")}B`;
+    if (n >= 1000000) return `${Math.round(n / 1000000)}M`;
+    if (n >= 1000) return `${Math.round(n / 1000)}K`;
+    return n.toString();
+  }
+  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace(".0", "")}tỷ`;
   if (n >= 1000000) return `${Math.round(n / 1000000)}tr`;
   if (n >= 1000) return `${Math.round(n / 1000)}k`;
   return n.toString();
@@ -60,19 +58,21 @@ const startOfDay = (d: Date) => {
   return x;
 };
 
-function getRange(kind: TimeRange, anchor: Date) {
+function getRange(kind: TimeRange, anchor: Date, lang: string) {
   const d = new Date(anchor);
   d.setHours(0, 0, 0, 0);
+  const locale = lang === "en" ? "en-US" : "vi-VN";
+  const fmtShortDate = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
 
-  if (kind === "Ngày") {
+  if (kind === "day") {
     const start = d.getTime() / 1000;
     return {
       startSec: start,
       endSec: start + 86400,
-      label: d.toLocaleDateString("vi-VN"),
+      label: d.toLocaleDateString(locale),
     };
   }
-  if (kind === "Tuần") {
+  if (kind === "week") {
     const wd = (d.getDay() + 6) % 7;
     const startDate = new Date(d);
     startDate.setDate(d.getDate() - wd);
@@ -83,21 +83,19 @@ function getRange(kind: TimeRange, anchor: Date) {
     return {
       startSec: startDate.getTime() / 1000,
       endSec: endDateExclusive.getTime() / 1000,
-      label: `${startDate.getDate()} thg ${
-        startDate.getMonth() + 1
-      } - ${endLabel.getDate()} thg ${endLabel.getMonth() + 1}`,
+      label: `${fmtShortDate(startDate)} - ${fmtShortDate(endLabel)}`,
     };
   }
-  if (kind === "Tháng") {
+  if (kind === "month") {
     const startDate = new Date(d.getFullYear(), d.getMonth(), 1);
     const endDate = new Date(d.getFullYear(), d.getMonth() + 1, 1);
     return {
       startSec: startDate.getTime() / 1000,
       endSec: endDate.getTime() / 1000,
-      label: `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`,
+      label: `${d.getMonth() + 1}/${d.getFullYear()}`,
     };
   }
-  if (kind === "Năm") {
+  if (kind === "year") {
     const startDate = new Date(d.getFullYear(), 0, 1);
     const endDate = new Date(d.getFullYear() + 1, 0, 1);
     return {
@@ -110,7 +108,7 @@ function getRange(kind: TimeRange, anchor: Date) {
   return {
     startSec: start,
     endSec: start + 86400,
-    label: d.toLocaleDateString("vi-VN"),
+    label: d.toLocaleDateString(locale),
   };
 }
 
@@ -123,8 +121,9 @@ function isCurrentPeriod(startSec: number, endSec: number) {
 
 export default function ChartsScreen() {
   const { colors } = useTheme();
+  const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
-  const [timeRange, setTimeRange] = useState<TimeRange>("Tháng");
+  const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [rangeStart, setRangeStart] = useState<Date>(new Date());
   const [rangeEnd, setRangeEnd] = useState<Date>(new Date());
@@ -162,8 +161,18 @@ export default function ChartsScreen() {
   >([]);
 
   // Synchronized with dashboard logic for perfect match
+  const localizedMonths = useMemo(() => MONTH_KEYS.map((k) => t(k).toLowerCase()), [t]);
+  const localizedWeekdays = useMemo(() => WEEKDAY_KEYS.map((k) => t(k)), [t]);
+  const TIME_RANGE_LABELS: Record<TimeRange, string> = useMemo(() => ({
+    day: t("day"),
+    week: t("week"),
+    month: t("month"),
+    year: t("year"),
+    dateRange: t("dateRange"),
+  }), [t]);
+
   const { startSec, endSec, label } = React.useMemo(() => {
-    if (timeRange !== "Khoảng thời gian") return getRange(timeRange, anchor);
+    if (timeRange !== "dateRange") return getRange(timeRange, anchor, lang);
     const s = startOfDay(rangeStart);
     const e = startOfDay(rangeEnd);
     const eExclusive = new Date(e);
@@ -171,11 +180,9 @@ export default function ChartsScreen() {
     return {
       startSec: s.getTime() / 1000,
       endSec: eExclusive.getTime() / 1000,
-      label: `${s.getDate()} thg ${s.getMonth() + 1} - ${e.getDate()} thg ${
-        e.getMonth() + 1
-      }`,
+      label: `${s.getDate()}/${s.getMonth() + 1} - ${e.getDate()}/${e.getMonth() + 1}`,
     };
-  }, [timeRange, anchor, rangeStart, rangeEnd]);
+  }, [timeRange, anchor, rangeStart, rangeEnd, lang]);
 
   const atCurrentPeriod = isCurrentPeriod(startSec, endSec);
   const canGoNext = !atCurrentPeriod;
@@ -210,7 +217,7 @@ export default function ChartsScreen() {
         .slice(0, 10) // Top 10 categories
         .map((r, i) => ({
           value: r.total || 0,
-          label: (r.name ?? "Khác").slice(0, 8), // Shorten label
+          label: (r.name ?? t("other")).slice(0, 8),
           frontColor: r.color ?? palette[i % palette.length],
           topLabelComponent: () => (
             <Text
@@ -221,7 +228,7 @@ export default function ChartsScreen() {
                 textAlign: "center",
               }}
             >
-              {fmtMoneyVN(r.total || 0)}
+              {fmtMoneyShort(r.total || 0, lang)}
             </Text>
           ),
         }));
@@ -237,7 +244,7 @@ export default function ChartsScreen() {
   const loadComparisonData = useCallback(async () => {
     setComparisonLoading(true);
     try {
-      if (timeRange === "Năm") {
+      if (timeRange === "year") {
         // For year view, show 3 consecutive years (but not future years)
         const selectedYear = anchor.getFullYear();
         const currentYear = new Date().getFullYear();
@@ -297,7 +304,7 @@ export default function ChartsScreen() {
                   opacity: opacity,
                 }}
               >
-                {fmtMoneyVN(y.value)}
+                {fmtMoneyShort(y.value, lang)}
               </Text>
             ),
           };
@@ -309,13 +316,13 @@ export default function ChartsScreen() {
         let selectedMonth: number;
         let selectedYear: number;
 
-        if (timeRange === "Tháng") {
+        if (timeRange === "month") {
           selectedMonth = anchor.getMonth();
           selectedYear = anchor.getFullYear();
-        } else if (timeRange === "Tuần") {
+        } else if (timeRange === "week") {
           selectedMonth = anchor.getMonth();
           selectedYear = anchor.getFullYear();
-        } else if (timeRange === "Ngày") {
+        } else if (timeRange === "day") {
           selectedMonth = anchor.getMonth();
           selectedYear = anchor.getFullYear();
         } else {
@@ -357,7 +364,7 @@ export default function ChartsScreen() {
 
             const total = await totalInRange(startSec, endSec, transactionType);
             return {
-              label: `Thg ${m.month + 1}`,
+              label: t("monthShort", { num: m.month + 1 }),
               month: m.month,
               year: m.year,
               value: total,
@@ -391,7 +398,7 @@ export default function ChartsScreen() {
                   opacity: opacity,
                 }}
               >
-                {fmtMoneyVN(m.value)}
+                {fmtMoneyShort(m.value, lang)}
               </Text>
             ),
           };
@@ -432,11 +439,11 @@ export default function ChartsScreen() {
   const shiftAnchor = (dir: -1 | 1) => {
     if (dir === 1 && !canGoNext) return;
     const a = new Date(anchor);
-    if (timeRange === "Ngày" || timeRange === "Khoảng thời gian")
+    if (timeRange === "day" || timeRange === "dateRange")
       a.setDate(a.getDate() + dir);
-    else if (timeRange === "Tuần") a.setDate(a.getDate() + dir * 7);
-    else if (timeRange === "Tháng") a.setMonth(a.getMonth() + dir);
-    else if (timeRange === "Năm") a.setFullYear(a.getFullYear() + dir);
+    else if (timeRange === "week") a.setDate(a.getDate() + dir * 7);
+    else if (timeRange === "month") a.setMonth(a.getMonth() + dir);
+    else if (timeRange === "year") a.setFullYear(a.getFullYear() + dir);
     setAnchor(a);
   };
   const goToCurrentPeriod = () => setAnchor(new Date());
@@ -473,7 +480,7 @@ export default function ChartsScreen() {
       e.setDate(e.getDate() + 6);
       const sameMonth = s.getMonth() === month || e.getMonth() === month;
       if (sameMonth) {
-        const fmt = (x: Date) => `${x.getDate()} thg ${x.getMonth() + 1}`;
+        const fmt = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
         out.push({ start: s, end: e, label: `${fmt(s)} – ${fmt(e)}` });
       }
     }
@@ -482,7 +489,7 @@ export default function ChartsScreen() {
 
   function DayOrWeekPicker({ mode }: { mode: TimeRange }) {
     const customDatesStyles =
-      mode !== "Tuần" || !tempAnchor
+      mode !== "week" || !tempAnchor
         ? []
         : Array.from({ length: 7 }).map((_, i) => {
             const d = addDays(startOfWeekMon(tempAnchor!), i);
@@ -495,28 +502,28 @@ export default function ChartsScreen() {
 
     return (
       <CalendarPicker
-        allowRangeSelection={mode === "Khoảng thời gian"}
+        allowRangeSelection={mode === "dateRange"}
         selectedStartDate={
-          mode === "Khoảng thời gian"
+          mode === "dateRange"
             ? tempStart ?? undefined
             : tempAnchor ?? undefined
         }
         selectedEndDate={
-          mode === "Khoảng thời gian"
+          mode === "dateRange"
             ? tempEnd ?? undefined
-            : mode === "Tuần" && tempAnchor
+            : mode === "week" && tempAnchor
             ? addDays(startOfWeekMon(tempAnchor), 6)
             : undefined
         }
         initialDate={
-          mode === "Khoảng thời gian"
+          mode === "dateRange"
             ? tempStart ?? new Date()
             : tempAnchor ?? new Date()
         }
         minDate={new Date(1970, 0, 1)}
         maxDate={new Date()}
-        weekdays={VI_WEEKDAYS}
-        months={VI_MONTHS}
+        weekdays={localizedWeekdays}
+        months={localizedMonths}
         previousTitle="‹"
         nextTitle="›"
         todayBackgroundColor="#E6F7FF"
@@ -528,7 +535,7 @@ export default function ChartsScreen() {
         customDatesStyles={customDatesStyles}
         textStyle={{ color: colors.text }}
         onDateChange={(date: Date, type?: "START_DATE" | "END_DATE") => {
-          if (mode === "Khoảng thời gian") {
+          if (mode === "dateRange") {
             if (type === "START_DATE") {
               setTempStart(date);
               if (tempEnd && date > tempEnd) setTempEnd(null);
@@ -587,7 +594,7 @@ export default function ChartsScreen() {
             />
           </TouchableOpacity>
           <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
-            {VI_MONTHS[tempMonth]} {tempYear}
+            {localizedMonths[tempMonth]} {tempYear}
           </Text>
           <TouchableOpacity
             disabled={!canNextMonth}
@@ -644,7 +651,7 @@ export default function ChartsScreen() {
                     marginBottom: 4,
                   }}
                 >
-                  Tuần {idx + 1}
+                  {t("weekNum", { num: idx + 1 })}
                 </Text>
                 <Text
                   style={{
@@ -664,8 +671,8 @@ export default function ChartsScreen() {
   }
 
   function MonthGridPicker() {
-    const months = VI_MONTHS.map((m, idx) => ({
-      label: m.replace("tháng ", "Thg "),
+    const months = localizedMonths.map((m: string, idx: number) => ({
+      label: t("monthShort", { num: idx + 1 }),
       idx,
     }));
     return (
@@ -700,7 +707,7 @@ export default function ChartsScreen() {
             justifyContent: "space-between",
           }}
         >
-          {months.map(({ label, idx }) => {
+          {months.map(({ label, idx }: { label: string; idx: number }) => {
             const isCur = tempMonth === idx;
             return (
               <TouchableOpacity
@@ -887,7 +894,7 @@ export default function ChartsScreen() {
         >
           <Ionicons name="arrow-back" size={20} color={colors.icon} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Biểu đồ so sánh</Text>
+        <Text style={styles.headerTitle}>{t("chartTitle")}</Text>
       </View>
 
       <ScrollView
@@ -905,11 +912,11 @@ export default function ChartsScreen() {
           >
             {(
               [
-                "Ngày",
-                "Tuần",
-                "Tháng",
-                "Năm",
-                "Khoảng thời gian",
+                "day",
+                "week",
+                "month",
+                "year",
+                "dateRange",
               ] as TimeRange[]
             ).map((item) => {
               const isActive = item === timeRange;
@@ -917,8 +924,8 @@ export default function ChartsScreen() {
                 <TouchableOpacity
                   key={item}
                   onPress={() => {
-                    if (item === "Khoảng thời gian") {
-                      const r = getRange(timeRange, anchor);
+                    if (item === "dateRange") {
+                      const r = getRange(timeRange, anchor, lang);
                       const s = new Date(r.startSec * 1000);
                       const e = new Date(r.endSec * 1000);
                       e.setDate(e.getDate() - 1);
@@ -938,7 +945,7 @@ export default function ChartsScreen() {
                       isActive && styles.timeFilterTextActive,
                     ]}
                   >
-                    {item}
+                    {TIME_RANGE_LABELS[item]}
                   </Text>
                 </TouchableOpacity>
               );
@@ -946,7 +953,7 @@ export default function ChartsScreen() {
           </ScrollView>
 
           {/* Time Navigation or Custom Range Display - match dashboard */}
-          {timeRange === "Khoảng thời gian" ? (
+          {timeRange === "dateRange" ? (
             <View
               style={{
                 width: "100%",
@@ -964,9 +971,7 @@ export default function ChartsScreen() {
                     fontWeight: "600",
                   }}
                 >
-                  {`${rangeStart.getDate()} thg ${
-                    rangeStart.getMonth() + 1
-                  } - ${rangeEnd.getDate()} thg ${rangeEnd.getMonth() + 1}`}
+                  {`${rangeStart.getDate()}/${rangeStart.getMonth() + 1} - ${rangeEnd.getDate()}/${rangeEnd.getMonth() + 1}`}
                 </Text>
               </TouchableOpacity>
               <View style={{ position: "absolute", right: 0 }}>
@@ -1072,7 +1077,7 @@ export default function ChartsScreen() {
                   fontSize: 14,
                 }}
               >
-                Chi tiêu
+                {t("expenditure")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1093,7 +1098,7 @@ export default function ChartsScreen() {
                   fontSize: 14,
                 }}
               >
-                Thu nhập
+                {t("revenue")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1115,8 +1120,8 @@ export default function ChartsScreen() {
             <View>
               <Text style={{ color: "#fff", fontSize: 13, opacity: 0.9 }}>
                 {transactionType === "expense"
-                  ? "Tổng chi tiêu"
-                  : "Tổng thu nhập"}
+                  ? t("totalExpenseLabel")
+                  : t("totalIncomeLabel")}
               </Text>
               <Text
                 style={{
@@ -1126,7 +1131,7 @@ export default function ChartsScreen() {
                   marginTop: 4,
                 }}
               >
-                {fmtMoney(totalExpense)}
+                {fmtMoney(totalExpense, lang)}
               </Text>
             </View>
             <Ionicons
@@ -1143,12 +1148,13 @@ export default function ChartsScreen() {
         {/* Chart */}
         <View style={styles.chartContainer}>
           <Text style={styles.chartTitle}>
-            Top danh mục{" "}
-            {transactionType === "expense" ? "chi tiêu" : "thu nhập"}
+            {transactionType === "expense"
+              ? t("topCategoriesExpense")
+              : t("topCategoriesIncome")}
           </Text>
           {loading ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>Đang tải...</Text>
+              <Text style={styles.emptyText}>{t("loading")}</Text>
             </View>
           ) : chartData.length > 0 ? (
             <ScrollView
@@ -1177,16 +1183,16 @@ export default function ChartsScreen() {
                 maxValue={Math.max(...chartData.map((d) => d.value)) * 1.2}
                 yAxisLabelTexts={[
                   "0",
-                  fmtMoneyVN(
-                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 4
+                  fmtMoneyShort(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 4, lang
                   ),
-                  fmtMoneyVN(
-                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 2
+                  fmtMoneyShort(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2) / 2, lang
                   ),
-                  fmtMoneyVN(
-                    (Math.max(...chartData.map((d) => d.value)) * 1.2 * 3) / 4
+                  fmtMoneyShort(
+                    (Math.max(...chartData.map((d) => d.value)) * 1.2 * 3) / 4, lang
                   ),
-                  fmtMoneyVN(Math.max(...chartData.map((d) => d.value)) * 1.2),
+                  fmtMoneyShort(Math.max(...chartData.map((d) => d.value)) * 1.2, lang),
                 ]}
                 isAnimated
                 animationDuration={800}
@@ -1206,17 +1212,17 @@ export default function ChartsScreen() {
                 size={64}
                 color={colors.divider}
               />
-              <Text style={styles.emptyText}>Chưa có dữ liệu</Text>
+              <Text style={styles.emptyText}>{t("noData")}</Text>
             </View>
           )}
         </View>
 
         {/* Comparison Chart - Thu/Chi cùng khoảng thời gian */}
         <View style={[styles.chartContainer, { marginBottom: 20 }]}>
-          <Text style={styles.chartTitle}>So sánh 3 tháng gần đây nhất</Text>
+          <Text style={styles.chartTitle}>{timeRange === "year" ? t("compare3Years") : t("compare3Months")}</Text>
           {comparisonLoading ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>Đang tải...</Text>
+              <Text style={styles.emptyText}>{t("loading")}</Text>
             </View>
           ) : comparisonData.length > 0 ? (
             <ScrollView
@@ -1246,20 +1252,20 @@ export default function ChartsScreen() {
                 maxValue={Math.max(...comparisonData.map((d) => d.value)) * 1.2}
                 yAxisLabelTexts={[
                   "0",
-                  fmtMoneyVN(
-                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 4
+                  fmtMoneyShort(
+                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 4, lang
                   ),
-                  fmtMoneyVN(
-                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 2
+                  fmtMoneyShort(
+                    (Math.max(...comparisonData.map((d) => d.value)) * 1.2) / 2, lang
                   ),
-                  fmtMoneyVN(
+                  fmtMoneyShort(
                     (Math.max(...comparisonData.map((d) => d.value)) *
                       1.2 *
                       3) /
-                      4
+                      4, lang
                   ),
-                  fmtMoneyVN(
-                    Math.max(...comparisonData.map((d) => d.value)) * 1.2
+                  fmtMoneyShort(
+                    Math.max(...comparisonData.map((d) => d.value)) * 1.2, lang
                   ),
                 ]}
                 isAnimated
@@ -1277,7 +1283,7 @@ export default function ChartsScreen() {
                 size={64}
                 color={colors.divider}
               />
-              <Text style={styles.emptyText}>Chưa có dữ liệu</Text>
+              <Text style={styles.emptyText}>{t("noData")}</Text>
             </View>
           )}
         </View>
@@ -1298,13 +1304,13 @@ export default function ChartsScreen() {
             maxWidth: "95%",
           }}
         >
-          {timeRange === "Ngày" && <DayOrWeekPicker mode="Ngày" />}
-          {timeRange === "Tuần" && <WeekGridPicker />}
-          {timeRange === "Khoảng thời gian" && (
-            <DayOrWeekPicker mode="Khoảng thời gian" />
+          {timeRange === "day" && <DayOrWeekPicker mode="day" />}
+          {timeRange === "week" && <WeekGridPicker />}
+          {timeRange === "dateRange" && (
+            <DayOrWeekPicker mode="dateRange" />
           )}
-          {timeRange === "Tháng" && <MonthGridPicker />}
-          {timeRange === "Năm" && <YearPicker />}
+          {timeRange === "month" && <MonthGridPicker />}
+          {timeRange === "year" && <YearPicker />}
 
           <View
             style={{
@@ -1317,29 +1323,29 @@ export default function ChartsScreen() {
               onPress={() => setShowCalendarModal(false)}
               style={{ padding: 10 }}
             >
-              <Text style={{ color: "#10B981", fontWeight: "600" }}>Huỷ</Text>
+              <Text style={{ color: "#10B981", fontWeight: "600" }}>{t("cancelBtn")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
-                if (timeRange === "Khoảng thời gian") {
+                if (timeRange === "dateRange") {
                   if (!tempStart || !tempEnd)
                     return setShowCalendarModal(false);
                   setRangeStart(startOfDay(tempStart));
                   setRangeEnd(startOfDay(tempEnd));
-                } else if (timeRange === "Ngày") {
+                } else if (timeRange === "day") {
                   if (tempAnchor) setAnchor(startOfDay(tempAnchor));
-                } else if (timeRange === "Tuần") {
+                } else if (timeRange === "week") {
                   if (tempAnchor) setAnchor(startOfWeekMon(tempAnchor));
-                } else if (timeRange === "Tháng") {
+                } else if (timeRange === "month") {
                   setAnchor(new Date(tempYear, tempMonth, 1));
-                } else if (timeRange === "Năm") {
+                } else if (timeRange === "year") {
                   setAnchor(new Date(tempOnlyYear, 0, 1));
                 }
                 setShowCalendarModal(false);
               }}
               style={{ padding: 10 }}
             >
-              <Text style={{ color: "#10B981", fontWeight: "700" }}>Xong</Text>
+              <Text style={{ color: "#10B981", fontWeight: "700" }}>{t("doneBtn")}</Text>
             </TouchableOpacity>
           </View>
         </Modal>

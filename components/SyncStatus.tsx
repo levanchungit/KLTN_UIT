@@ -1,4 +1,5 @@
 import { useUser } from "@/context/userContext";
+import { useI18n } from "@/i18n/I18nProvider";
 import { syncAll } from "@/services/syncService";
 import syncState from "@/services/syncState";
 import React, { useEffect, useState } from "react";
@@ -10,8 +11,8 @@ import {
   View,
 } from "react-native";
 
-function fmtTime(sec: number | null) {
-  if (!sec) return "Chưa đồng bộ";
+function fmtTime(sec: number | null, t: (key: string) => string) {
+  if (!sec) return t("notSynced");
   const d = new Date(sec * 1000);
   return d.toLocaleString();
 }
@@ -19,10 +20,11 @@ function fmtTime(sec: number | null) {
 export default function SyncStatus() {
   const [state, setState] = useState(syncState.getSyncState());
   const { user } = useUser();
+  const { t } = useI18n();
 
   useEffect(() => {
     const unsub = syncState.subscribe((s) => setState(s));
-    return unsub;
+    return () => { unsub(); };
   }, []);
 
   const onManual = async () => {
@@ -40,12 +42,12 @@ export default function SyncStatus() {
           <ActivityIndicator size="small" color="#fff" />
         ) : (
           <Text style={styles.statusText}>
-            {state.status === "idle" ? "Đã đồng bộ" : "Lỗi đồng bộ"}
+            {state.status === "idle" ? t("synced") : t("syncErrorComp")}
           </Text>
         )}
-        <Text style={styles.timeText}>{fmtTime(state.lastSyncedAt)}</Text>
+        <Text style={styles.timeText}>{fmtTime(state.lastSyncedAt, t)}</Text>
         <TouchableOpacity style={styles.btn} onPress={onManual}>
-          <Text style={styles.btnText}>Đồng bộ</Text>
+          <Text style={styles.btnText}>{t("syncBtn")}</Text>
         </TouchableOpacity>
       </View>
     </View>

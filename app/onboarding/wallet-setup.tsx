@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { useUser } from "@/context/userContext";
 import { db, openDb } from "@/db";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,19 +16,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function WalletSetup() {
-  const [name, setName] = useState("Ví mặc định");
+  const { colors } = useTheme();
+  const { t } = useI18n();
+  const [name, setName] = useState(t("defaultWallet"));
   const [loading, setLoading] = useState(false);
   const { user } = useUser();
 
   const onCreate = async () => {
     if (!name.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập tên ví");
+      Alert.alert(t("error"), t("walletNameError"));
       return;
     }
     setLoading(true);
     try {
       if (!user || !user.id) {
-        // Shouldn't happen because app requires authentication; redirect to login.
         router.replace("/auth/login");
         return;
       }
@@ -45,35 +48,51 @@ export default function WalletSetup() {
           0,
           Math.floor(Date.now() / 1000),
           null,
-        ]
+        ] as any
       );
 
-      // persist onboarding state
       await AsyncStorage.setItem("onboarding_step", "wallet_done");
       router.push("/onboarding/categories-setup");
     } catch (e) {
       console.error(e);
-      Alert.alert("Lỗi", "Tạo ví thất bại");
+      Alert.alert(t("error"), t("createWalletFailed"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top", "bottom"]}
+    >
       <View style={styles.inner}>
-        <Text style={styles.title}>Thiết lập ví đầu tiên</Text>
-        <Text style={styles.desc}>
-          Đặt tên cho ví để bắt đầu quản lý tài chính.
+        <Text style={[styles.title, { color: colors.text }]}>
+          {t("setupFirstWallet")}
         </Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} />
+        <Text style={[styles.desc, { color: colors.subText }]}>
+          {t("setupWalletDesc")}
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              borderColor: colors.divider,
+              color: colors.text,
+              backgroundColor: colors.card,
+            },
+          ]}
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor={colors.subText}
+        />
         <TouchableOpacity
           style={styles.btn}
           onPress={onCreate}
           disabled={loading}
         >
           <Text style={styles.btnText}>
-            {loading ? "Đang tạo..." : "Tạo ví"}
+            {loading ? t("creatingWallet") : t("createWalletBtn")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -82,13 +101,12 @@ export default function WalletSetup() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
   inner: { flex: 1, padding: 24, justifyContent: "center" },
   title: { fontSize: 22, fontWeight: "700", marginBottom: 8 },
-  desc: { color: "#666", marginBottom: 16 },
+  desc: { marginBottom: 16 },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,

@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Animated, Text, TouchableOpacity, View } from "react-native";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type RecordingBarProps = {
   isRecording: boolean;
@@ -23,6 +24,7 @@ function RecordingBar({
   onSend,
   level,
 }: RecordingBarProps) {
+  const { t } = useI18n();
   const NUM_BARS = 18;
   const progress = React.useRef(new Animated.Value(0)).current;
   const peaks = React.useRef(
@@ -194,7 +196,7 @@ function RecordingBar({
             </Text>
           ) : (
             <Text style={{ color: "#6B7280", fontSize: 12, flex: 1 }}>
-              Đang nghe...
+              {t("listening")}
             </Text>
           )}
         </View>

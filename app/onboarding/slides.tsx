@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useRef, useState } from "react";
@@ -17,35 +19,35 @@ import {
 
 const { width, height } = Dimensions.get("window");
 
-const slides = [
+const slideKeys = [
   {
     key: "s1",
-    title: "Quản lý chi tiêu",
-    desc: "Ghi chép, phân loại và theo dõi chi tiêu hàng ngày.",
+    titleKey: "manageExpenses",
+    descKey: "manageExpensesDesc",
     image: require("../../assets/images/slide1.jpg"),
   },
   {
     key: "s2",
-    title: "Ngân sách thông minh",
-    desc: "Tạo ngân sách và theo dõi tiến độ tự động.",
+    titleKey: "smartBudgetTitle",
+    descKey: "smartBudgetDesc",
     image: require("../../assets/images/slide2.jpg"),
   },
   {
     key: "s3",
-    title: "Nhắc nhở tiết kiệm",
-    desc: "Nhắc nhở hàng ngày để bạn không quên mục tiêu tài chính.",
+    titleKey: "saveReminders",
+    descKey: "saveRemindersDesc",
     image: require("../../assets/images/slide3.jpg"),
   },
   {
     key: "s4",
-    title: "Phân tích trực quan",
-    desc: "Biểu đồ và báo cáo giúp bạn hiểu rõ hơn thói quen chi tiêu.",
+    titleKey: "visualAnalysis",
+    descKey: "visualAnalysisDesc",
     image: require("../../assets/images/slide4.jpg"),
   },
   {
     key: "s5",
-    title: "Trợ lý AI",
-    desc: "Dùng chatbotAI để tạo giao dịch bằng văn bản và gợi ý phân loại.",
+    titleKey: "aiAssistantTitle",
+    descKey: "aiAssistantDesc",
     image: require("../../assets/images/slide5.jpg"),
   },
 ];
@@ -54,14 +56,15 @@ export default function Slides() {
   const [index, setIndex] = useState(0);
   const scrollRef = useRef<ScrollView | null>(null);
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useI18n();
 
   const onNext = () => {
-    if (index < slides.length - 1) {
+    if (index < slideKeys.length - 1) {
       const nextIndex = index + 1;
       scrollRef.current?.scrollTo({ x: nextIndex * width, animated: true });
       setIndex(nextIndex);
     } else {
-      // After the last slide, go to the login screen
       router.replace("/auth/login");
     }
   };
@@ -73,7 +76,10 @@ export default function Slides() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top", "bottom"]}
+    >
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -81,11 +87,15 @@ export default function Slides() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onMomentum}
       >
-        {slides.map((s) => (
+        {slideKeys.map((s) => (
           <View key={s.key} style={[styles.slide, { width }]}>
             <View style={styles.topText}>
-              <Text style={styles.slideTitle}>{s.title}</Text>
-              <Text style={styles.slideDesc}>{s.desc}</Text>
+              <Text style={[styles.slideTitle, { color: colors.text }]}>
+                {t(s.titleKey)}
+              </Text>
+              <Text style={[styles.slideDesc, { color: colors.subText }]}>
+                {t(s.descKey)}
+              </Text>
             </View>
 
             <View style={styles.imageWrap}>
@@ -104,10 +114,17 @@ export default function Slides() {
         pointerEvents="box-none"
       >
         <View style={styles.pager}>
-          {slides.map((_, idx) => (
+          {slideKeys.map((_, idx) => (
             <View
               key={idx}
-              style={[styles.dot, idx === index && styles.dotActive]}
+              style={[
+                styles.dot,
+                { backgroundColor: colors.divider },
+                idx === index && [
+                  styles.dotActive,
+                  { backgroundColor: colors.text },
+                ],
+              ]}
             />
           ))}
         </View>
@@ -125,7 +142,7 @@ export default function Slides() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1 },
   slide: {
     height,
     justifyContent: "flex-start",
@@ -143,13 +160,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   slideTitle: {
-    color: "#111827",
     fontSize: 32,
     fontWeight: "800",
     textAlign: "center",
   },
   slideDesc: {
-    color: "#6B7280",
     fontSize: 17,
     marginTop: 6,
     textAlign: "center",
@@ -169,11 +184,9 @@ const styles = StyleSheet.create({
     width: 10,
     height: 4,
     borderRadius: 4,
-    backgroundColor: "#D1D5DB",
     marginHorizontal: 6,
   },
   dotActive: {
-    backgroundColor: "#111827",
     width: 32,
     height: 6,
     borderRadius: 4,

@@ -1,4 +1,5 @@
 import { useNetworkManager } from "@/context/NetworkManagerContext";
+import { useI18n } from "@/i18n/I18nProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import React, { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export function GlobalOfflineToggle() {
   const { isOfflineMode, toggleOfflineMode, networkState } = useNetworkManager();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [slideAnim] = useState(new Animated.Value(-50));
 
@@ -75,7 +77,7 @@ export function GlobalOfflineToggle() {
           style={{ marginRight: 6 }}
         />
         <Text style={styles.bannerText}>
-          {isOfflineMode ? "OFFLINE MODE" : "ONLINE MODE"}
+          {isOfflineMode ? t("offlineModeLabel") : t("onlineModeLabel")}
         </Text>
       </TouchableOpacity>
     </Animated.View>

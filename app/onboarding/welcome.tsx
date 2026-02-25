@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { router } from "expo-router";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -8,8 +10,14 @@ import {
 
 export default function Welcome() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useI18n();
+
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top", "bottom"]}
+    >
       <View style={styles.inner}>
         <Image
           source={require("../../assets/images/iconai.png")}
@@ -17,8 +25,12 @@ export default function Welcome() {
           resizeMode="contain"
         />
 
-        <Text style={styles.title}>Chào mừng đến với HugoKeeper</Text>
-        <Text style={styles.subtitle}>Ứng dụng quản lý tài chính cá nhân</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {t("welcomeTitle")}
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.subText }]}>
+          {t("welcomeSubtitle")}
+        </Text>
 
         <View
           style={[
@@ -30,14 +42,16 @@ export default function Welcome() {
             style={styles.primary}
             onPress={() => router.push("/onboarding/slides")}
           >
-            <Text style={styles.primaryText}>Bắt đầu</Text>
+            <Text style={styles.primaryText}>{t("getStarted")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.ghost}
             onPress={() => router.push("/auth/login?onboarding=1")}
           >
-            <Text style={styles.ghostText}>Đăng nhập / Đã có tài khoản</Text>
+            <Text style={[styles.ghostText, { color: "#16A34A" }]}>
+              {t("loginOrExisting")}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -46,7 +60,7 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
   inner: {
     flex: 1,
     justifyContent: "space-between",
@@ -61,11 +75,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 8,
     textAlign: "center",
-    color: "#111827",
   },
   subtitle: {
     fontSize: 16,
-    color: "#6B7280",
     marginTop: 6,
     textAlign: "center",
     paddingHorizontal: 12,
@@ -82,5 +94,5 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: "#fff", fontSize: 18, fontWeight: "800" },
   ghost: { paddingVertical: 12 },
-  ghostText: { color: "#16A34A", fontSize: 15 },
+  ghostText: { fontSize: 15 },
 });

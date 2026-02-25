@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { requestBiometricUnlock } from "@/utils/biometric";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -6,11 +8,14 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function BiometricLoadingScreen() {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+
   useEffect(() => {
     const checkBiometric = async () => {
       try {
         const biometricResult = await requestBiometricUnlock(
-          "Xác thực để vào ứng dụng"
+          t("biometricPrompt")
         );
         if (biometricResult.success) {
           router.replace("/(tabs)");
@@ -27,7 +32,10 @@ export default function BiometricLoadingScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top", "bottom"]}
+    >
       <View style={styles.inner}>
         <View style={styles.logoContainer}>
           <MaterialCommunityIcons
@@ -36,13 +44,17 @@ export default function BiometricLoadingScreen() {
             color="#16A34A"
           />
         </View>
-        <Text style={styles.title}>Xác thực sinh trắc học</Text>
-        <Text style={styles.subtitle}>
-          Vui lòng xác thực để tiếp tục sử dụng ứng dụng
+        <Text style={[styles.title, { color: colors.text }]}>
+          {t("biometricTitle")}
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.subText }]}>
+          {t("biometricSubtitle")}
         </Text>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#16A34A" />
-          <Text style={styles.loadingText}>Đang xác thực...</Text>
+          <Text style={[styles.loadingText, { color: colors.subText }]}>
+            {t("authenticating")}
+          </Text>
         </View>
       </View>
     </SafeAreaView>
@@ -52,7 +64,6 @@ export default function BiometricLoadingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
   },
   inner: {
     flex: 1,
@@ -67,13 +78,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#1f2937",
     marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "#6b7280",
     textAlign: "center",
     marginBottom: 48,
     lineHeight: 24,
@@ -84,7 +93,6 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: "#6b7280",
     fontWeight: "500",
   },
 });

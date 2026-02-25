@@ -1,4 +1,5 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { useUser } from "@/context/userContext";
 import { createUserWithPassword, loginWithPassword } from "@/repos/authRepo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -23,6 +24,7 @@ import {
 
 export default function LoginScreen() {
   const { loginSet } = useUser();
+  const { t } = useI18n();
   const params = useGlobalSearchParams();
   const upgradeParam = params?.upgrade === "1";
   const onboardingParam = params?.onboarding === "1";
@@ -137,8 +139,8 @@ export default function LoginScreen() {
         } catch (e) {
           console.error("Firebase signInWithCredential failed:", e);
           Alert.alert(
-            "Lỗi đăng nhập",
-            "Đăng nhập bằng Firebase thất bại. Vui lòng kiểm tra cấu hình OAuth/Google Sign-In và thử lại."
+            t("loginError"),
+            t("firebaseLoginFailed")
           );
           // Do not fall back to creating a new local user — require Firebase auth.
           setGoogleLoading(false);
@@ -147,8 +149,8 @@ export default function LoginScreen() {
       } catch (e) {
         console.error("Firebase init/sign-in path failed:", e);
         Alert.alert(
-          "Lỗi đăng nhập",
-          "Không thể khởi tạo Firebase Auth. Vui lòng kiểm tra cấu hình và thử lại."
+          t("loginError"),
+          t("firebaseInitFailed")
         );
         setGoogleLoading(false);
         return;
@@ -210,7 +212,7 @@ export default function LoginScreen() {
       router.replace("/onboarding/categories-setup");
     } catch (err: any) {
       console.log("GoogleSignin error:", err);
-      Alert.alert("Lỗi", "Đăng nhập bằng Google thất bại");
+      Alert.alert(t("error"), t("googleLoginFailed"));
     } finally {
       setGoogleLoading(false);
     }
@@ -218,7 +220,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
+      Alert.alert(t("error"), t("fillAllFields"));
       return;
     }
     setLoading(true);
@@ -264,11 +266,11 @@ export default function LoginScreen() {
     } catch (error: any) {
       const msg =
         error.message === "WRONG_CREDENTIALS"
-          ? "Sai username hoặc password"
+          ? t("wrongCredentials")
           : error.message === "EMPTY_FIELDS"
-          ? "Vui lòng nhập đầy đủ thông tin"
-          : "Đăng nhập thất bại";
-      Alert.alert("Lỗi đăng nhập", msg);
+          ? t("fillAllFields")
+          : t("loginFailed");
+      Alert.alert(t("loginError"), msg);
     } finally {
       setLoading(false);
     }
@@ -276,19 +278,19 @@ export default function LoginScreen() {
 
   const handleRegister = async () => {
     if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
+      Alert.alert(t("error"), t("fillAllFields"));
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp");
+      Alert.alert(t("error"), t("passwordMismatch"));
       return;
     }
     if (username.length < 3) {
-      Alert.alert("Lỗi", "Username phải có ít nhất 3 ký tự");
+      Alert.alert(t("error"), t("usernameMin3"));
       return;
     }
     if (password.length < 4) {
-      Alert.alert("Lỗi", "Password phải có ít nhất 4 ký tự");
+      Alert.alert(t("error"), t("passwordMin4"));
       return;
     }
     setLoading(true);
@@ -353,13 +355,13 @@ export default function LoginScreen() {
     } catch (error: any) {
       const msg =
         error.message === "USERNAME_TAKEN"
-          ? "Username đã tồn tại"
+          ? t("usernameTaken")
           : error.message === "USERNAME_TOO_SHORT"
-          ? "Username quá ngắn (tối thiểu 3 ký tự)"
+          ? t("usernameTooShortMsg")
           : error.message === "PASSWORD_TOO_SHORT"
-          ? "Password quá ngắn (tối thiểu 4 ký tự)"
-          : "Đăng ký thất bại";
-      Alert.alert("Lỗi đăng ký", msg);
+          ? t("passwordTooShortMsg")
+          : t("registerFailed");
+      Alert.alert(t("registerError"), msg);
     } finally {
       setLoading(false);
     }
@@ -449,7 +451,7 @@ export default function LoginScreen() {
             resizeMode="contain"
           />
           <Text style={styles.title}>HugoKeeper</Text>
-          <Text style={styles.subtitle}>Quản lý tài chính cá nhân</Text>
+          <Text style={styles.subtitle}>{t("personalFinance")}</Text>
         </View>
 
         <View style={styles.form}>
@@ -459,7 +461,7 @@ export default function LoginScreen() {
               onPress={() => setIsLogin(true)}
             >
               <Text style={[styles.tabText, isLogin && styles.tabTextActive]}>
-                Đăng nhập
+               {t("loginTitle")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -467,7 +469,7 @@ export default function LoginScreen() {
               onPress={() => setIsLogin(false)}
             >
               <Text style={[styles.tabText, !isLogin && styles.tabTextActive]}>
-                Đăng ký
+               {t("registerTitle")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -481,7 +483,7 @@ export default function LoginScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Tên đăng nhập"
+              placeholder={t("usernameLabel")}
               placeholderTextColor={colors.subText}
               value={username}
               onChangeText={setUsername}
@@ -503,7 +505,7 @@ export default function LoginScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Mật khẩu"
+              placeholder={t("passwordLabel")}
               placeholderTextColor={colors.subText}
               value={password}
               onChangeText={setPassword}
@@ -538,7 +540,7 @@ export default function LoginScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Xác nhận mật khẩu"
+                placeholder={t("confirmPasswordLabel")}
                 placeholderTextColor={colors.subText}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -570,7 +572,7 @@ export default function LoginScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.submitButtonText}>
-                {isLogin ? "Đăng nhập" : "Đăng ký"}
+                {isLogin ? t("loginTitle") : t("registerTitle")}
               </Text>
             )}
           </TouchableOpacity>
@@ -586,7 +588,7 @@ export default function LoginScreen() {
             {googleLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitButtonText}>Đăng nhập bằng Google</Text>
+              <Text style={styles.submitButtonText}>{t("loginWithGoogle")}</Text>
             )}
           </TouchableOpacity>
         </View>

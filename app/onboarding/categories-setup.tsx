@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { useUser } from "@/context/userContext";
 import { db, openDb } from "@/db";
 import { fixIconName } from "@/utils/iconMapper";
@@ -94,6 +96,8 @@ const ICON_OPTIONS = [
 
 export default function CategoriesSetup() {
   const { user } = useUser();
+  const { colors } = useTheme();
+  const { t } = useI18n();
   const [selected, setSelected] = useState<string[]>([]);
 
   const toggle = (id: string) => {
@@ -121,7 +125,7 @@ export default function CategoriesSetup() {
 
   const createCategoryInline = async () => {
     if (!newName.trim()) {
-      Alert.alert("Lỗi", "Tên danh mục không được để trống");
+      Alert.alert(t("error"), t("categoryNameEmpty"));
       return;
     }
     const slug = newName.trim().toLowerCase().replace(/\s+/g, "_");
@@ -167,13 +171,13 @@ export default function CategoriesSetup() {
       setShowAddModal(false);
     } catch (e) {
       console.error(e);
-      Alert.alert("Lỗi", "Không thể tạo danh mục mới");
+      Alert.alert(t("error"), t("createCategoryFailed"));
     }
   };
 
   const finish = async () => {
     if (selected.length < 3) {
-      Alert.alert("Lỗi", "Vui lòng chọn ít nhất 3 danh mục");
+      Alert.alert(t("error"), t("selectMin3Categories"));
       return;
     }
     try {
@@ -224,20 +228,20 @@ export default function CategoriesSetup() {
     } catch (e) {
       await db.execAsync("ROLLBACK");
       console.error(e);
-      Alert.alert("Lỗi", "Tạo danh mục thất bại");
+      Alert.alert(t("error"), t("createCategoryFailed"));
     }
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
       <ScrollView
         contentContainerStyle={styles.inner}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>
-          Chọn danh mục hoặc tạo danh mục tùy chỉnh
+        <Text style={[styles.title, { color: colors.text }]}>
+          {t("chooseCategoriesTitle")}
         </Text>
-        <Text style={styles.sectionTitle}>Đề xuất chi phí</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t("expenseSuggestions")}</Text>
 
         <View style={styles.chipsRow}>
           {suggestions
@@ -266,11 +270,11 @@ export default function CategoriesSetup() {
           style={styles.addButton}
           onPress={() => openAdd("expense")}
         >
-          <Text style={styles.addButtonText}>+ Thêm mới</Text>
+          <Text style={styles.addButtonText}>+ {t("addNew")}</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { marginTop: 18 }]}>
-          Đề xuất thu nhập
+        <Text style={[styles.sectionTitle, { marginTop: 18, color: colors.text }]}>
+          {t("incomeSuggestions")}
         </Text>
 
         <View style={styles.chipsRow}>
@@ -300,7 +304,7 @@ export default function CategoriesSetup() {
           style={[styles.addButton, { marginTop: 8 }]}
           onPress={() => openAdd("income")}
         >
-          <Text style={styles.addButtonText}>+ Thêm mới</Text>
+          <Text style={styles.addButtonText}>+ {t("addNew")}</Text>
         </TouchableOpacity>
 
         {/* CTA moved to fixed footer for visibility */}
@@ -313,9 +317,9 @@ export default function CategoriesSetup() {
                 { paddingBottom: Math.max(20, insets.bottom) },
               ]}
             >
-              <Text style={modalStyles.modalTitle}>Tạo danh mục mới</Text>
+              <Text style={modalStyles.modalTitle}>{t("createNewCategory")}</Text>
               <TextInput
-                placeholder="Tên danh mục"
+                placeholder={t("categoryName")}
                 value={newName}
                 onChangeText={setNewName}
                 style={modalStyles.input}
@@ -324,7 +328,7 @@ export default function CategoriesSetup() {
               <Text
                 style={{ marginTop: 12, marginBottom: 8, fontWeight: "600" }}
               >
-                Chọn biểu tượng
+                {t("chooseIcon")}
               </Text>
 
               <ScrollView
@@ -358,13 +362,13 @@ export default function CategoriesSetup() {
                     style={modalStyles.cancelBtn}
                     onPress={() => setShowAddModal(false)}
                   >
-                    <Text style={modalStyles.cancelText}>Hủy</Text>
+                    <Text style={modalStyles.cancelText}>{t("cancel")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={modalStyles.saveBtn}
                     onPress={createCategoryInline}
                   >
-                    <Text style={modalStyles.saveText}>Tạo</Text>
+                    <Text style={modalStyles.saveText}>{t("create")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -375,7 +379,7 @@ export default function CategoriesSetup() {
 
       <View style={[styles.footer]}>
         <TouchableOpacity style={styles.cta} onPress={finish}>
-          <Text style={styles.ctaText}>Tiếp tục</Text>
+          <Text style={styles.ctaText}>{t("next")}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -383,7 +387,7 @@ export default function CategoriesSetup() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
   inner: { padding: 24 },
   title: { fontSize: 28, fontWeight: "700", marginBottom: 8 },
   sectionTitle: {
@@ -442,7 +446,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   ctaText: { color: "#fff", fontSize: 18, fontWeight: "600" },
-  footer: { paddingHorizontal: 24, backgroundColor: "#fff" },
+  footer: { paddingHorizontal: 24 },
 });
 
 const modalStyles = StyleSheet.create({

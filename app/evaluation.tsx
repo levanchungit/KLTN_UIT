@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '@/app/providers/ThemeProvider';
+import { useI18n } from '@/i18n/I18nProvider';
 import { listCategories, type Category } from '@/repos/categoryRepo';
 import {
     runEvaluation,
@@ -33,7 +34,8 @@ import { getBackendApiUrl } from '@/services/backendClassificationService';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function EvaluationScreen() {
-    const { colors } = useTheme();
+    const { colors, mode } = useTheme();
+    const { t } = useI18n();
     const [isRunning, setIsRunning] = useState(false);
     const [progress, setProgress] = useState(0);
     const [totalSamples, setTotalSamples] = useState(testData.test_samples.length);
@@ -55,7 +57,7 @@ export default function EvaluationScreen() {
             console.log(`Loaded ${cats.length} categories`);
         } catch (error) {
             console.error('Failed to load categories:', error);
-            Alert.alert('Lỗi', 'Không thể tải danh mục');
+            Alert.alert(t('error'), t('cannotLoadCategories'));
         }
     };
 
@@ -65,7 +67,7 @@ export default function EvaluationScreen() {
 
     const checkApiHealth = async () => {
         setApiStatus('checking');
-        setApiDetails('Đang kiểm tra...');
+        setApiDetails(t('checkingApi'));
 
         try {
             const controller = new AbortController();
@@ -98,17 +100,17 @@ export default function EvaluationScreen() {
 
     const handleStartEvaluation = async () => {
         if (categories.length === 0) {
-            Alert.alert('Lỗi', 'Chưa có danh mục. Vui lòng tạo danh mục trước.');
+            Alert.alert(t('error'), t('noCategoriesYet'));
             return;
         }
 
         Alert.alert(
-            'Bắt đầu đánh giá',
-            `Đánh giá mô hình với ${totalSamples} giao dịch test (hỗ trợ đa giao dịch).\n\nDanh mục: ${categories.map(c => c.name).join(', ')}\n\nQuá trình có thể mất 10-15 phút.`,
+            t('startEvaluation'),
+            t('evalConfirmMsg', { count: totalSamples, categories: categories.map(c => c.name).join(', ') }),
             [
-                { text: 'Hủy', style: 'cancel' },
+                { text: t('cancel'), style: 'cancel' },
                 {
-                    text: 'Bắt đầu',
+                    text: t('startEval'),
                     onPress: runTest,
                 },
             ]
@@ -130,12 +132,12 @@ export default function EvaluationScreen() {
 
             setReport(result);
             Alert.alert(
-                'Hoàn thành!',
+                t('completed'),
                 `Macro F1: ${(result.macroMetrics.f1 * 100).toFixed(1)}%\nPerfect Samples: ${((result.perfectSampleMatchCount / result.totalSamples) * 100).toFixed(1)}%`
             );
         } catch (error) {
             console.error('Evaluation failed:', error);
-            Alert.alert('Lỗi', 'Đánh giá thất bại: ' + String(error));
+            Alert.alert(t('error'), t('evalFailed') + ': ' + String(error));
         } finally {
             setIsRunning(false);
         }
@@ -159,17 +161,17 @@ export default function EvaluationScreen() {
             if (await Sharing.isAvailableAsync()) {
                 await Sharing.shareAsync(mdPath);
             } else {
-                Alert.alert('Thành công', `Đã lưu báo cáo tại:\n${mdPath}`);
+                Alert.alert(t('success'), `${t('reportSaved')}\n${mdPath}`);
             }
         } catch (error) {
-            Alert.alert('Lỗi', 'Không thể xuất báo cáo');
+            Alert.alert(t('error'), t('cannotExportReport'));
         }
     };
 
     const renderProgressCard = () => (
         <View style={[styles.card, { backgroundColor: colors.card }]}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>
-                🧪 Đang đánh giá...
+                🧪 {t('evaluating')}
             </Text>
 
             <View style={styles.progressContainer}>
@@ -220,13 +222,13 @@ export default function EvaluationScreen() {
         return (
             <View style={[styles.card, { backgroundColor: colors.card }]}>
                 <Text style={[styles.cardTitle, { color: colors.text }]}>
-                    📊 Kết Quả Đánh Giá
+                    📊 {t('evaluationResult')}
                 </Text>
 
                 {/* Bảng 1: Tổng hợp */}
                 <View style={styles.metricsSection}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                        Bảng 1: Tổng Hợp Metrics
+                        {t('table1Title')}
                     </Text>
 
                     <View style={styles.metricsGrid}>
@@ -263,13 +265,13 @@ export default function EvaluationScreen() {
                 {/* Bảng 2: Chi tiết per-category */}
                 <View style={styles.metricsSection}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                        Bảng 2: Metrics Theo Danh Mục
+                        {t('table2Title')}
                     </Text>
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View>
                             <View style={[styles.tableRow, styles.tableHeader]}>
-                                <Text style={[styles.tableCell, styles.categoryCell, { fontWeight: 'bold' }]}>Danh mục</Text>
+                                <Text style={[styles.tableCell, styles.categoryCell, { fontWeight: 'bold', color: colors.text }]}>{t('category')}</Text>
                                 <Text style={[styles.tableCell, { fontWeight: 'bold' }]}>P</Text>
                                 <Text style={[styles.tableCell, { fontWeight: 'bold' }]}>R</Text>
                                 <Text style={[styles.tableCell, { fontWeight: 'bold' }]}>F1</Text>
@@ -305,7 +307,7 @@ export default function EvaluationScreen() {
                     onPress={handleExportReport}
                 >
                     <MaterialCommunityIcons name="export" size={20} color="#fff" />
-                    <Text style={styles.exportButtonText}>Xuất Báo Cáo</Text>
+                    <Text style={styles.exportButtonText}>{t('exportReport')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -326,7 +328,7 @@ export default function EvaluationScreen() {
                     <MaterialCommunityIcons name="chevron-left" size={28} color={colors.text} />
                 </TouchableOpacity>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>
-                    🧪 Đánh Giá Mô Hình
+                    🧪 {t('evaluationTitle')}
                 </Text>
                 <View style={{ width: 40 }} />
             </View>
@@ -335,10 +337,10 @@ export default function EvaluationScreen() {
                 {/* Info card */}
                 <View style={[styles.card, { backgroundColor: colors.card }]}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>
-                        ℹ️ Thông Tin
+                        ℹ️ {t('evaluationInfo')}
                     </Text>
                     <Text style={[styles.infoText, { color: colors.subText }]}>
-                        Đánh giá độ chính xác của mô hình AI qwen2.5-7b (Backend) trong việc phân loại giao dịch tài chính.
+                        {t('evalInfoDesc')}
                     </Text>
                     <Text style={[styles.infoText, { color: colors.subText }]}>
                         • {totalSamples} giao dịch test{'\n'}
@@ -347,14 +349,14 @@ export default function EvaluationScreen() {
                     </Text>
 
                     <Text style={[styles.categoryList, { color: colors.text }]}>
-                        Danh mục: {categories.map(c => c.name).join(', ') || 'Đang tải...'}
+                        {t('categories')}: {categories.map(c => c.name).join(', ') || t('loading')}
                     </Text>
                 </View>
 
                 {/* API Health Check Card */}
                 <View style={[styles.card, { backgroundColor: colors.card }]}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>
-                        🔌 Kiểm Tra API
+                        🔌 {t('checkApiTitle')}
                     </Text>
 
                     <View style={styles.apiStatusRow}>
@@ -409,7 +411,7 @@ export default function EvaluationScreen() {
                         disabled={categories.length === 0}
                     >
                         <MaterialCommunityIcons name="play" size={24} color="#fff" />
-                        <Text style={styles.startButtonText}>Bắt Đầu Đánh Giá</Text>
+                        <Text style={styles.startButtonText}>{t('startEval')}</Text>
                     </TouchableOpacity>
                 )}
 
@@ -420,7 +422,7 @@ export default function EvaluationScreen() {
                         onPress={handleStartEvaluation}
                     >
                         <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
-                        <Text style={styles.startButtonText}>Chạy Lại</Text>
+                        <Text style={styles.startButtonText}>{t('runAgain')}</Text>
                     </TouchableOpacity>
                 )}
             </ScrollView>
@@ -535,11 +537,11 @@ const styles = StyleSheet.create({
     metricValue: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#333',
+        color: '#1F2937',
     },
     metricLabel: {
         fontSize: 12,
-        color: '#666',
+        color: '#4B5563',
         marginTop: 4,
     },
     accuracyRow: {

@@ -1,3 +1,5 @@
+import { useTheme } from "@/app/providers/ThemeProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 import { useUser } from "@/context/userContext";
 import { syncAll } from "@/services/syncService";
 import { router } from "expo-router";
@@ -6,6 +8,8 @@ import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 export default function SyncScreen() {
   const { user } = useUser();
+  const { colors } = useTheme();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -13,18 +17,17 @@ export default function SyncScreen() {
     const doSync = async () => {
       try {
         if (!user) {
-          // No user — go to login
           router.replace("/auth/login");
           return;
         }
         await syncAll(user.id);
         if (!mounted) return;
-        Alert.alert("Đồng bộ", "Đồng bộ dữ liệu hoàn tất", [
+        Alert.alert(t("syncTitle"), t("syncComplete"), [
           { text: "OK", onPress: () => router.replace("/(tabs)") },
         ]);
       } catch (err: any) {
         console.error("Sync failed", err);
-        Alert.alert("Lỗi đồng bộ", err?.message || "Đồng bộ thất bại", [
+        Alert.alert(t("syncErrorTitle"), err?.message || t("syncFailed"), [
           { text: "OK", onPress: () => router.replace("/(tabs)") },
         ]);
       } finally {
@@ -39,10 +42,10 @@ export default function SyncScreen() {
   }, [user]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ActivityIndicator size="large" color="#007AFF" animating={loading} />
-      <Text style={styles.text}>
-        {loading ? "Đang đồng bộ..." : "Hoàn tất"}
+      <Text style={[styles.text, { color: colors.text }]}>
+        {loading ? t("syncingData") : t("syncDone")}
       </Text>
     </View>
   );
@@ -53,11 +56,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
   },
   text: {
     marginTop: 12,
     fontSize: 16,
-    color: "#333",
   },
 });
