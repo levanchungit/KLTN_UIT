@@ -68,6 +68,81 @@ object QuickAddHelper {
         return null
     }
 
+    /**
+     * Read total assets (sum of balance_cached from accounts with include_in_total=1)
+     * Returns null if DB or user not available.
+     */
+    fun readTotalAssets(context: Context): Double? {
+        try {
+            // expo-sqlite stores DB in databases/ (new) or files/SQLite/ (old)
+            // Try newest canonical location first
+            val candidates = listOf(
+                context.getDatabasePath("money.db"),
+                File(context.dataDir, "databases/money.db"),
+                File(context.filesDir, "SQLite/money.db"),
+                File(context.filesDir, "money.db")
+            )
+
+            var dbFile: File? = null
+            for (f in candidates) {
+                Log.i(TAG, "Probing DB path: ${f.absolutePath} exists=${f.exists()}")
+                if (f.exists()) {
+                    dbFile = f
+                    break
+                }
+            }
+
+            if (dbFile == null) {
+                Log.w(TAG, "money.db not in known paths, searching dataDir recursively...")
+                dbFile = findFileRecursive(context.dataDir, "money.db", 5)
+            }
+
+            if (dbFile == null) {
+                Log.e(TAG, "money.db not found anywhere under ${context.dataDir}")
+                return null
+            }
+
+            Log.i(TAG, "Opening DB at: ${dbFile.absolutePath}")
+            val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            var total: Double? = null
+
+            val userId = readUserId(context)
+            val cursor = if (userId != null) {
+                Log.i(TAG, "Reading total assets for user: $userId")
+                db.rawQuery(
+                    "SELECT COALESCE(SUM(balance_cached), 0) AS total FROM accounts WHERE user_id=? AND include_in_total=1",
+                    arrayOf(userId)
+                )
+            } else {
+                Log.w(TAG, "No user id found, querying all accounts with include_in_total=1")
+                db.rawQuery(
+                    "SELECT COALESCE(SUM(balance_cached), 0) AS total FROM accounts WHERE include_in_total=1",
+                    null
+                )
+            }
+
+            if (cursor.moveToFirst()) {
+                total = cursor.getDouble(0)
+            }
+            cursor.close()
+            db.close()
+            Log.i(TAG, "Total assets = $total")
+            return total
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read total assets", e)
+            return null
+        }
+    }
+
+    /**
+     * Format amount as Vietnamese dong, e.g. 1.500.000 đ
+     */
+    fun formatVND(amount: Double): String {
+        val nf = java.text.NumberFormat.getInstance(Locale("vi", "VN"))
+        nf.maximumFractionDigits = 0
+        return nf.format(amount) + " đ"
+    }
+
     fun insertQuickTransaction(context: Context, amount: Double, note: String) {
         try {
             val userId = readUserId(context)

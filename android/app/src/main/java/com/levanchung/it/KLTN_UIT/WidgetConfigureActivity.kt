@@ -19,20 +19,15 @@ class WidgetConfigureActivity : Activity() {
         setContentView(R.layout.widget_quick_add)
 
         // The activity now includes `widget_quick_add.xml` which defines
-        // `widget_input_area` (TextView) and `action_image` (ImageButton).
-        // Use those IDs instead of the old `edit_text_quick` / `btn_submit_quick`.
-        val edit = findViewById<TextView>(R.id.widget_input_area)
+        // `widget_input_area`. We no longer read text from there since it is static labels.
         val btn = findViewById<ImageButton>(R.id.action_image)
 
         btn.setOnClickListener {
-            val text = edit.text.toString().trim()
-            if (text.isNotEmpty()) {
-                // Open the app using deep link with the text
-                val uri = Uri.parse("kltnuit://add?text=" + Uri.encode(text))
-                val intent = Intent(Intent.ACTION_VIEW, uri)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                startActivity(intent)
-            }
+            // Open the app using deep link
+            val uri = Uri.parse("kltnuit://add")
+            val intent = Intent(Intent.ACTION_VIEW, uri)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            startActivity(intent)
 
             // Finish configuration
             val resultValue = Intent()

@@ -91,6 +91,32 @@ BEGIN
   WHERE id = OLD.account_id;
 END;
 
+CREATE TRIGGER IF NOT EXISTS trg_tx_after_update
+AFTER UPDATE OF amount, type, account_id ON transactions
+BEGIN
+  -- Revert OLD
+  UPDATE accounts
+  SET balance_cached = balance_cached -
+    CASE
+      WHEN OLD.type='income' THEN OLD.amount
+      WHEN OLD.type='expense' THEN -OLD.amount
+      ELSE 0
+    END,
+    updated_at = strftime('%s','now')
+  WHERE id = OLD.account_id;
+
+  -- Apply NEW
+  UPDATE accounts
+  SET balance_cached = balance_cached +
+    CASE
+      WHEN NEW.type='income' THEN NEW.amount
+      WHEN NEW.type='expense' THEN -NEW.amount
+      ELSE 0
+    END,
+    updated_at = strftime('%s','now')
+  WHERE id = NEW.account_id;
+END;
+
 INSERT OR REPLACE INTO settings(key,value) VALUES('schema_version','1');
 
 -- ML training samples (for improving on-device/offline models)

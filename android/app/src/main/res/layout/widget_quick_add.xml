@@ -36,18 +36,37 @@
                 android:scaleType="centerCrop"
                 android:src="@mipmap/ic_launcher_foreground" />
 
-            <TextView
+            <LinearLayout
                 android:id="@+id/widget_input_area"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:ellipsize="end"
-                android:fontFamily="@font/noto_sans_regular"
-                android:maxLines="1"
-                android:text="Tạo giao dịch"
-                android:textColor="#88FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="normal" />
+                android:gravity="center_vertical"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/widget_balance_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/noto_sans_regular"
+                    android:maxLines="1"
+                    android:text="Số dư"
+                    android:textColor="#88FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="normal" />
+
+                <TextView
+                    android:id="@+id/widget_balance_amount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/noto_sans_regular"
+                    android:maxLines="1"
+                    android:text="-- đ"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <!-- place action icons inside the input row on the right -->
             <ImageButton

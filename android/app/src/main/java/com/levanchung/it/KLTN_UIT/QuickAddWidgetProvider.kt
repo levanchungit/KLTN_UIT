@@ -19,6 +19,17 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val views = RemoteViews(context.packageName, R.layout.widget_quick_add)
+
+        // --- Display total assets on the widget ---
+        val totalAssets = QuickAddHelper.readTotalAssets(context)
+        val balanceText = if (totalAssets != null) {
+            QuickAddHelper.formatVND(totalAssets)
+        } else {
+            "-- đ"
+        }
+        views.setTextViewText(R.id.widget_balance_amount, balanceText)
+        Log.i(TAG, "Widget balance amount text: $balanceText")
+
         // Force widget to always deep-link into chatbot (bypass login file check)
         val isLoggedIn = true
         Log.i(TAG, "onUpdate called, force isLoggedIn=$isLoggedIn (widget will always open chatbot)")
@@ -100,6 +111,7 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
                 val amount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0)
                 val note = intent.getStringExtra(EXTRA_NOTE) ?: ""
                 QuickAddHelper.insertQuickTransaction(context, amount, note)
+                forceUpdateWidgets(context)
             }
             ACTION_POST_NOTIFICATION -> {
                 postInputNotification(context)
@@ -127,8 +139,23 @@ class QuickAddWidgetProvider : AppWidgetProvider() {
                 // Dismiss notification
                 val nm = NotificationManagerCompat.from(context)
                 nm.cancel(NOTIFICATION_ID)
+                forceUpdateWidgets(context)
             }
         }
+    }
+
+    private fun forceUpdateWidgets(context: Context) {
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val componentName = ComponentName(context, QuickAddWidgetProvider::class.java)
+        val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
+        
+        Log.i(TAG, "Forcing widget layout update for ids: ${appWidgetIds.joinToString()}")
+        
+        // This triggers onUpdate() again for all widget instances
+        val updateIntent = Intent(context, QuickAddWidgetProvider::class.java)
+        updateIntent.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        updateIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
+        context.sendBroadcast(updateIntent)
     }
 
     private fun postInputNotification(context: Context) {
