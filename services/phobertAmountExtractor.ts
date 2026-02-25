@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 import { parseAmountVN } from "../utils/textPreprocessing";
 
 interface AmountExtractionResult {
@@ -435,11 +435,11 @@ class PhoBERTAmountExtractor {
       const withSep = Math.random() < 0.7;
       const nStr = withSep
         ? String(n)
-            .split("")
-            .reverse()
-            .map((ch, i) => (i > 0 && i % 3 === 0 ? ch + "." : ch))
-            .reverse()
-            .join("")
+          .split("")
+          .reverse()
+          .map((ch, i) => (i > 0 && i % 3 === 0 ? ch + "." : ch))
+          .reverse()
+          .join("")
         : String(n);
       amountTokens.push(nStr, "đ");
       text = `${baseVerb} ${obj} ${nStr}đ`;

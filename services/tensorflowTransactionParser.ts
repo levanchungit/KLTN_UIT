@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 import { parseAmountVN, parseTransactionText } from "../utils/textPreprocessing";
 import { phobertExtractor } from "./phobertAmountExtractor";
 import { transactionIntentClassifier } from "./transactionIntentClassifier";
@@ -21,10 +21,10 @@ interface CategoryPrediction {
 
 interface ParsedTransaction {
   action:
-    | "CREATE_TRANSACTION"
-    | "VIEW_STATS"
-    | "EDIT_TRANSACTION"
-    | "DELETE_TRANSACTION";
+  | "CREATE_TRANSACTION"
+  | "VIEW_STATS"
+  | "EDIT_TRANSACTION"
+  | "DELETE_TRANSACTION";
   amount: number | null;
   note: string;
   categoryId: string;
@@ -400,8 +400,8 @@ class TensorFlowTransactionParser {
           confidence: phobertResult.amount
             ? phobertResult.confidence
             : regexAmount
-            ? 0.25
-            : 0,
+              ? 0.25
+              : 0,
         };
       }
 

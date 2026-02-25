@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 
 export type LifestyleSignals = {
   hasRent: boolean;
@@ -269,22 +269,22 @@ function makeSyntheticDataset(n = 600) {
       foodIdx === 2
         ? sample(foodHigh)
         : foodIdx === 1
-        ? sample(foodMed)
-        : sample(foodLow)
+          ? sample(foodMed)
+          : sample(foodLow)
     );
     parts.push(
       socialIdx === 2
         ? sample(socialHigh)
         : socialIdx === 1
-        ? sample(socialMed)
-        : sample(socialLow)
+          ? sample(socialMed)
+          : sample(socialLow)
     );
     parts.push(
       luxIdx === 2
         ? sample(luxHigh)
         : luxIdx === 1
-        ? sample(luxMed)
-        : sample(luxLow)
+          ? sample(luxMed)
+          : sample(luxLow)
     );
 
     // Join with commas (natural-ish)
@@ -468,8 +468,8 @@ class LifestyleSignalModel {
         decoded.location === "hanoi"
           ? 3_000_000
           : decoded.location === "hcm"
-          ? 4_000_000
-          : 3_500_000;
+            ? 4_000_000
+            : 3_500_000;
     }
 
     return {

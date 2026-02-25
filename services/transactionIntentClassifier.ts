@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-react-native";
+// import * as tf from "@tensorflow/tfjs";
+// import "@tensorflow/tfjs-react-native";
 
 export type TransactionAction =
   | "CREATE_TRANSACTION"

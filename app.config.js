@@ -89,8 +89,7 @@ export default {
       // Backend API URL for LLM-based transaction classification
       // Default: local development server (update IP if needed)
       EXPO_PUBLIC_BACKEND_API_URL:
-        process.env.EXPO_PUBLIC_BACKEND_API_URL ||
-        "http://10.186.216.244:8000",
+        process.env.EXPO_PUBLIC_BACKEND_API_URL,
       EXPO_PUBLIC_HUGGINGFACE_API_KEY:
         process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY ||
         process.env.HUGGINGFACE_API_KEY,
