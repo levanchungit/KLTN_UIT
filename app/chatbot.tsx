@@ -1466,12 +1466,9 @@ export default function Chatbot() {
         console.log("🔌 Testing backend API connection...");
         const connTest = await testBackendConnection();
         if (connTest.success) {
-          console.log(`✅ Backend connected! URL: ${connTest.url}, Latency: ${connTest.latency}ms`);
+          console.log(`✅ Backend connected! Latency: ${connTest.latency}ms`);
         } else {
           console.warn(`⚠️ Backend unreachable: ${connTest.error}`);
-          if (connTest.suggestion) {
-            console.warn(`💡 ${connTest.suggestion}`);
-          }
         }
       }, 500);
     });
@@ -1553,51 +1550,7 @@ export default function Chatbot() {
     }, [isRecording, params?.mode])
   );
 
-  // Always focus the input when the chatbox screen is focused (unless recording)
-  useFocusEffect(
-    useCallback(() => {
-      // If deep-link requests image or voice, skip auto-focus here
-      const modeParam = (params?.mode as string | undefined) || null;
-      if (modeParam === "image" || modeParam === "voice") return;
-      if (isRecording) return;
-      const tryFocus = () => {
-        try {
-          inputRef.current?.focus();
-        } catch (e) {
-          // ignore
-        }
-      };
 
-      // Use InteractionManager to wait until animations and navigation settle
-      const interaction = InteractionManager.runAfterInteractions(() => {
-        // immediate attempt in next frame
-        requestAnimationFrame(() => tryFocus());
-        // two retries to cover timing differences across devices
-        const t1 = setTimeout(() => tryFocus(), 120);
-        const t2 = setTimeout(() => tryFocus(), 420);
-
-        // optional: small measurable log when keyboard appears
-        const showListener = Keyboard.addListener("keyboardDidShow", () => {
-          // eslint-disable-next-line no-console
-          showListener.remove();
-        });
-
-        return () => {
-          clearTimeout(t1);
-          clearTimeout(t2);
-          try {
-            showListener.remove();
-          } catch (e) { }
-        };
-      });
-
-      return () => {
-        try {
-          interaction.cancel();
-        } catch (e) { }
-      };
-    }, [isRecording])
-  );
 
   // Handle deep-link params from widget (mode=voice|image|text, text=...)
   useEffect(() => {

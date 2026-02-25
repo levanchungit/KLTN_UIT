@@ -261,88 +261,96 @@ export default function VenmoTabBar({
       </View>
 
       {/* Nút giữa - AI Chatbot Signature */}
-      <Tooltip
-        isVisible={shouldShowTour && currentStep === 0}
-        content={
-          <View style={{ padding: 0 }}>
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "700",
-                color: "#111",
-                marginBottom: 4,
-              }}
-            >
-              🤖 Trợ lý AI
-            </Text>
-            <Text style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
-              Nhấn vào đây để mở menu AI. Bạn có thể chat với AI hoặc tạo giao
-              dịch thủ công.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                nextStep();
-                setShowMenu(true);
-              }}
-              style={{
-                backgroundColor: "#10B981",
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Tiếp tục</Text>
-            </TouchableOpacity>
-          </View>
-        }
-        placement="top"
-        onClose={() => nextStep()}
-        contentStyle={{
+      <View
+        style={{
           position: "absolute",
-          bottom: -20,
-          backgroundColor: "#fff",
-          borderRadius: 12,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 8,
-          elevation: 5,
+          left: width / 2 - BTN_R,
+          bottom: BAR_H - BTN_R,
+          width: BTN_R * 2,
+          height: BTN_R * 2,
+          zIndex: 100,
+          elevation: 20,
         }}
       >
-        <TouchableOpacity
-          ref={aiBotRef}
-          onPress={() => setShowMenu(true)}
-          activeOpacity={0.85}
-          style={{
-            position: "absolute",
-            left: width / 2 - BTN_R,
-            bottom: BAR_H - BTN_R,
-            width: BTN_R * 2,
-            height: BTN_R * 2,
-            justifyContent: "center",
-            alignItems: "center",
-            shadowColor: "#4285F4",
-            shadowOpacity: 0.6,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 20,
+        <Tooltip
+          isVisible={shouldShowTour && currentStep === 0}
+          content={
+            <View style={{ padding: 0 }}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "700",
+                  color: "#111",
+                  marginBottom: 4,
+                }}
+              >
+                🤖 Trợ lý AI
+              </Text>
+              <Text style={{ fontSize: 14, color: "#666"}}>
+                Nhấn vào đây để mở menu AI. Bạn có thể chat với AI hoặc tạo giao
+                dịch thủ công.
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  nextStep();
+                  setShowMenu(true);
+                }}
+                style={{
+                  backgroundColor: "#10B981",
+                  paddingVertical: 4,
+                  paddingHorizontal: 16,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Tiếp tục</Text>
+              </TouchableOpacity>
+            </View>
+          }
+          placement="top"
+          onClose={() => nextStep()}
+          contentStyle={{
+            backgroundColor: "#fff",
+            borderRadius: 12,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 8,
+            elevation: 5,
           }}
         >
-          {/* Glow background layer */}
-          <View
+          <TouchableOpacity
+            ref={aiBotRef}
+            onPress={() => setShowMenu(true)}
+            activeOpacity={0.85}
             style={{
-              position: "absolute",
-              width: BTN_R * 2 + 10,
-              height: BTN_R * 2 + 10,
-              borderRadius: (BTN_R * 2 + 10) / 2,
-              backgroundColor: "#4285F4",
-              opacity: 0.15,
+              width: "100%",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+              shadowColor: "#4285F4",
+              shadowOpacity: 0.6,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 20,
             }}
-          />
-          <AIBotIcon size={52} />
-        </TouchableOpacity>
-      </Tooltip>
+          >
+            {/* Glow background layer */}
+            <View
+              style={{
+                position: "absolute",
+                width: BTN_R * 2 + 10,
+                height: BTN_R * 2 + 10,
+                borderRadius: (BTN_R * 2 + 10) / 2,
+                backgroundColor: "#4285F4",
+                opacity: 0.15,
+              }}
+            />
+            <AIBotIcon size={52} />
+          </TouchableOpacity>
+        </Tooltip>
+      </View>
 
       {/* Menu Modal */}
       <Portal>
