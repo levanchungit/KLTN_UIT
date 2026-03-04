@@ -1,6 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import * as tf from "@tensorflow/tfjs";
-// import "@tensorflow/tfjs-react-native";
 
 export type LifestyleSignals = {
   hasRent: boolean;
@@ -14,20 +12,12 @@ export type LifestyleSignals = {
   minimalLiving: boolean;
 };
 
-const MODEL_KEY = "lifestyle_signal_model_v1_weights";
-const VOCAB_KEY = "lifestyle_signal_model_v1_vocab";
+const MODEL_KEY = "lifestyle_signal_model_v2_weights";
+const VOCAB_KEY = "lifestyle_signal_model_v2_vocab";
 
-type SavedTensor = {
-  shape: number[];
-  dtype: tf.DataType;
-  data: number[];
-};
-
-type SavedState = {
-  weights: SavedTensor[];
-  maxSequenceLength: number;
-  embeddingDim: number;
-};
+// ============================================================================
+// Text Processing Utilities
+// ============================================================================
 
 function isLetterOrDigit(ch: string) {
   if (!ch) return false;
@@ -65,7 +55,6 @@ function tokenize(text: string) {
 }
 
 function buildWordIndex(texts: string[], maxVocab = 1500, minFreq = 1) {
-  // Reduced from 3000
   const freq = new Map<string, number>();
   for (const text of texts) {
     for (const tok of tokenize(text)) {
@@ -160,29 +149,159 @@ function decodeSignals(
   };
 }
 
-function createModel(
-  vocabSize: number,
-  maxSequenceLength: number,
-  embeddingDim: number
-) {
-  const model = tf.sequential();
-  model.add(
-    tf.layers.embedding({
-      inputDim: Math.max(2, vocabSize + 2),
-      outputDim: embeddingDim,
-      inputLength: maxSequenceLength,
-    })
-  );
-  model.add(tf.layers.globalAveragePooling1d({}));
-  model.add(tf.layers.dense({ units: 64, activation: "relu" }));
-  model.add(tf.layers.dropout({ rate: 0.2 }));
-  model.add(tf.layers.dense({ units: OUT_DIM, activation: "sigmoid" }));
-  model.compile({
-    optimizer: tf.train.adam(0.001),
-    loss: "binaryCrossentropy",
-  });
-  return model;
+// ============================================================================
+// Pure JS Neural Network Implementation (No TensorFlow required)
+// ============================================================================
+
+/** Random initialization with He Normal */
+function heNormal(fanIn: number): number {
+  const std = Math.sqrt(2.0 / fanIn);
+  const u1 = Math.random();
+  const u2 = Math.random();
+  return std * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
+
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-Math.max(-500, Math.min(500, x))));
+}
+
+function relu(x: number): number {
+  return Math.max(0, x);
+}
+
+function reluDerivative(x: number): number {
+  return x > 0 ? 1 : 0;
+}
+
+/** Dense layer */
+interface DenseLayer {
+  weights: number[][]; // [inputDim][outputDim]
+  biases: number[];
+  activation: "relu" | "sigmoid" | "none";
+}
+
+interface LayerOutput {
+  preActivation: number[];
+  postActivation: number[];
+}
+
+function createDenseLayer(
+  inputDim: number,
+  outputDim: number,
+  activation: "relu" | "sigmoid" | "none"
+): DenseLayer {
+  const weights: number[][] = [];
+  for (let i = 0; i < inputDim; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < outputDim; j++) {
+      row.push(heNormal(inputDim));
+    }
+    weights.push(row);
+  }
+  const biases = new Array(outputDim).fill(0);
+  return { weights, biases, activation };
+}
+
+function forwardDenseLayer(layer: DenseLayer, input: number[]): LayerOutput {
+  const outputDim = layer.biases.length;
+  const preActivation: number[] = new Array(outputDim).fill(0);
+
+  for (let j = 0; j < outputDim; j++) {
+    let sum = layer.biases[j];
+    for (let i = 0; i < input.length; i++) {
+      sum += input[i] * layer.weights[i][j];
+    }
+    preActivation[j] = sum;
+  }
+
+  let postActivation: number[];
+  if (layer.activation === "relu") {
+    postActivation = preActivation.map(relu);
+  } else if (layer.activation === "sigmoid") {
+    postActivation = preActivation.map(sigmoid);
+  } else {
+    postActivation = [...preActivation];
+  }
+
+  return { preActivation, postActivation };
+}
+
+/** Embedding layer - maps integer token IDs to dense vectors */
+interface EmbeddingLayer {
+  embeddings: number[][]; // [vocabSize][embeddingDim]
+  vocabSize: number;
+  embeddingDim: number;
+}
+
+function createEmbeddingLayer(
+  vocabSize: number,
+  embeddingDim: number
+): EmbeddingLayer {
+  const embeddings: number[][] = [];
+  const scale = 0.05;
+  for (let i = 0; i < vocabSize; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < embeddingDim; j++) {
+      // Simple uniform initialization [-0.05, 0.05]
+      row.push((Math.random() - 0.5) * 2 * scale);
+    }
+    embeddings.push(row);
+  }
+  return { embeddings, vocabSize, embeddingDim };
+}
+
+/** Forward pass: Embedding -> GlobalAveragePooling -> Dense layers */
+function forwardEmbeddingWithPooling(
+  emb: EmbeddingLayer,
+  sequence: number[]
+): number[] {
+  const seqLen = sequence.length;
+  const dim = emb.embeddingDim;
+
+  // Global Average Pooling over the embedded sequence
+  const pooled = new Array(dim).fill(0);
+  let validCount = 0;
+
+  for (let t = 0; t < seqLen; t++) {
+    const tokenId = Math.min(Math.max(0, sequence[t]), emb.vocabSize - 1);
+    if (tokenId !== 0) {
+      // Skip PAD tokens (index 0)
+      for (let d = 0; d < dim; d++) {
+        pooled[d] += emb.embeddings[tokenId][d];
+      }
+      validCount++;
+    }
+  }
+
+  if (validCount > 0) {
+    for (let d = 0; d < dim; d++) {
+      pooled[d] /= validCount;
+    }
+  }
+
+  return pooled;
+}
+
+/** Serializable model state */
+interface ModelState {
+  embedding: {
+    embeddings: number[][];
+    vocabSize: number;
+    embeddingDim: number;
+  };
+  denseLayers: Array<{
+    weights: number[][];
+    biases: number[];
+    activation: string;
+  }>;
+  maxSequenceLength: number;
+  embeddingDim: number;
+  version: string;
+}
+
+// ============================================================================
+// Synthetic Data Generation
+// ============================================================================
 
 function makeSyntheticDataset(n = 600) {
   const loc: Array<{ phrase: string; idx: 0 | 1 | 2 }> = [
@@ -287,7 +406,6 @@ function makeSyntheticDataset(n = 600) {
           : sample(luxLow)
     );
 
-    // Join with commas (natural-ish)
     const text = parts.join(", ");
 
     const y: number[] = new Array(OUT_DIM).fill(0);
@@ -312,45 +430,53 @@ function makeSyntheticDataset(n = 600) {
   return { xsText, ys };
 }
 
+// ============================================================================
+// Main LifestyleSignalModel Class
+// ============================================================================
+
 class LifestyleSignalModel {
   private wordIndex: Map<string, number> = new Map();
-  private model: tf.LayersModel | null = null;
+  private embeddingLayer: EmbeddingLayer | null = null;
+  private denseLayers: DenseLayer[] = [];
   private isReady = false;
   private isTraining = false;
   private initPromise: Promise<void> | null = null;
 
-  private maxSequenceLength = 18; // Reduced from 24
-  private embeddingDim = 32; // Reduced from 48
+  private maxSequenceLength = 18;
+  private embeddingDim = 32;
 
   async initialize(): Promise<void> {
     if (this.initPromise) return this.initPromise;
     this.initPromise = (async () => {
       if (this.isReady) return;
-      await tf.ready();
 
-      // Try load
+      // Try load saved model
       try {
         const vocabData = await AsyncStorage.getItem(VOCAB_KEY);
         const modelData = await AsyncStorage.getItem(MODEL_KEY);
         if (vocabData && modelData) {
           this.wordIndex = new Map(JSON.parse(vocabData));
-          const state = JSON.parse(modelData) as SavedState;
+          const state: ModelState = JSON.parse(modelData);
           this.maxSequenceLength =
             state.maxSequenceLength || this.maxSequenceLength;
           this.embeddingDim = state.embeddingDim || this.embeddingDim;
 
-          this.model = createModel(
-            this.wordIndex.size,
-            this.maxSequenceLength,
-            this.embeddingDim
-          );
-          const tensors = state.weights.map((w) =>
-            tf.tensor(w.data, w.shape, w.dtype)
-          );
-          this.model.setWeights(tensors);
-          tensors.forEach((t) => t.dispose());
+          // Restore embedding layer
+          this.embeddingLayer = {
+            embeddings: state.embedding.embeddings,
+            vocabSize: state.embedding.vocabSize,
+            embeddingDim: state.embedding.embeddingDim,
+          };
+
+          // Restore dense layers
+          this.denseLayers = state.denseLayers.map((l) => ({
+            weights: l.weights,
+            biases: l.biases,
+            activation: l.activation as "relu" | "sigmoid" | "none",
+          }));
 
           this.isReady = true;
+          console.log("[LifestyleSignalModel] Loaded saved model successfully");
           return;
         }
       } catch {
@@ -358,14 +484,58 @@ class LifestyleSignalModel {
       }
 
       // Train in background to avoid UI freeze
-      console.log("No saved lifestyle model, will train in background...");
+      console.log(
+        "[LifestyleSignalModel] No saved model, will train in background..."
+      );
       setTimeout(() => {
         this.train().catch((err) =>
-          console.warn("Lifestyle model training failed:", err)
+          console.warn("[LifestyleSignalModel] Training failed:", err)
         );
       }, 6000);
     })();
     return this.initPromise;
+  }
+
+  private _buildModel(vocabSize: number): void {
+    const actualVocabSize = Math.max(2, vocabSize + 2);
+
+    // Embedding layer
+    this.embeddingLayer = createEmbeddingLayer(
+      actualVocabSize,
+      this.embeddingDim
+    );
+
+    // Dense layers: embeddingDim -> 64 (relu) -> OUT_DIM (sigmoid)
+    this.denseLayers = [
+      createDenseLayer(this.embeddingDim, 64, "relu"),
+      createDenseLayer(64, OUT_DIM, "sigmoid"),
+    ];
+
+    console.log(
+      `[LifestyleSignalModel] Model built: Embedding(${actualVocabSize}x${this.embeddingDim}) -> GAP -> Dense(64, relu) -> Dense(${OUT_DIM}, sigmoid)`
+    );
+  }
+
+  private _forward(sequence: number[]): {
+    pooled: number[];
+    layerOutputs: LayerOutput[];
+    output: number[];
+  } {
+    if (!this.embeddingLayer) throw new Error("Model not built");
+
+    // Embedding + Global Average Pooling
+    const pooled = forwardEmbeddingWithPooling(this.embeddingLayer, sequence);
+
+    // Dense layers
+    const layerOutputs: LayerOutput[] = [];
+    let currentInput = pooled;
+    for (const layer of this.denseLayers) {
+      const out = forwardDenseLayer(layer, currentInput);
+      layerOutputs.push(out);
+      currentInput = out.postActivation;
+    }
+
+    return { pooled, layerOutputs, output: currentInput };
   }
 
   private async train(): Promise<void> {
@@ -373,58 +543,187 @@ class LifestyleSignalModel {
     this.isTraining = true;
 
     try {
+      console.log("[LifestyleSignalModel] Starting training...");
       const { xsText, ys } = makeSyntheticDataset(700);
       this.wordIndex = buildWordIndex(xsText, 3000, 1);
 
-      this.model?.dispose?.();
-      this.model = createModel(
-        this.wordIndex.size,
-        this.maxSequenceLength,
-        this.embeddingDim
-      );
+      this._buildModel(this.wordIndex.size);
 
-      const xsArr = xsText.map((t) =>
+      const xsSeq = xsText.map((t) =>
         textToSequence(t, this.wordIndex, this.maxSequenceLength)
       );
-      const xs = tf.tensor2d(
-        xsArr,
-        [xsArr.length, this.maxSequenceLength],
-        "int32"
-      );
-      const y = tf.tensor2d(ys, [ys.length, OUT_DIM], "float32");
 
-      await this.model.fit(xs, y, {
-        epochs: 4, // Reduced from 8
-        batchSize: 48, // Increased for faster batches
-        shuffle: true,
-        validationSplit: 0.1,
-      });
+      const learningRate = 0.001;
+      const epochs = 4;
+      const batchSize = 48;
 
-      xs.dispose();
-      y.dispose();
+      for (let epoch = 0; epoch < epochs; epoch++) {
+        // Shuffle indices
+        const indices = Array.from({ length: xsSeq.length }, (_, i) => i);
+        for (let i = indices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
 
+        let epochLoss = 0;
+
+        for (let b = 0; b < xsSeq.length; b += batchSize) {
+          const batchEnd = Math.min(b + batchSize, xsSeq.length);
+          const batchIndices = indices.slice(b, batchEnd);
+          const currentBatchSize = batchIndices.length;
+
+          // Accumulate gradients for dense layers
+          const denseWeightGrads = this.denseLayers.map((l) =>
+            l.weights.map((row) => new Array(row.length).fill(0))
+          );
+          const denseBiasGrads = this.denseLayers.map((l) =>
+            new Array(l.biases.length).fill(0)
+          );
+
+          // Accumulate gradients for embedding layer
+          const embGrads = new Map<number, number[]>(); // tokenId -> gradient vector
+
+          for (const idx of batchIndices) {
+            const sequence = xsSeq[idx];
+            const target = ys[idx];
+
+            const { pooled, layerOutputs, output } =
+              this._forward(sequence);
+
+            // Binary cross-entropy loss
+            for (let k = 0; k < output.length; k++) {
+              const p = Math.max(1e-7, Math.min(1 - 1e-7, output[k]));
+              epochLoss -= target[k] * Math.log(p) + (1 - target[k]) * Math.log(1 - p);
+            }
+
+            // Backprop: output layer gradient for sigmoid + BCE = output - target
+            let delta = output.map((o, k) => o - target[k]);
+
+            // Backprop through dense layers
+            for (let l = this.denseLayers.length - 1; l >= 0; l--) {
+              const layerInput =
+                l === 0 ? pooled : layerOutputs[l - 1].postActivation;
+
+              for (let i = 0; i < layerInput.length; i++) {
+                for (let j = 0; j < delta.length; j++) {
+                  denseWeightGrads[l][i][j] += layerInput[i] * delta[j];
+                }
+              }
+              for (let j = 0; j < delta.length; j++) {
+                denseBiasGrads[l][j] += delta[j];
+              }
+
+              if (l > 0) {
+                const prevDelta = new Array(layerInput.length).fill(0);
+                for (let i = 0; i < layerInput.length; i++) {
+                  let sum = 0;
+                  for (let j = 0; j < delta.length; j++) {
+                    sum += this.denseLayers[l].weights[i][j] * delta[j];
+                  }
+                  prevDelta[i] =
+                    sum * reluDerivative(layerOutputs[l - 1].preActivation[i]);
+                }
+                delta = prevDelta;
+              } else {
+                // Delta for pooled (embedding gradient)
+                const pooledDelta = new Array(pooled.length).fill(0);
+                for (let i = 0; i < pooled.length; i++) {
+                  let sum = 0;
+                  for (let j = 0; j < delta.length; j++) {
+                    sum += this.denseLayers[0].weights[i][j] * delta[j];
+                  }
+                  pooledDelta[i] = sum; // No activation derivative for pooled (it's linear)
+                }
+
+                // Distribute gradient to embedding (through average pooling)
+                let validCount = 0;
+                for (const tokenId of sequence) {
+                  if (tokenId !== 0) validCount++;
+                }
+                if (validCount > 0) {
+                  for (const tokenId of sequence) {
+                    if (tokenId === 0) continue;
+                    if (!embGrads.has(tokenId)) {
+                      embGrads.set(
+                        tokenId,
+                        new Array(this.embeddingDim).fill(0)
+                      );
+                    }
+                    const grad = embGrads.get(tokenId)!;
+                    for (let d = 0; d < this.embeddingDim; d++) {
+                      grad[d] += pooledDelta[d] / validCount;
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Apply dense layer gradients
+          for (let l = 0; l < this.denseLayers.length; l++) {
+            for (let i = 0; i < this.denseLayers[l].weights.length; i++) {
+              for (
+                let j = 0;
+                j < this.denseLayers[l].weights[i].length;
+                j++
+              ) {
+                this.denseLayers[l].weights[i][j] -=
+                  (learningRate * denseWeightGrads[l][i][j]) / currentBatchSize;
+              }
+            }
+            for (let j = 0; j < this.denseLayers[l].biases.length; j++) {
+              this.denseLayers[l].biases[j] -=
+                (learningRate * denseBiasGrads[l][j]) / currentBatchSize;
+            }
+          }
+
+          // Apply embedding gradients
+          if (this.embeddingLayer) {
+            for (const [tokenId, grad] of embGrads) {
+              if (tokenId >= 0 && tokenId < this.embeddingLayer.vocabSize) {
+                for (let d = 0; d < this.embeddingDim; d++) {
+                  this.embeddingLayer.embeddings[tokenId][d] -=
+                    (learningRate * grad[d]) / currentBatchSize;
+                }
+              }
+            }
+          }
+        }
+
+        const avgLoss = epochLoss / xsSeq.length;
+        console.log(
+          `[LifestyleSignalModel] Epoch ${epoch + 1}/${epochs}: loss=${avgLoss.toFixed(4)}`
+        );
+
+        // Yield control to avoid blocking UI
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      // Save model
       await AsyncStorage.setItem(
         VOCAB_KEY,
         JSON.stringify(Array.from(this.wordIndex.entries()))
       );
 
-      const tensors = this.model.getWeights();
-      const weights: SavedTensor[] = [];
-      for (const t of tensors) {
-        weights.push({
-          shape: t.shape,
-          dtype: (t.dtype as tf.DataType) || "float32",
-          data: Array.from(t.dataSync() as any),
-        });
-      }
-      const state: SavedState = {
-        weights,
+      const state: ModelState = {
+        embedding: {
+          embeddings: this.embeddingLayer!.embeddings,
+          vocabSize: this.embeddingLayer!.vocabSize,
+          embeddingDim: this.embeddingLayer!.embeddingDim,
+        },
+        denseLayers: this.denseLayers.map((l) => ({
+          weights: l.weights,
+          biases: l.biases,
+          activation: l.activation,
+        })),
         maxSequenceLength: this.maxSequenceLength,
         embeddingDim: this.embeddingDim,
+        version: "2.0",
       };
       await AsyncStorage.setItem(MODEL_KEY, JSON.stringify(state));
 
       this.isReady = true;
+      console.log("[LifestyleSignalModel] Training completed and saved");
     } finally {
       this.isTraining = false;
     }
@@ -433,7 +732,7 @@ class LifestyleSignalModel {
   async infer(description: string): Promise<LifestyleSignals> {
     await this.initialize();
 
-    // Default baseline (safe)
+    // Default baseline (safe fallback)
     const fallback: LifestyleSignals = {
       hasRent: false,
       rentEstimate: 0,
@@ -446,22 +745,21 @@ class LifestyleSignalModel {
       minimalLiving: false,
     };
 
-    if (!this.model) return fallback;
+    if (!this.embeddingLayer || this.denseLayers.length === 0) {
+      // Model not ready yet, use keyword-based fallback
+      return this._keywordBasedInfer(description);
+    }
 
     const seq = textToSequence(
       description || "",
       this.wordIndex,
       this.maxSequenceLength
     );
-    const x = tf.tensor2d([seq], [1, this.maxSequenceLength], "int32");
-    const y = this.model.predict(x) as tf.Tensor;
-    const probs = Array.from(await y.data()) as number[];
-    x.dispose();
-    y.dispose();
+    const { output: probs } = this._forward(seq);
 
     const decoded = decodeSignals(probs);
 
-    // Convert to rent estimate (no regex; just location prior)
+    // Convert to rent estimate
     let rentEstimate = 0;
     if (decoded.hasRent) {
       rentEstimate =
@@ -475,6 +773,117 @@ class LifestyleSignalModel {
     return {
       ...decoded,
       rentEstimate,
+    };
+  }
+
+  /**
+   * Keyword-based fallback when model hasn't trained yet
+   */
+  private _keywordBasedInfer(description: string): LifestyleSignals {
+    const lower = (description || "").toLowerCase();
+
+    const hasRent =
+      lower.includes("thuê") ||
+      lower.includes("trọ") ||
+      lower.includes("chung cư") ||
+      lower.includes("căn hộ");
+
+    const hasDebt =
+      lower.includes("nợ") ||
+      lower.includes("trả góp") ||
+      lower.includes("vay");
+
+    const hasSavingsGoal =
+      lower.includes("tiết kiệm") ||
+      lower.includes("đầu tư") ||
+      lower.includes("tích lũy") ||
+      lower.includes("mục tiêu");
+
+    const minimalLiving =
+      lower.includes("tối giản") ||
+      lower.includes("đơn giản") ||
+      lower.includes("tiết kiệm");
+
+    let foodOutFrequency: "low" | "medium" | "high" = "low";
+    if (
+      lower.includes("ăn ngoài nhiều") ||
+      lower.includes("nhà hàng") ||
+      lower.includes("order")
+    ) {
+      foodOutFrequency = "high";
+    } else if (
+      lower.includes("thỉnh thoảng ăn") ||
+      lower.includes("đôi khi")
+    ) {
+      foodOutFrequency = "medium";
+    }
+
+    let socialSpending: "low" | "medium" | "high" = "low";
+    if (
+      lower.includes("tiệc") ||
+      lower.includes("nhậu") ||
+      lower.includes("karaoke")
+    ) {
+      socialSpending = "high";
+    } else if (lower.includes("cafe") || lower.includes("gặp bạn")) {
+      socialSpending = "medium";
+    }
+
+    let luxuryInterest: "low" | "medium" | "high" = "low";
+    if (
+      lower.includes("du lịch nước ngoài") ||
+      lower.includes("cao cấp") ||
+      lower.includes("shopping nhiều")
+    ) {
+      luxuryInterest = "high";
+    } else if (
+      lower.includes("du lịch") ||
+      lower.includes("mua sắm") ||
+      lower.includes("shopping")
+    ) {
+      luxuryInterest = "medium";
+    }
+
+    let location: "hanoi" | "hcm" | "other" = "other";
+    if (lower.includes("hà nội") || lower.includes("ha noi")) {
+      location = "hanoi";
+    } else if (
+      lower.includes("sài gòn") ||
+      lower.includes("hcm") ||
+      lower.includes("tp.hcm") ||
+      lower.includes("tp hcm")
+    ) {
+      location = "hcm";
+    }
+
+    let rentEstimate = 0;
+    if (hasRent) {
+      // Try to extract amount from text
+      const rentMatch = lower.match(
+        /thuê\s*(?:trọ|nhà|phòng)?\s*(\d+)\s*(?:tr|triệu)/
+      );
+      if (rentMatch) {
+        rentEstimate = parseInt(rentMatch[1]) * 1_000_000;
+      } else {
+        rentEstimate =
+          location === "hanoi"
+            ? 3_000_000
+            : location === "hcm"
+              ? 4_000_000
+              : 3_500_000;
+      }
+    }
+
+    return {
+      hasRent,
+      rentEstimate,
+      foodOutFrequency,
+      socialSpending,
+      hasSavingsGoal,
+      hasDebt,
+      luxuryInterest,
+      location,
+      minimalLiving,
     };
   }
 }

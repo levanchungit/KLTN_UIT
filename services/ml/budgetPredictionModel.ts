@@ -1,9 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import * as tf from "@tensorflow/tfjs";
-// import "@tensorflow/tfjs-react-native";
 
-const MODEL_STORAGE_KEY = "budget_prediction_v1_weights";
-const TRAINING_HISTORY_KEY = "budget_prediction_v1_history";
+const MODEL_STORAGE_KEY = "budget_prediction_v2_weights";
+const TRAINING_HISTORY_KEY = "budget_prediction_v2_history";
 
 export type BudgetPrediction = {
   needsRatio: number; // 0-1
@@ -34,13 +32,109 @@ function normalizeIncome(income: number): number {
   return Math.min(Math.max((logIncome - minLog) / (maxLog - minLog), 0), 1);
 }
 
+// ============================================================================
+// Pure JS Neural Network Implementation (No TensorFlow required)
+// ============================================================================
+
+/** Activation functions */
+function relu(x: number): number {
+  return Math.max(0, x);
+}
+
+function reluDerivative(x: number): number {
+  return x > 0 ? 1 : 0;
+}
+
+function softmax(arr: number[]): number[] {
+  const maxVal = Math.max(...arr);
+  const exps = arr.map((v) => Math.exp(v - maxVal));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => e / sum);
+}
+
+/** Random initialization with He Normal */
+function heNormal(fanIn: number): number {
+  // He Normal: std = sqrt(2 / fanIn)
+  const std = Math.sqrt(2.0 / fanIn);
+  // Box-Muller transform for normal distribution
+  const u1 = Math.random();
+  const u2 = Math.random();
+  return std * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+/** Dense layer with weights and biases */
+interface DenseLayer {
+  weights: number[][]; // [inputDim][outputDim]
+  biases: number[]; // [outputDim]
+  activation: "relu" | "softmax" | "none";
+}
+
+/** Forward pass result for a single layer */
+interface LayerOutput {
+  preActivation: number[]; // z = W*x + b
+  postActivation: number[]; // a = activation(z)
+}
+
+function createDenseLayer(
+  inputDim: number,
+  outputDim: number,
+  activation: "relu" | "softmax" | "none"
+): DenseLayer {
+  const weights: number[][] = [];
+  for (let i = 0; i < inputDim; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < outputDim; j++) {
+      row.push(heNormal(inputDim));
+    }
+    weights.push(row);
+  }
+  const biases = new Array(outputDim).fill(0);
+  return { weights, biases, activation };
+}
+
+function forwardLayer(layer: DenseLayer, input: number[]): LayerOutput {
+  const outputDim = layer.biases.length;
+  const preActivation: number[] = new Array(outputDim).fill(0);
+
+  // z = W^T * x + b
+  for (let j = 0; j < outputDim; j++) {
+    let sum = layer.biases[j];
+    for (let i = 0; i < input.length; i++) {
+      sum += input[i] * layer.weights[i][j];
+    }
+    preActivation[j] = sum;
+  }
+
+  let postActivation: number[];
+  if (layer.activation === "relu") {
+    postActivation = preActivation.map(relu);
+  } else if (layer.activation === "softmax") {
+    postActivation = softmax(preActivation);
+  } else {
+    postActivation = [...preActivation];
+  }
+
+  return { preActivation, postActivation };
+}
+
+/** Serializable model state */
+interface ModelState {
+  layers: Array<{
+    weights: number[][];
+    biases: number[];
+    activation: string;
+  }>;
+  version: string;
+}
+
 /**
- * Budget Prediction Model - Neural Network
+ * Budget Prediction Model - Pure JS Neural Network
+ * No TensorFlow dependency required.
  */
 class BudgetPredictionModel {
-  private model: tf.LayersModel | null = null;
+  private layers: DenseLayer[] = [];
   private isInitialized = false;
-  private isTrained = false; // Track if model has been trained
+  private isTrained = false;
   private initPromise: Promise<void> | null = null;
   private trainingHistory: { accuracy: number; loss: number; epoch: number }[] =
     [];
@@ -54,18 +148,16 @@ class BudgetPredictionModel {
 
     this.initPromise = (async () => {
       try {
-        await tf.ready();
-
         // Try load saved weights
         const saved = await AsyncStorage.getItem(MODEL_STORAGE_KEY);
         if (saved) {
           console.log("[BudgetPredictionModel] Loading saved weights...");
-          await this._loadModelWeights(saved);
-          this.isTrained = true; // Loaded weights are already trained
+          this._loadModelWeights(saved);
+          this.isTrained = true;
         } else {
           console.log("[BudgetPredictionModel] Creating new model...");
           this._buildModel();
-          // Train immediately for AI demo - optimized for speed
+          // Train immediately for AI demo
           await this._trainWithSyntheticData();
           this.isTrained = true;
         }
@@ -90,95 +182,76 @@ class BudgetPredictionModel {
   }
 
   /**
-   * Xây dựng kiến trúc mô hình Neural Network
+   * Xây dựng kiến trúc mô hình Neural Network (Pure JS)
    */
   private _buildModel(): void {
     const inputDim = 19; // income(1) + lifestyle(16) + month(1) + isHoliday(1)
 
-    this.model = tf.sequential({
-      layers: [
-        // Input + Hidden Layer 1
-        tf.layers.dense({
-          inputShape: [inputDim],
-          units: 64,
-          activation: "relu",
-          kernelInitializer: "heNormal",
-          name: "dense_1",
-        }),
-        tf.layers.batchNormalization({ name: "bn_1" }),
-        tf.layers.dropout({ rate: 0.3, name: "dropout_1" }),
+    this.layers = [
+      // Hidden Layer 1: 19 -> 64
+      createDenseLayer(inputDim, 64, "relu"),
+      // Hidden Layer 2: 64 -> 32
+      createDenseLayer(64, 32, "relu"),
+      // Output Layer: 32 -> 3 (needs, wants, savings)
+      createDenseLayer(32, 3, "softmax"),
+    ];
 
-        // Hidden Layer 2
-        tf.layers.dense({
-          units: 32,
-          activation: "relu",
-          kernelInitializer: "heNormal",
-          name: "dense_2",
-        }),
-        tf.layers.batchNormalization({ name: "bn_2" }),
-        tf.layers.dropout({ rate: 0.2, name: "dropout_2" }),
-
-        // Output Layer - 3 classes (needs, wants, savings)
-        tf.layers.dense({
-          units: 3,
-          activation: "softmax",
-          name: "output",
-        }),
-      ],
-    });
-
-    this.model.compile({
-      optimizer: tf.train.adam(0.001),
-      loss: "categoricalCrossentropy",
-      metrics: ["accuracy"],
-    });
-
-    console.log("[BudgetPredictionModel] Model architecture:");
-    this.model.summary();
+    console.log(
+      "[BudgetPredictionModel] Model architecture: 19 -> 64 (relu) -> 32 (relu) -> 3 (softmax)"
+    );
   }
 
   /**
    * Load saved model weights từ AsyncStorage
    */
-  private async _loadModelWeights(savedJson: string): Promise<void> {
-    const state = JSON.parse(savedJson);
-    this._buildModel();
-
-    if (!this.model) throw new Error("Model not built");
-
-    const weights = state.weights.map((w: any) => {
-      return tf.tensor(w.data, w.shape, w.dtype);
-    });
-
-    this.model.setWeights(weights);
-    weights.forEach((t: tf.Tensor) => t.dispose());
+  private _loadModelWeights(savedJson: string): void {
+    const state: ModelState = JSON.parse(savedJson);
+    this.layers = state.layers.map((l) => ({
+      weights: l.weights,
+      biases: l.biases,
+      activation: l.activation as "relu" | "softmax" | "none",
+    }));
   }
 
   /**
    * Save model weights vào AsyncStorage
    */
   private async _saveModelWeights(): Promise<void> {
-    if (!this.model) return;
+    if (this.layers.length === 0) return;
 
-    const weights = this.model.getWeights();
-    const serialized = weights.map((w) => ({
-      shape: w.shape,
-      dtype: w.dtype,
-      data: Array.from(w.dataSync()),
-    }));
+    const state: ModelState = {
+      layers: this.layers.map((l) => ({
+        weights: l.weights,
+        biases: l.biases,
+        activation: l.activation,
+      })),
+      version: "2.0",
+    };
 
-    await AsyncStorage.setItem(
-      MODEL_STORAGE_KEY,
-      JSON.stringify({ weights: serialized, version: "1.0" })
-    );
-
+    await AsyncStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(state));
     await AsyncStorage.setItem(
       TRAINING_HISTORY_KEY,
       JSON.stringify(this.trainingHistory)
     );
+  }
 
-    // DON'T dispose weights - they're still in use by the model!
-    // TensorFlow will handle memory management automatically
+  /**
+   * Forward pass through the entire network
+   */
+  private _forward(input: number[]): {
+    layerOutputs: LayerOutput[];
+    output: number[];
+  } {
+    const layerOutputs: LayerOutput[] = [];
+    let currentInput = input;
+
+    for (const layer of this.layers) {
+      const out = forwardLayer(layer, currentInput);
+      layerOutputs.push(out);
+      currentInput = out.postActivation;
+    }
+
+    return { layerOutputs, output: currentInput };
   }
 
   /**
@@ -198,56 +271,51 @@ class BudgetPredictionModel {
     const patterns = [
       {
         name: "Minimal Living",
-        signals: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], // hasRent, low food, low social, low luxury
-        ratios: [0.6, 0.2, 0.2] as [number, number, number], // 60% needs, 20% wants, 20% savings
+        signals: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+        ratios: [0.6, 0.2, 0.2] as [number, number, number],
       },
       {
         name: "Balanced Lifestyle",
-        signals: [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], // hasRent, medium food, medium social
-        ratios: [0.5, 0.3, 0.2] as [number, number, number], // 50/30/20 rule
+        signals: [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+        ratios: [0.5, 0.3, 0.2] as [number, number, number],
       },
       {
         name: "Active Social",
-        signals: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0], // hasRent, high food, high social
-        ratios: [0.45, 0.4, 0.15] as [number, number, number], // More spending on wants
+        signals: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0],
+        ratios: [0.45, 0.4, 0.15] as [number, number, number],
       },
       {
         name: "Saving Focus",
-        signals: [0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1], // no rent, low food, hasSavingsGoal
-        ratios: [0.4, 0.25, 0.35] as [number, number, number], // High savings
+        signals: [0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+        ratios: [0.4, 0.25, 0.35] as [number, number, number],
       },
       {
         name: "High Earner Lifestyle",
-        signals: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0], // hasRent, high food, luxury interest
-        ratios: [0.4, 0.45, 0.15] as [number, number, number], // More wants
+        signals: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0],
+        ratios: [0.4, 0.45, 0.15] as [number, number, number],
       },
       {
         name: "Debt Repayment",
-        signals: [1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], // hasRent, hasDebt
-        ratios: [0.65, 0.15, 0.2] as [number, number, number], // High needs (debt)
+        signals: [1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+        ratios: [0.65, 0.15, 0.2] as [number, number, number],
       },
     ];
 
     // Generate combinations
     incomes.forEach((income) => {
       patterns.forEach((pattern) => {
-        // Regular months
         for (let month = 1; month <= 12; month++) {
-          const isHoliday = [1, 2, 4, 9, 12].includes(month); // Tết, 30/4, Quốc Khánh, Noel
+          const isHoliday = [1, 2, 4, 9, 12].includes(month);
 
-          // Adjust ratios dựa trên thu nhập
           let [needs, wants, savings] = pattern.ratios;
           if (income < 8_000_000) {
-            // Low income: higher needs
             needs = Math.min(needs + 0.1, 0.7);
             savings = Math.max(savings - 0.05, 0.1);
           } else if (income > 25_000_000) {
-            // High income: more flexibility
             wants += 0.05;
             needs -= 0.05;
           }
 
-          // Holiday adjustment
           if (isHoliday) {
             wants += 0.05;
             savings -= 0.05;
@@ -273,21 +341,19 @@ class BudgetPredictionModel {
     // Add noise để tăng diversity
     const noisyData: TrainingData[] = [];
     data.forEach((sample) => {
-      // Reduced from 2 to 1 for faster training
       for (let i = 0; i < 1; i++) {
         const noisy = { ...sample };
-        noisy.income *= 0.9 + Math.random() * 0.2; // ±10%
+        noisy.income *= 0.9 + Math.random() * 0.2;
         noisy.targetRatios = noisy.targetRatios.map((v) => {
-          const noise = (Math.random() - 0.5) * 0.05; // ±2.5%
+          const noise = (Math.random() - 0.5) * 0.05;
           return Math.max(0.1, Math.min(0.7, v + noise));
         }) as [number, number, number];
 
-        // Re-normalize
         const sum = noisy.targetRatios.reduce((a, b) => a + b, 0);
         noisy.targetRatios = noisy.targetRatios.map((v) => v / sum) as [
           number,
           number,
-          number
+          number,
         ];
 
         noisyData.push(noisy);
@@ -298,10 +364,10 @@ class BudgetPredictionModel {
   }
 
   /**
-   * Train model với synthetic data
+   * Train model với synthetic data using mini-batch SGD with backpropagation
    */
   private async _trainWithSyntheticData(): Promise<void> {
-    if (!this.model) return;
+    if (this.layers.length === 0) return;
 
     console.log("[BudgetPredictionModel] Training with synthetic data...");
 
@@ -310,54 +376,172 @@ class BudgetPredictionModel {
       `[BudgetPredictionModel] Generated ${trainingData.length} training samples`
     );
 
-    // Prepare tensors
-    const inputs: number[][] = [];
-    const outputs: number[][] = [];
+    // Prepare features
+    const allFeatures: number[][] = [];
+    const allTargets: number[][] = [];
 
     trainingData.forEach((sample) => {
       const features = [
         normalizeIncome(sample.income),
         ...sample.lifestyleSignals,
-        (sample.month || 6) / 12, // Normalize month to [0, 1]
+        (sample.month || 6) / 12,
         sample.isHolidaySeason ? 1 : 0,
       ];
-      inputs.push(features);
-      outputs.push(sample.targetRatios);
+      allFeatures.push(features);
+      allTargets.push(sample.targetRatios);
     });
 
-    const xs = tf.tensor2d(inputs);
-    const ys = tf.tensor2d(outputs);
+    const learningRate = 0.001;
+    const epochs = 5;
+    const batchSize = 32;
 
-    try {
-      const history = await this.model.fit(xs, ys, {
-        epochs: 5, // Optimized for demo speed (~3-4s)
-        batchSize: 32,
-        validationSplit: 0.2,
-        shuffle: true,
-        callbacks: {
-          onEpochEnd: (epoch, logs) => {
-            console.log(
-              `[BudgetPredictionModel] Epoch ${epoch + 1
-              }: loss=${logs?.loss.toFixed(4)}, acc=${logs?.acc.toFixed(4)}`
-            );
-            if (logs) {
-              this.trainingHistory.push({
-                epoch: epoch + 1,
-                loss: logs.loss,
-                accuracy: logs.acc,
-              });
+    // Split train/val (80/20)
+    const splitIdx = Math.floor(allFeatures.length * 0.8);
+    const trainFeatures = allFeatures.slice(0, splitIdx);
+    const trainTargets = allTargets.slice(0, splitIdx);
+    const valFeatures = allFeatures.slice(splitIdx);
+    const valTargets = allTargets.slice(splitIdx);
+
+    for (let epoch = 0; epoch < epochs; epoch++) {
+      // Shuffle training data
+      const indices = Array.from({ length: trainFeatures.length }, (_, i) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+
+      let epochLoss = 0;
+      let epochCorrect = 0;
+      let batchCount = 0;
+
+      // Mini-batch training
+      for (let b = 0; b < trainFeatures.length; b += batchSize) {
+        const batchEnd = Math.min(b + batchSize, trainFeatures.length);
+        const batchIndices = indices.slice(b, batchEnd);
+        const currentBatchSize = batchIndices.length;
+
+        // Accumulate gradients for the batch
+        const weightGrads: number[][][][] = this.layers.map((l) =>
+          l.weights.map((row) => [new Array(row.length).fill(0)])
+        );
+        const biasGrads: number[][] = this.layers.map((l) =>
+          new Array(l.biases.length).fill(0)
+        );
+
+        // Process each sample in the batch
+        for (const idx of batchIndices) {
+          const input = trainFeatures[idx];
+          const target = trainTargets[idx];
+
+          // Forward pass
+          const { layerOutputs } = this._forward(input);
+          const output =
+            layerOutputs[layerOutputs.length - 1].postActivation;
+
+          // Cross-entropy loss
+          for (let k = 0; k < output.length; k++) {
+            epochLoss -= target[k] * Math.log(Math.max(output[k], 1e-7));
+          }
+
+          // Accuracy
+          const predIdx = output.indexOf(Math.max(...output));
+          const targetIdx = target.indexOf(Math.max(...target));
+          if (predIdx === targetIdx) epochCorrect++;
+
+          // Backpropagation
+          // Output layer gradient (softmax + cross-entropy) = output - target
+          let delta = output.map((o, k) => o - target[k]);
+
+          // Traverse layers in reverse
+          for (let l = this.layers.length - 1; l >= 0; l--) {
+            const layerInput =
+              l === 0 ? input : layerOutputs[l - 1].postActivation;
+
+            // Accumulate weight gradients
+            for (let i = 0; i < layerInput.length; i++) {
+              for (let j = 0; j < delta.length; j++) {
+                weightGrads[l][i][0][j] += layerInput[i] * delta[j];
+              }
             }
-          },
-        },
+
+            // Accumulate bias gradients
+            for (let j = 0; j < delta.length; j++) {
+              biasGrads[l][j] += delta[j];
+            }
+
+            // Propagate delta to previous layer (if not the first layer)
+            if (l > 0) {
+              const prevDelta = new Array(layerInput.length).fill(0);
+              for (let i = 0; i < layerInput.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < delta.length; j++) {
+                  sum += this.layers[l].weights[i][j] * delta[j];
+                }
+                prevDelta[i] =
+                  sum *
+                  reluDerivative(layerOutputs[l - 1].preActivation[i]);
+              }
+              delta = prevDelta;
+            }
+          }
+        }
+
+        // Apply gradients (average over batch)
+        for (let l = 0; l < this.layers.length; l++) {
+          for (let i = 0; i < this.layers[l].weights.length; i++) {
+            for (let j = 0; j < this.layers[l].weights[i].length; j++) {
+              this.layers[l].weights[i][j] -=
+                (learningRate * weightGrads[l][i][0][j]) / currentBatchSize;
+            }
+          }
+          for (let j = 0; j < this.layers[l].biases.length; j++) {
+            this.layers[l].biases[j] -=
+              (learningRate * biasGrads[l][j]) / currentBatchSize;
+          }
+        }
+
+        batchCount++;
+      }
+
+      // Calculate validation loss
+      let valLoss = 0;
+      let valCorrect = 0;
+      for (let i = 0; i < valFeatures.length; i++) {
+        const { output } = this._forward(valFeatures[i]);
+        for (let k = 0; k < output.length; k++) {
+          valLoss -=
+            valTargets[i][k] * Math.log(Math.max(output[k], 1e-7));
+        }
+        const predIdx = output.indexOf(Math.max(...output));
+        const targetIdx = valTargets[i].indexOf(
+          Math.max(...valTargets[i])
+        );
+        if (predIdx === targetIdx) valCorrect++;
+      }
+
+      const avgLoss = epochLoss / trainFeatures.length;
+      const acc = epochCorrect / trainFeatures.length;
+      const valAcc = valCorrect / valFeatures.length;
+
+      console.log(
+        `[BudgetPredictionModel] Epoch ${epoch + 1}: loss=${avgLoss.toFixed(
+          4
+        )}, acc=${acc.toFixed(4)}, val_acc=${valAcc.toFixed(4)}`
+      );
+
+      this.trainingHistory.push({
+        epoch: epoch + 1,
+        loss: avgLoss,
+        accuracy: acc,
       });
 
-      await this._saveModelWeights();
-      this.isTrained = true; // Mark as trained
-      console.log("[BudgetPredictionModel] Training completed");
-    } finally {
-      xs.dispose();
-      ys.dispose();
+      // Yield control to avoid blocking UI
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
+
+    await this._saveModelWeights();
+    this.isTrained = true;
+    console.log("[BudgetPredictionModel] Training completed");
   }
 
   /**
@@ -371,13 +555,19 @@ class BudgetPredictionModel {
   ): Promise<BudgetPrediction> {
     await this.initialize();
 
-    if (!this.model) {
-      throw new Error("Model not initialized");
-    }
-
     const startTime = Date.now();
 
-    // Always use neural network prediction (for AI demo)
+    if (this.layers.length === 0) {
+      // Fallback to rule-based if model failed to build
+      return this._ruleBasedPredict(
+        income,
+        lifestyleSignals,
+        month,
+        isHolidaySeason,
+        startTime
+      );
+    }
+
     const features = [
       normalizeIncome(income),
       ...lifestyleSignals,
@@ -385,29 +575,24 @@ class BudgetPredictionModel {
       isHolidaySeason ? 1 : 0,
     ];
 
-    const input = tf.tensor2d([features]);
-    const prediction = this.model.predict(input) as tf.Tensor;
-    const probabilities = Array.from(await prediction.data());
+    const { output: probabilities } = this._forward(features);
 
     // Calculate confidence (entropy-based)
     const entropy = -probabilities.reduce(
       (sum: number, p: number) => sum + (p > 0 ? p * Math.log(p) : 0),
       0
     );
-    const maxEntropy = Math.log(3); // log(number of classes)
-    const confidence = 1 - entropy / maxEntropy; // 0 = uncertain, 1 = very confident
+    const maxEntropy = Math.log(3);
+    const confidence = 1 - entropy / maxEntropy;
 
     const inferenceTimeMs = Date.now() - startTime;
-
-    input.dispose();
-    prediction.dispose();
 
     return {
       needsRatio: probabilities[0],
       wantsRatio: probabilities[1],
       savingsRatio: probabilities[2],
       confidence,
-      modelVersion: "1.0",
+      modelVersion: "2.0-pure-js",
       inferenceTimeMs,
     };
   }
@@ -423,40 +608,36 @@ class BudgetPredictionModel {
     isHolidaySeason?: boolean,
     startTime?: number
   ): BudgetPrediction {
-    // Parse lifestyle signals
     const [
       hasRent,
       hasDebt,
       hasSavingsGoal,
       minimalLiving,
       foodLow,
-      foodMed,
+      _foodMed,
       foodHigh,
       socialLow,
-      socialMed,
+      _socialMed,
       socialHigh,
       luxuryLow,
-      luxuryMed,
+      _luxuryMed,
       luxuryHigh,
     ] = lifestyleSignals;
 
-    // Base ratios: 50/30/20 rule
     let needs = 0.5;
     let wants = 0.3;
     let savings = 0.2;
 
-    // Adjust for income level
     if (income < 8_000_000) {
-      needs = 0.6; // Low income: more needs
+      needs = 0.6;
       wants = 0.25;
       savings = 0.15;
     } else if (income > 25_000_000) {
-      needs = 0.45; // High income: more flexibility
+      needs = 0.45;
       wants = 0.35;
       savings = 0.2;
     }
 
-    // Adjust for lifestyle
     if (hasRent === 1) needs += 0.05;
     if (hasDebt === 1) {
       needs += 0.1;
@@ -471,7 +652,6 @@ class BudgetPredictionModel {
       wants -= 0.05;
     }
 
-    // Food/social/luxury spending
     if (foodHigh === 1 || socialHigh === 1) wants += 0.05;
     if (luxuryHigh === 1) wants += 0.05;
     if (foodLow === 1 && socialLow === 1 && luxuryLow === 1) {
@@ -479,13 +659,11 @@ class BudgetPredictionModel {
       savings += 0.05;
     }
 
-    // Holiday adjustment
     if (isHolidaySeason) {
       wants += 0.05;
       savings -= 0.05;
     }
 
-    // Normalize to sum = 1
     const total = needs + wants + savings;
     needs /= total;
     wants /= total;
@@ -495,8 +673,8 @@ class BudgetPredictionModel {
       needsRatio: Math.max(0.3, Math.min(0.7, needs)),
       wantsRatio: Math.max(0.1, Math.min(0.5, wants)),
       savingsRatio: Math.max(0.1, Math.min(0.4, savings)),
-      confidence: 0.6, // Lower confidence for rule-based
-      modelVersion: "1.0-rule-based",
+      confidence: 0.6,
+      modelVersion: "2.0-rule-based",
       inferenceTimeMs: Date.now() - (startTime || Date.now()),
     };
   }
@@ -506,7 +684,7 @@ class BudgetPredictionModel {
    */
   async learnFromCorrection(data: TrainingData): Promise<void> {
     await this.initialize();
-    if (!this.model) return;
+    if (this.layers.length === 0) return;
 
     console.log("[BudgetPredictionModel] Learning from user correction...");
 
@@ -517,29 +695,53 @@ class BudgetPredictionModel {
       data.isHolidaySeason ? 1 : 0,
     ];
 
-    const xs = tf.tensor2d([features]);
-    const ys = tf.tensor2d([data.targetRatios]);
+    const target = data.targetRatios;
+    const fineTuneLR = 0.0001;
 
-    try {
-      // Fine-tune với learning rate thấp hơn
-      this.model.compile({
-        optimizer: tf.train.adam(0.0001),
-        loss: "categoricalCrossentropy",
-        metrics: ["accuracy"],
-      });
+    // Fine-tune with the single correction sample (5 steps)
+    for (let step = 0; step < 5; step++) {
+      const { layerOutputs } = this._forward(features);
+      const output = layerOutputs[layerOutputs.length - 1].postActivation;
 
-      await this.model.fit(xs, ys, {
-        epochs: 5,
-        batchSize: 1,
-        verbose: 0,
-      });
+      // Output delta
+      let delta = output.map((o, k) => o - target[k]);
 
-      await this._saveModelWeights();
-      console.log("[BudgetPredictionModel] Learned from correction");
-    } finally {
-      xs.dispose();
-      ys.dispose();
+      // Backprop and update
+      for (let l = this.layers.length - 1; l >= 0; l--) {
+        const layerInput =
+          l === 0 ? features : layerOutputs[l - 1].postActivation;
+
+        // Update weights
+        for (let i = 0; i < layerInput.length; i++) {
+          for (let j = 0; j < delta.length; j++) {
+            this.layers[l].weights[i][j] -=
+              fineTuneLR * layerInput[i] * delta[j];
+          }
+        }
+
+        // Update biases
+        for (let j = 0; j < delta.length; j++) {
+          this.layers[l].biases[j] -= fineTuneLR * delta[j];
+        }
+
+        // Propagate delta
+        if (l > 0) {
+          const prevDelta = new Array(layerInput.length).fill(0);
+          for (let i = 0; i < layerInput.length; i++) {
+            let sum = 0;
+            for (let j = 0; j < delta.length; j++) {
+              sum += this.layers[l].weights[i][j] * delta[j];
+            }
+            prevDelta[i] =
+              sum * reluDerivative(layerOutputs[l - 1].preActivation[i]);
+          }
+          delta = prevDelta;
+        }
+      }
     }
+
+    await this._saveModelWeights();
+    console.log("[BudgetPredictionModel] Learned from correction");
   }
 
   /**
@@ -560,7 +762,7 @@ class BudgetPredictionModel {
     }
 
     await this.initialize();
-    if (!this.model) return;
+    if (this.layers.length === 0) return;
 
     console.log("[BudgetPredictionModel] Starting background training...");
     try {
@@ -581,7 +783,7 @@ class BudgetPredictionModel {
   async reset(): Promise<void> {
     this.isInitialized = false;
     this.initPromise = null;
-    this.model = null;
+    this.layers = [];
     this.trainingHistory = [];
     await AsyncStorage.removeItem(MODEL_STORAGE_KEY);
     await AsyncStorage.removeItem(TRAINING_HISTORY_KEY);
