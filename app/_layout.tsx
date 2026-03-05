@@ -9,6 +9,7 @@ import { UserProvider, useUser } from "@/context/userContext";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { setupNotificationListener } from "@/services/notificationService";
 import { initSmartNotifications } from "@/services/smartNotificationService";
+import { installWidgetAutoRefresh, refreshWidgetSilent } from "@/services/widgetService";
 import { isBiometricEnabled } from "@/utils/biometric";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
@@ -277,6 +278,10 @@ function RootLayoutNav() {
             );
           }
         }
+        // Refresh widget when app goes to background so balance is always up-to-date
+        if (next === "background" || next === "inactive") {
+          refreshWidgetSilent();
+        }
       } catch (e) {
         console.warn("AppState sync error", e);
       }
@@ -296,6 +301,9 @@ function RootLayoutNav() {
       }, 5 * 60 * 1000);
     }
 
+    // Install widget auto-refresh listener (refreshes on app background)
+    const unsubWidget = installWidgetAutoRefresh();
+
     return () => {
       mounted = false;
       try {
@@ -306,6 +314,7 @@ function RootLayoutNav() {
         // ignore
       }
       if (interval) clearInterval(interval as any);
+      unsubWidget();
     };
   }, [user]);
 

@@ -1,4 +1,5 @@
 import syncState from "@/services/syncState";
+import { refreshWidgetSilent } from "@/services/widgetService";
 
 // Coalesce concurrent syncAll calls so we don't run multiple parallel syncs
 let _syncInFlight: Promise<boolean> | null = null;
@@ -88,6 +89,8 @@ export async function syncAll(userId?: string): Promise<boolean> {
           }
         }
         syncState.setStatus("idle");
+        // Refresh widget after sync so balance is up-to-date
+        refreshWidgetSilent();
         return didAnySync;
       }
     } catch (err: any) {
@@ -102,6 +105,8 @@ export async function syncAll(userId?: string): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, 500));
     // Do NOT mark lastSynced on fallback — treat as no real sync
     syncState.setStatus("idle");
+    // Refresh widget even on fallback path
+    refreshWidgetSilent();
     console.log("Sync finished (fallback) for user:", userId ?? "(current)");
     return false;
   })();

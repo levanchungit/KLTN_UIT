@@ -1,6 +1,7 @@
 import { db, openDb } from "@/db";
 import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { transactionClassifier } from "@/services/transactionClassifier";
+import { refreshWidgetSilent } from "@/services/widgetService";
 import { getCurrentUserId } from "@/utils/auth";
 
 export type TxDetailRow = {
@@ -206,6 +207,9 @@ export async function addExpense({
     } catch (e) {
       scheduleSyncDebounced();
     }
+
+    // Refresh widget balance
+    refreshWidgetSilent();
   });
 
   return id;
@@ -269,6 +273,9 @@ export async function addIncome({
     } catch (e) {
       scheduleSyncDebounced();
     }
+
+    // Refresh widget balance
+    refreshWidgetSilent();
   });
 
   return id;
@@ -384,6 +391,8 @@ export async function deleteTx(id: string, userId?: string) {
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Refresh widget balance
+  refreshWidgetSilent();
   // mark remote tombstone
   try {
     const s = await import("@/services/firestoreSync");
@@ -457,6 +466,9 @@ export async function updateTransaction({
   } catch (e) {
     scheduleSyncDebounced();
   }
+
+  // Refresh widget balance
+  refreshWidgetSilent();
 
   return id;
 }

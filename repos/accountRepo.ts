@@ -1,5 +1,6 @@
 import { openDb } from "@/db";
 import { scheduleSyncDebounced } from "@/services/syncTrigger";
+import { refreshWidgetSilent } from "@/services/widgetService";
 import { getCurrentUserId } from "@/utils/auth";
 
 export type Account = {
@@ -68,6 +69,8 @@ export async function createAccount(input: {
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Refresh widget balance
+  refreshWidgetSilent();
   return id;
 }
 
@@ -124,6 +127,8 @@ export async function updateAccount(
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Refresh widget balance
+  refreshWidgetSilent();
 }
 
 // ===== Helpers cho xoá với luật "mặc định không xoá" =====
@@ -186,6 +191,8 @@ export async function deleteAccount(id: string) {
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Refresh widget balance
+  refreshWidgetSilent();
   try {
     const s = await import("@/services/firestoreSync");
     s.markRemoteDeleted("accounts", id, userId).catch((e) => console.warn(e));
