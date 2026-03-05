@@ -204,63 +204,40 @@ export default function Transactions() {
     [t, lang]
   );
 
-  // Fetch một lần theo khoảng ngày với filter
-  const fetchRange = useCallback(
-    async (fromOffsetDays: number, days: number) => {
+  // Fetch theo khoảng ngày với explicit parameters (tránh đọc stale state)
+  const fetchRangeWith = useCallback(
+    async (
+      type: FilterType,
+      startDate: Date,
+      endDate: Date
+    ) => {
       let from: Date;
       let to: Date;
 
-      // Apply filter
-      if (filterType === "all") {
-        // Load theo page như cũ
-        to = startOfDay(new Date());
-        to.setDate(to.getDate() - fromOffsetDays);
-        to.setHours(23, 59, 59, 999);
-        from = new Date(to);
-        from.setDate(to.getDate() - days + 1);
-        from.setHours(0, 0, 0, 0);
-      } else if (filterType === "day") {
-        // Use filterStartDate for the selected day
-        from = startOfDay(filterStartDate);
+      if (type === "day") {
+        from = startOfDay(startDate);
         to = new Date(from);
         to.setHours(23, 59, 59, 999);
-      } else if (filterType === "week") {
-        // Use filterStartDate as the start of the selected week
-        from = startOfDay(filterStartDate);
+      } else if (type === "week") {
+        from = startOfDay(startDate);
         to = new Date(from);
         to.setDate(to.getDate() + 6);
         to.setHours(23, 59, 59, 999);
-      } else if (filterType === "month") {
-        // Use filterStartDate to get the month
-        from = new Date(
-          filterStartDate.getFullYear(),
-          filterStartDate.getMonth(),
-          1
-        );
-        to = new Date(
-          filterStartDate.getFullYear(),
-          filterStartDate.getMonth() + 1,
-          0
-        );
+      } else if (type === "month") {
+        from = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        to = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
         to.setHours(23, 59, 59, 999);
-      } else if (filterType === "year") {
-        // Use filterStartDate to get the year
-        from = new Date(filterStartDate.getFullYear(), 0, 1);
-        to = new Date(filterStartDate.getFullYear(), 11, 31);
+      } else if (type === "year") {
+        from = new Date(startDate.getFullYear(), 0, 1);
+        to = new Date(startDate.getFullYear(), 11, 31);
         to.setHours(23, 59, 59, 999);
-      } else if (filterType === "custom") {
-        // Custom range - ignore offset
-        from = startOfDay(filterStartDate);
-        to = startOfDay(filterEndDate);
+      } else if (type === "custom") {
+        from = startOfDay(startDate);
+        to = startOfDay(endDate);
         to.setHours(23, 59, 59, 999);
       } else {
-        // Default to all
-        to = startOfDay(new Date());
-        to.setDate(to.getDate() - fromOffsetDays);
-        to.setHours(23, 59, 59, 999);
-        from = new Date(to);
-        from.setDate(to.getDate() - days + 1);
-        from.setHours(0, 0, 0, 0);
+        // "all" - không dùng hàm này (xử lý riêng)
+        return [];
       }
 
       const fromSec = Math.floor(from.getTime() / 1000);
@@ -274,7 +251,34 @@ export default function Transactions() {
         return [];
       }
     },
-    [groupByDay, filterType, filterStartDate, filterEndDate]
+    [groupByDay]
+  );
+
+  // applyDateFilter: set state mới VÀ fetch data với đúng giá trị mới (tránh stale closure)
+  const applyDateFilter = useCallback(
+    async (type: FilterType, start: Date, end: Date) => {
+      setFilterType(type);
+      setFilterStartDate(start);
+      setFilterEndDate(end);
+      setRefreshing(true);
+      try {
+        if (type === "all") {
+          const rows = await listRecent(PAGE_SIZE, 0);
+          setLoadedCount(rows.length);
+          setAllDataLoaded(rows.length < PAGE_SIZE);
+          const secs = groupByDay(rows);
+          setSections(secs);
+        } else {
+          const secs = await fetchRangeWith(type, start, end);
+          setSections(secs);
+          setAllDataLoaded(true);
+          setLoadedCount(0);
+        }
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [groupByDay, fetchRangeWith]
   );
 
   // Initial + on focus (DÙNG 1 nơi thôi để tránh double-load)
@@ -289,8 +293,8 @@ export default function Transactions() {
         setLoadedCount(rows.length);
         setAllDataLoaded(rows.length < PAGE_SIZE);
       } else {
-        // Load theo filter ngày
-        const secs = await fetchRange(0, 0);
+        // Load theo filter ngày - dùng fetchRangeWith với giá trị state hiện tại
+        const secs = await fetchRangeWith(filterType, filterStartDate, filterEndDate);
         setSections(secs);
         setAllDataLoaded(true);
         setLoadedCount(0);
@@ -302,7 +306,7 @@ export default function Transactions() {
     } finally {
       setRefreshing(false);
     }
-  }, [filterType, groupByDay]);
+  }, [filterType, filterStartDate, filterEndDate, groupByDay, fetchRangeWith]);
 
   useFocusEffect(
     useCallback(() => {
@@ -415,9 +419,8 @@ export default function Transactions() {
       return;
     }
 
-    setFilterStartDate(newStart);
-    setFilterEndDate(newEnd);
-    loadInitial();
+    // Dùng applyDateFilter để set state + fetch với giá trị mới cùng lúc
+    applyDateFilter(filterType, newStart, newEnd);
   };
 
   const handlePrevious = () => shiftAnchor(-1);
@@ -451,9 +454,8 @@ export default function Transactions() {
     } else {
       return;
     }
-    setFilterStartDate(start);
-    setFilterEndDate(end);
-    loadInitial();
+    // Dùng applyDateFilter để set state + fetch với giá trị mới cùng lúc
+    applyDateFilter(filterType, start, end);
   };
 
   const today = startOfDay(new Date());
@@ -1147,11 +1149,13 @@ export default function Transactions() {
                   if (filter === "custom") {
                     // Close filter modal and immediately open calendar picker
                     setShowFilterModal(false);
-                    // Use setTimeout to ensure modal is closed before opening new one
                     setTimeout(() => {
                       setFilterType("custom");
                       openCalendarModal();
                     }, 100);
+                  } else if (filter === "all") {
+                    setShowFilterModal(false);
+                    applyDateFilter("all", new Date(), new Date());
                   } else {
                     // Recalculate date range for the new filter type
                     const today = new Date();
@@ -1187,11 +1191,9 @@ export default function Transactions() {
                       start = today;
                       end = today;
                     }
-                    setFilterType(filter as FilterType);
-                    setFilterStartDate(start);
-                    setFilterEndDate(end);
                     setShowFilterModal(false);
-                    loadInitial(); // Reload with filter
+                    // Dùng applyDateFilter để set state + fetch với giá trị mới cùng lúc
+                    applyDateFilter(filter as FilterType, start, end);
                   }
                 }}
                 style={{
@@ -1360,12 +1362,11 @@ export default function Transactions() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
+                // Đóng modal trước, rồi fetch với giá trị mới (applyDateFilter tự set state)
                 if (filterType === "custom") {
                   if (tempStartDate && tempEndDate) {
-                    setFilterStartDate(tempStartDate);
-                    setFilterEndDate(tempEndDate);
                     setShowCalendarModal(false);
-                    loadInitial();
+                    applyDateFilter("custom", tempStartDate, tempEndDate);
                   } else {
                     setShowCalendarModal(false);
                   }
@@ -1374,10 +1375,8 @@ export default function Transactions() {
                     const start = startOfDay(tempAnchor);
                     const end = new Date(start);
                     end.setHours(23, 59, 59, 999);
-                    setFilterStartDate(start);
-                    setFilterEndDate(end);
                     setShowCalendarModal(false);
-                    loadInitial();
+                    applyDateFilter("day", start, end);
                   } else {
                     setShowCalendarModal(false);
                   }
@@ -1387,10 +1386,8 @@ export default function Transactions() {
                     const end = new Date(start);
                     end.setDate(end.getDate() + 6);
                     end.setHours(23, 59, 59, 999);
-                    setFilterStartDate(start);
-                    setFilterEndDate(end);
                     setShowCalendarModal(false);
-                    loadInitial();
+                    applyDateFilter("week", start, end);
                   } else {
                     setShowCalendarModal(false);
                   }
@@ -1398,18 +1395,14 @@ export default function Transactions() {
                   const start = new Date(tempYear, tempMonth, 1);
                   const end = new Date(tempYear, tempMonth + 1, 0);
                   end.setHours(23, 59, 59, 999);
-                  setFilterStartDate(start);
-                  setFilterEndDate(end);
                   setShowCalendarModal(false);
-                  loadInitial();
+                  applyDateFilter("month", start, end);
                 } else if (filterType === "year") {
                   const start = new Date(tempOnlyYear, 0, 1);
                   const end = new Date(tempOnlyYear, 11, 31);
                   end.setHours(23, 59, 59, 999);
-                  setFilterStartDate(start);
-                  setFilterEndDate(end);
                   setShowCalendarModal(false);
-                  loadInitial();
+                  applyDateFilter("year", start, end);
                 } else {
                   setShowCalendarModal(false);
                 }
