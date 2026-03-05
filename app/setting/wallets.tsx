@@ -38,9 +38,17 @@ const formatInputValue = (value: string) => {
   // Ensure only one negative sign at the beginning
   const hasNegative = cleaned.startsWith("-");
   const numericPart = cleaned.replace(/-/g, "");
-  // Format with dots
+  // Format with dots as thousand separator
   const formatted = numericPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return hasNegative ? `-${formatted}` : formatted;
+};
+
+// Parse formatted balance string (e.g. "-233.233.233") to number
+const parseBalance = (value: string): number => {
+  // Remove thousand separators (dots), keep minus sign and digits
+  const raw = value.replace(/\./g, "").replace(/,/g, ".");
+  const parsed = parseFloat(raw);
+  return isNaN(parsed) ? 0 : Math.trunc(parsed);
 };
 
 export default function WalletsScreen() {
@@ -100,14 +108,12 @@ export default function WalletsScreen() {
       if (editingWallet) {
         await updateAccount(editingWallet.id, {
           name: formName,
-          balance:
-            parseFloat(formBalance.replace(/\./g, "").replace(",", ".")) || 0,
+          balance: parseBalance(formBalance),
         });
       } else {
         await createAccount({
           name: formName,
-          balance:
-            parseFloat(formBalance.replace(/\./g, "").replace(",", ".")) || 0,
+          balance: parseBalance(formBalance),
           includeInTotal: true,
         });
       }
@@ -277,7 +283,7 @@ export default function WalletsScreen() {
                 placeholderTextColor={colors.subText}
                 value={formBalance}
                 onChangeText={handleBalanceChange}
-                keyboardType="default"
+                keyboardType={"number-pad"}
               />
               <View style={styles.modalActions}>
                 <TouchableOpacity

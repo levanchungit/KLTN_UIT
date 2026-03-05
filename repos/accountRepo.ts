@@ -56,7 +56,7 @@ export async function createAccount(input: {
       input.icon ?? null,
       input.color ?? null,
       input.includeInTotal ? 1 : 0,
-      Math.max(0, Math.trunc(input.balance) || 0),
+      Math.trunc(input.balance) || 0,
     ]
   );
   
@@ -108,7 +108,7 @@ export async function updateAccount(
   }
   if (input.balance != null) {
     set.push("balance_cached=?");
-    vals.push(Math.max(0, Math.trunc(input.balance)));
+    vals.push(Math.trunc(input.balance));
   }
 
   set.push("updated_at=strftime('%s','now')");
