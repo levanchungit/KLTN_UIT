@@ -519,90 +519,193 @@ function classifyCategoryType(
 ): "needs" | "wants" | "savings" {
   const name = categoryName.toLowerCase().trim();
 
-  // Hard overrides for common Vietnamese categories to ensure correct grouping
-  if (/^giao\s*thông/i.test(name)) return "needs"; // transportation is essential
-  if (/^du\s*lịch/i.test(name)) return "wants"; // travel is discretionary
-  if (/^mua\s*sắm/i.test(name)) return "wants"; // shopping is wants
-  if (/chi\s*phí\s*thiết\s*yếu/i.test(name)) return "needs"; // other essential costs
-  if (/thức\s*ăn|thực\s*ăn|đồ\s*uống|ăn\s*uống/i.test(name)) return "needs"; // food basics
+  // ============================================================
+  // SIMPLE INCLUDES CHECK – Bắt ngay các category phổ biến nhất
+  // Dùng includes() để tránh vấn đề encoding regex tiếng Việt
+  // ============================================================
 
-  // NEEDS - Essential expenses
-  const needsPatterns = [
-    // Housing
-    /nhà|thuê|trọ|rent|apartment|căn hộ|chung cư|homestay|ký túc xá|housing|home/i,
-    // Utilities
-    /điện|nước|gas|internet|wifi|phone|viễn thông|điện thoại|cơm điện|utilities|utility/i,
-    // Essential transport
-    /giao thông|xe bus|xe buýt|xe máy|xăng|dầu|đổ xăng|vé|giá vé|transport|bus|taxi|ride/i,
-    // Basic groceries & essential food
-    /grocery|siêu thị|chợ|hàng hoá|thực phẩm|cơm|đồ ăn cơ bản|ăn cơ bản|groceries/i,
-    // Healthcare
-    /bác sĩ|thuốc|y tế|bệnh viện|phòng khám|sức khỏe|khám|tiêm|vaccine|health|medical|doctor/i,
-    // Insurance
-    /bảo hiểm|insurance/i,
-    // Essential childcare & education
-    /trường|học|giáo dục|tiêu học|trung học|đại học|học phí|education|school|tuition/i,
-  ];
+  // Ăn uống và các biến thể → NHU CẦU
+  if (
+    name.includes("ăn uống") ||
+    name.includes("thực phẩm") ||
+    name.includes("đồ ăn") ||
+    name.includes("thức ăn") ||
+    name === "cơm" ||
+    name.includes("ăn & uống") ||
+    name.includes("food")
+  )
+    return "needs";
 
-  // SAVINGS - Savings & Investment
+  // Nhà ở → NHU CẦU
+  if (
+    name.includes("thuê nhà") ||
+    name.includes("nhà ở") ||
+    name.includes("tiền nhà") ||
+    name.includes("thuê trọ") ||
+    name === "nhà"
+  )
+    return "needs";
+
+  // Giao thông → NHU CẦU
+  if (
+    name.includes("giao thông") ||
+    name.includes("đi lại") ||
+    name.includes("xăng xe") ||
+    name.includes("xe bus") ||
+    name.includes("xe buýt")
+  )
+    return "needs";
+
+  // Y tế → NHU CẦU
+  if (
+    name.includes("y tế") ||
+    name.includes("sức khỏe") ||
+    name.includes("bệnh viện") ||
+    name.includes("khám bệnh")
+  )
+    return "needs";
+
+  // Giáo dục → NHU CẦU
+  if (
+    name.includes("giáo dục") ||
+    name.includes("học phí") ||
+    name.includes("học")
+  )
+    return "needs";
+
+  // Tiết kiệm → TIẾT KIỆM
+  if (name.includes("tiết kiệm") || name.includes("đầu tư") || name.includes("tích lũy"))
+    return "savings";
+
+  // Du lịch / Giải trí / Mua sắm (rõ ràng) → MONG MUỐN
+  if (
+    name === "du lịch" ||
+    name.includes("nhà hàng") ||
+    name.includes("ăn ngoài") ||
+    name === "cafe" ||
+    name.includes("cà phê") ||
+    name === "mua sắm" ||
+    name.includes("giải trí")
+  )
+    return "wants";
+
+  // ============================================================
+  // HARD OVERRIDES (REGEX) – Phân loại cứng theo thực tế Việt Nam
+  // ============================================================
+
+  // --- NHU CẦU (Needs) ---
+  // Ăn uống / Thực phẩm (regex backup)
+  if (/^ăn\s*uống$|^thực\s*phẩm$|^đồ\s*ăn$|^thức\s*ăn$|^cơm$/i.test(name))
+    return "needs";
+  // Nhà ở / Thuê nhà
+  if (/^(nhà\s*ở|thuê\s*nhà|tiền\s*nhà|thuê\s*trọ|nhà)$/i.test(name))
+    return "needs";
+  // Giao thông
+  if (/^giao\s*thông$|^đi\s*lại$|^xăng\s*xe$/i.test(name)) return "needs";
+  // Điên, nước, internet, điện thoại
+  if (
+    /^(điện|nước|gas|internet|wifi|điện\s*thoại|viễn\s*thông|điện\s*nước)$/i.test(
+      name
+    )
+  )
+    return "needs";
+  // Y tế, sức khỏe
+  if (/^(y\s*tế|sức\s*khỏe|thuốc|khám\s*bệnh|bệnh\s*viện)$/i.test(name))
+    return "needs";
+  // Giáo dục, học phí
+  if (/^(giáo\s*dục|học\s*phí|học|trường)$/i.test(name)) return "needs";
+  // Bảo hiểm
+  if (/^bảo\s*hiểm$/i.test(name)) return "needs";
+  // Quần áo cơ bản (nhu cầu mặc)
+  if (/^(quần\s*áo|trang\s*phục)$/i.test(name)) return "needs";
+  // Chi phí thiết yếu / dự phòng
+  if (/chi\s*phí\s*thiết\s*yếu|dự\s*phòng/i.test(name)) return "needs";
+
+  // --- TIẾT KIỆM (Savings) ---
+  if (/^tiết\s*kiệm$|^đầu\s*tư$|^tích\s*lũy$/i.test(name)) return "savings";
+
+  // --- MONG MUỐN (Wants) ---
+  // Du lịch
+  if (/^du\s*lịch$/i.test(name)) return "wants";
+  // Mua sắm (xa xỉ)
+  if (/^mua\s*sắm$|^shopping$/i.test(name)) return "wants";
+  // Giải trí
+  if (/^giải\s*trí$|^vui\s*chơi$/i.test(name)) return "wants";
+  // Thể thao & gym (tùy chọn)
+  if (/^(gym|thể\s*thao|yoga|bơi\s*lội)$/i.test(name)) return "wants";
+  // Làm đẹp & spa
+  if (/^(làm\s*đẹp|spa|massage|salon|cắt\s*tóc)$/i.test(name)) return "wants";
+  // Thú cưng
+  if (/^thú\s*cưng$/i.test(name)) return "wants";
+  // Cafe / Bia / Ăn nhà hàng
+  if (/^(cafe|cà\s*phê|bia\s*rượu|karaoke|nhà\s*hàng|ăn\s*ngoài)$/i.test(name))
+    return "wants";
+
+  // ============================================================
+  // PATTERN MATCHING – Dùng cho tên danh mục không khớp hard override
+  // ============================================================
+
+  // SAVINGS patterns
   const savingsPatterns = [
     /tiết kiệm|tích lũy|save|savings|đầu tư|investment|gửi tiền|tài khoản tiết kiệm|fund|quỹ|saving|invest/i,
   ];
-
-  // WANTS - Leisure & Entertainment (default)
-  const wantsPatterns = [
-    // Dining out & casual food
-    /ăn ngoài|nhà hàng|quán ăn|cafe|cà phê|bia|rượu|karaoke|bar|quán bar|food delivery|grab food|bún|phở|cơm tấm|restaurant|dining|cafe|coffee/i,
-    // Travel & Entertainment
-    /du lịch|travel|vé máy bay|khách sạn|hotel|tour|kỳ nghỉ|vacation|resort|flight|airline/i,
-    // Shopping & Luxury
-    /shopping|mua sắm|quần áo|giày|trang sức|mỹ phẩm|sắc đẹp|clothes|fashion|shopping|mall/i,
-    // Entertainment
-    /phim|xem phim|spotify|netflix|game|gaming|điện tử|giải trí|vũ trường|movie|cinema|entertainment|music|streaming/i,
-    // Hobby & Sports
-    /gym|thể thao|yoga|bơi|môn thể thao|sở thích|hobby|golf|sports|fitness/i,
-    // Pet care (luxury)
-    /thú cưng|pet|chó|mèo|chim|pet care|animal/i,
-    // Personal care & luxury
-    /salon|cắt tóc|massage|spa|làm đẹp|personal care|beauty/i,
-  ];
-
-  // Check SAVINGS first (highest priority)
   for (const pattern of savingsPatterns) {
     if (pattern.test(name)) return "savings";
   }
 
-  // Check NEEDS (high priority)
+  // NEEDS patterns (ưu tiên cao)
+  const needsPatterns = [
+    // Food & groceries – tất cả dạng ăn uống chung đều là nhu cầu
+    /thức ăn|thực ăn|thực phẩm|đồ ăn|ăn uống|grocery|siêu thị|chợ|hàng hoá|cơm|groceries/i,
+    // Housing
+    /nhà|thuê|trọ|rent|apartment|căn hộ|chung cư|homestay|ký túc xá|housing|home/i,
+    // Utilities
+    /điện|nước|gas|internet|wifi|phone|viễn thông|điện thoại|utilities|utility/i,
+    // Transport
+    /giao thông|xe bus|xe buýt|xe máy|xăng|dầu|đổ xăng|transport|bus|taxi|ride/i,
+    // Healthcare
+    /bác sĩ|thuốc|y tế|bệnh viện|phòng khám|sức khỏe|khám|tiêm|vaccine|health|medical|doctor/i,
+    // Insurance
+    /bảo hiểm|insurance/i,
+    // Education
+    /trường|học|giáo dục|tiêu học|trung học|đại học|học phí|education|school|tuition/i,
+  ];
   for (const pattern of needsPatterns) {
     if (pattern.test(name)) return "needs";
   }
 
-  // Check WANTS (default)
+  // WANTS patterns (giải trí, xa xỉ)
+  const wantsPatterns = [
+    // Dining out & casual food – CHỈ khi tên RÕ RÀNG là ăn ngoài/nhà hàng
+    /ăn ngoài|nhà hàng|quán ăn|cafe|cà phê|bia|rượu|karaoke|bar|quán bar|food delivery|grab food|bún|phở|cơm tấm|restaurant|dining|coffee/i,
+    // Travel
+    /du lịch|travel|vé máy bay|khách sạn|hotel|tour|kỳ nghỉ|vacation|resort|flight|airline/i,
+    // Shopping & fashion (xa xỉ)
+    /shopping|mua sắm|giày|trang sức|mỹ phẩm|sắc đẹp|fashion|mall/i,
+    // Entertainment
+    /phim|xem phim|spotify|netflix|game|gaming|điện tử|giải trí|vũ trường|movie|cinema|entertainment|music|streaming/i,
+    // Gym & sports
+    /gym|yoga|bơi|sở thích|hobby|golf|sports|fitness/i,
+    // Pet care
+    /thú cưng|pet|chó|mèo|chim|pet care|animal/i,
+    // Personal care & luxury
+    /salon|cắt tóc|massage|spa|làm đẹp|personal care|beauty/i,
+  ];
   for (const pattern of wantsPatterns) {
     if (pattern.test(name)) return "wants";
   }
 
-  // Smart fallback based on lifestyle signals and category context
-  if (
-    signals.foodOutFrequency === "high" &&
-    /ăn|food|cơm|ăn uống/i.test(name)
-  ) {
-    // High eating out frequency + food category = wants (dining out)
-    if (!/thực phẩm|grocery|cơm cơ bản|đồ ăn cơ bản/i.test(name)) {
-      return "wants";
-    }
+  // ============================================================
+  // FALLBACK CUỐI – Dựa trên context lối sống
+  // LƯU Ý: Không bao giờ đẩy "ăn uống" vào wants chỉ vì thói quen ăn ngoài
+  // ============================================================
+
+  // Nếu là danh mục liên quan đến CÁ NHÂN xa xỉ thì là wants
+  if (signals.hasDebt && /shopping|cafe|du lịch|giải trí/i.test(name)) {
+    return "wants";
   }
 
-  if (signals.hasDebt && /ăn|shopping|cafe|du lịch|giải trí/i.test(name)) {
-    return "wants"; // These are clearly wants
-  }
-
-  // If matches both needs & wants patterns, prioritize needs
-  if (/ăn uống|food/i.test(name)) {
-    return "needs"; // Default food to needs unless explicitly says dining/restaurant
-  }
-
-  // Default: classify as wants for unknown categories
+  // Mặc định: phân vào wants nếu không xác định được
   return "wants";
 }
 

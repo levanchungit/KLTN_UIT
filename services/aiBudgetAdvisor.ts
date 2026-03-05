@@ -141,32 +141,101 @@ function classifyCategory(
   lifestyleSignals: any,
   explicitAmounts: Record<string, number>
 ): "needs" | "wants" | "savings" {
-  const lower = categoryName.toLowerCase();
+  const lower = categoryName.toLowerCase().trim();
 
-  // Savings categories
+  // ============================================================
+  // SIMPLE INCLUDES CHECK – Ưu tiên cao nhất, bắt mọi biến thể tiếng Việt
+  // ============================================================
+
+  // NHU CẦU: Ăn uống và thực phẩm
+  if (
+    lower.includes("ăn uống") ||
+    lower.includes("thực phẩm") ||
+    lower.includes("đồ ăn") ||
+    lower.includes("thức ăn") ||
+    lower.includes("ăn & uống") ||
+    lower === "cơm" ||
+    lower.includes("food")
+  )
+    return "needs";
+
+  // NHU CẦU: Nhà ở
+  if (
+    lower.includes("thuê nhà") ||
+    lower.includes("nhà ở") ||
+    lower.includes("tiền nhà") ||
+    lower.includes("thuê trọ") ||
+    lower === "nhà"
+  )
+    return "needs";
+
+  // NHU CẦU: Giao thông
+  if (
+    lower.includes("giao thông") ||
+    lower.includes("đi lại") ||
+    lower.includes("xăng xe") ||
+    lower.includes("xe bus") ||
+    lower.includes("xe buýt")
+  )
+    return "needs";
+
+  // NHU CẦU: Y tế & sức khỏe
+  if (
+    lower.includes("y tế") ||
+    lower.includes("sức khỏe") ||
+    lower.includes("bệnh viện") ||
+    lower.includes("khám bệnh")
+  )
+    return "needs";
+
+  // NHU CẦU: Giáo dục
+  if (lower.includes("giáo dục") || lower.includes("học phí"))
+    return "needs";
+
+  // TIẾT KIỆM
   if (
     lower.includes("tiết kiệm") ||
     lower.includes("đầu tư") ||
     lower.includes("trả nợ") ||
-    lower.includes("khẩn cấp")
-  ) {
+    lower.includes("khẩn cấp") ||
+    lower.includes("tích lũy")
+  )
     return "savings";
-  }
 
-  // Needs categories (essential)
+  // MONG MUỐN rõ ràng
+  if (
+    lower === "du lịch" ||
+    lower.includes("nhà hàng") ||
+    lower.includes("ăn ngoài") ||
+    lower === "mua sắm" ||
+    lower.includes("giải trí")
+  )
+    return "wants";
+
+  // Needs categories - keyword list (mở rộng)
   const needsKeywords = [
     "thức ăn",
     "đồ uống",
+    "ăn uống",      // thêm mới
+    "thực phẩm",   // thêm mới
+    "đồ ăn",        // thêm mới
     "thuê nhà",
     "tiền nhà",
-    "nhà", // House/rent is needs!
+    "nhà",
     "điện nước",
+    "điện",         // thêm mới
+    "nước",         // thêm mới
+    "internet",     // thêm mới
+    "wifi",         // thêm mới
     "y tế",
     "sức khỏe",
+    "bảo hiểm",    // thêm mới
     "giao thông",
     "di chuyển",
     "giáo dục",
     "học tập",
+    "học phí",     // thêm mới
+    "xăng xe",     // thêm mới
   ];
 
   if (needsKeywords.some((kw) => lower.includes(kw))) {
@@ -179,12 +248,21 @@ function classifyCategory(
     "du lịch",
     "giải trí",
     "café",
+    "cafe",         // thêm mới
+    "cà phê",      // thêm mới
+    "nhà hàng",   // thêm mới
+    "ăn ngoài",   // thêm mới
+    "bia",          // thêm mới
+    "rượu",        // thêm mới
     "thể thao",
+    "gym",          // thêm mới
     "làm đẹp",
+    "spa",          // thêm mới
     "quần áo",
     "phụ kiện",
     "điện tử",
     "game",
+    "thú cưng",    // thêm mới
   ];
 
   if (wantsKeywords.some((kw) => lower.includes(kw))) {

@@ -51,26 +51,43 @@ export async function generateBudgetSuggestion(params: {
   // Essential categories (needs) - typically housing, food, utilities, health
   const needsKeywords = [
     "nhà",
+    "thuê nhà",
+    "nhà ở",
+    "thuê trọ",
     "điện",
     "nước",
+    "ăn uống",   // thêm mới
     "thức ăn",
+    "đồ ăn",
+    "thực phẩm",
     "đồ uống",
     "sức khỏe",
+    "y tế",      // thêm mới
     "giáo dục",
+    "học phí",   // thêm mới
+    "giao thông", // thêm mới
+    "bảo hiểm",  // thêm mới
     "di chuyển",
     "wifi",
     "4g",
+    "internet",  // thêm mới
   ];
   const wantsKeywords = [
     "mua sắm",
     "giải trí",
     "cafe",
+    "cà phê",    // thêm mới
+    "du lịch",   // thêm mới
+    "nhà hàng",  // thêm mới
+    "ăn ngoài",  // thêm mới
     "quà",
     "đám tiệc",
     "mỹ phẩm",
     "hớt tóc",
+    "gym",       // thêm mới
+    "spa",       // thêm mới
   ];
-  const savingsKeywords = ["tiết kiệm", "đầu tư"];
+  const savingsKeywords = ["tiết kiệm", "đầu tư", "tích lũy"];
 
   // Calculate total historical spending
   const totalSpent = breakdown.reduce((sum, b) => sum + b.total, 0);

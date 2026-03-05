@@ -57,6 +57,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -855,6 +856,265 @@ function TypingIndicator({ colors, cacheStatus }: { colors: any; cacheStatus?: s
       <Text style={{ color: colors.subText, fontSize: 12, fontStyle: "italic" }}>
         {getStatusText()}
       </Text>
+    </View>
+  );
+}
+
+/* ---------------- Pinch-to-Zoom Image Viewer ---------------- */
+function PinchZoomImageViewer({
+  uri,
+  onClose,
+}: {
+  uri: string | null;
+  onClose: () => void;
+}) {
+  const { width: SW, height: SH } = Dimensions.get("window");
+  const CX = SW / 2;
+  const CY = SH / 2;
+
+  // Animated scale + translate
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  // Mutable refs for gesture tracking (avoid setState in gesture handlers)
+  const scaleRef = useRef(1);
+  const txRef = useRef(0);
+  const tyRef = useRef(0);
+
+  // Pinch state
+  const initialDistanceRef = useRef<number | null>(null);
+  const initialScaleRef = useRef(1);
+  const focalXRef = useRef(0);
+  const focalYRef = useRef(0);
+  const initialTxRef = useRef(0);
+  const initialTyRef = useRef(0);
+
+  // Double-tap detection
+  const lastTapRef = useRef(0);
+  const lastTapPoint = useRef<{ x: number; y: number } | null>(null);
+
+  // Reset to default
+  const resetTransform = () => {
+    scaleRef.current = 1;
+    txRef.current = 0;
+    tyRef.current = 0;
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Get distance between 2 touches
+  const getDistance = (touches: any[]) => {
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // Get midpoint of 2 touches
+  const getMidpoint = (touches: any[]) => ({
+    x: (touches[0].pageX + touches[1].pageX) / 2,
+    y: (touches[0].pageY + touches[1].pageY) / 2,
+  });
+
+  // Tracking cho pan (kéo) 1 ngón
+  const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 2 || Math.abs(gs.dy) > 2,
+      onPanResponderGrant: () => {
+        initialDistanceRef.current = null;
+        lastPanPoint.current = null;
+      },
+      onPanResponderMove: (evt, gs) => {
+        const touches = evt.nativeEvent.touches;
+
+        if (touches.length === 2) {
+          lastPanPoint.current = null; // Huỷ tracking pan 1 ngón
+
+          if (initialDistanceRef.current === null) {
+            // Bắt đầu pinch
+            initialDistanceRef.current = getDistance(touches);
+            initialScaleRef.current = scaleRef.current;
+            const mid = getMidpoint(touches);
+            focalXRef.current = mid.x;
+            focalYRef.current = mid.y;
+            initialTxRef.current = txRef.current;
+            initialTyRef.current = tyRef.current;
+          } else {
+            // Đang pinch
+            const newDist = getDistance(touches);
+            const newScale = Math.max(
+              0.5,
+              Math.min(5, initialScaleRef.current * (newDist / initialDistanceRef.current))
+            );
+
+            // Zoom giữ nguyên vị trí focal (tính theo Center của View)
+            const fX = focalXRef.current;
+            const fY = focalYRef.current;
+            const newTx =
+              fX - CX - ((fX - CX - initialTxRef.current) / initialScaleRef.current) * newScale;
+            const newTy =
+              fY - CY - ((fY - CY - initialTyRef.current) / initialScaleRef.current) * newScale;
+
+            scaleRef.current = newScale;
+            txRef.current = newTx;
+            tyRef.current = newTy;
+
+            scale.setValue(newScale);
+            translateX.setValue(newTx);
+            translateY.setValue(newTy);
+          }
+        } else if (touches.length === 1 && scaleRef.current > 1) {
+          // Pan 1 ngón (khi đã zoom)
+          initialDistanceRef.current = null; // Huỷ tracking pinch
+
+          const pt = { x: touches[0].pageX, y: touches[0].pageY };
+          if (!lastPanPoint.current) {
+            lastPanPoint.current = pt;
+          } else {
+            const dx = pt.x - lastPanPoint.current.x;
+            const dy = pt.y - lastPanPoint.current.y;
+            lastPanPoint.current = pt;
+
+            const newTx = txRef.current + dx;
+            const newTy = tyRef.current + dy;
+            
+            txRef.current = newTx;
+            tyRef.current = newTy;
+            translateX.setValue(newTx);
+            translateY.setValue(newTy);
+          }
+        }
+      },
+      onPanResponderRelease: (evt, gs) => {
+        initialDistanceRef.current = null;
+        lastPanPoint.current = null;
+
+        // Nếu zoom < 1x thì nảy về 1x
+        if (scaleRef.current < 1) {
+          resetTransform();
+          return;
+        }
+
+        // Double tap để zoom/reset (khi ngón tay nhấc lên và không kéo)
+        const changedTouches = evt.nativeEvent.changedTouches;
+        if (changedTouches.length === 1 && Math.abs(gs.dx) < 10 && Math.abs(gs.dy) < 10) {
+          const now = Date.now();
+          const tapPt = { x: changedTouches[0].pageX, y: changedTouches[0].pageY };
+
+          // Kiểm tra double tap trong vòng 300ms và cùng vị trí (sai số nhỏ)
+          if (
+            lastTapPoint.current &&
+            now - lastTapRef.current < 300 &&
+            Math.abs(tapPt.x - lastTapPoint.current.x) < 30 &&
+            Math.abs(tapPt.y - lastTapPoint.current.y) < 30
+          ) {
+            // DOUBLE TAP THÀNH CÔNG
+            if (scaleRef.current > 1) {
+              resetTransform();
+            } else {
+              // Phóng to x3 vào vị trí đang tap
+              const maxScale = 3;
+              const newTx = (tapPt.x - CX) * (1 - maxScale);
+              const newTy = (tapPt.y - CY) * (1 - maxScale);
+
+              scaleRef.current = maxScale;
+              txRef.current = newTx;
+              tyRef.current = newTy;
+
+              Animated.parallel([
+                Animated.spring(scale, { toValue: maxScale, useNativeDriver: true }),
+                Animated.spring(translateX, { toValue: newTx, useNativeDriver: true }),
+                Animated.spring(translateY, { toValue: newTy, useNativeDriver: true }),
+              ]).start();
+            }
+            lastTapRef.current = 0; // Reset
+            lastTapPoint.current = null;
+          } else {
+            // Cập nhật tap cuối
+            lastTapRef.current = now;
+            lastTapPoint.current = tapPt;
+          }
+        }
+      },
+      onPanResponderTerminate: () => {
+        initialDistanceRef.current = null;
+        lastPanPoint.current = null;
+      }
+    })
+  ).current;
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.95)",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      {/* Close button */}
+      <TouchableOpacity
+        style={{
+          position: "absolute",
+          top: 52,
+          right: 20,
+          zIndex: 10,
+          backgroundColor: "rgba(255,255,255,0.25)",
+          borderRadius: 25,
+          width: 48,
+          height: 48,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+        onPress={onClose}
+      >
+        <Ionicons name="close" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Hint */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 50,
+          alignSelf: "center",
+          zIndex: 10,
+          backgroundColor: "rgba(0,0,0,0.45)",
+          borderRadius: 20,
+          paddingHorizontal: 16,
+          paddingVertical: 6,
+        }}
+      >
+        <Text style={{ color: "#fff", fontSize: 12, opacity: 0.8 }}>
+          Dùng 2 ngón để phóng to · Double-tap để reset
+        </Text>
+      </View>
+
+      {/* Zoomable image */}
+      <Animated.View
+        style={{
+          transform: [
+            { translateX },
+            { translateY },
+            { scale },
+          ],
+        }}
+        {...panResponder.panHandlers}
+      >
+        {uri ? (
+          <Image
+            source={{ uri }}
+            style={{ width: SW, height: SH * 0.82 }}
+            resizeMode="contain"
+          />
+        ) : null}
+      </Animated.View>
     </View>
   );
 }
@@ -3676,7 +3936,7 @@ export default function Chatbot() {
                         borderColor: colors.divider,
                         backgroundColor: colors.background,
                         color: colors.text,
-                        paddingHorizontal: 20
+                        paddingHorizontal: 16
                       },
                     ]}
                   returnKeyType="send"
@@ -3883,56 +4143,20 @@ export default function Chatbot() {
             )}
         </Animated.View>
 
-        {/* Image Viewer Modal */}
+        {/* Image Viewer Modal – Pinch-to-Zoom */}
         <Modal
           visible={imageViewerVisible}
           transparent={true}
           animationType="fade"
-          onRequestClose={() => setImageViewerVisible(false)}
+          onRequestClose={() => {
+            setImageViewerVisible(false);
+          }}
+          statusBarTranslucent
         >
-          <View
-            style={
-              {
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.9)",
-                justifyContent: "center",
-                alignItems: "center",
-              }
-            }
-          >
-            <TouchableOpacity
-              style={
-                {
-                  position: "absolute",
-                  top: 50,
-                  right: 20,
-                  zIndex: 10,
-                  backgroundColor: "rgba(255,255,255,0.3)",
-                  borderRadius: 25,
-                  width: 50,
-                  height: 50,
-                  justifyContent: "center",
-                  alignItems: "center",
-                }
-              }
-              onPress={() => setImageViewerVisible(false)}
-            >
-              <Ionicons name="close" size={30} color="#fff" />
-            </TouchableOpacity>
-
-            {
-              selectedImage && (
-                <Image
-                  source={{ uri: selectedImage }}
-                  style={{
-                    width: screenWidth,
-                    height: screenHeight * 0.8,
-                  }
-                  }
-                  resizeMode="contain"
-                />
-              )}
-          </View>
+          <PinchZoomImageViewer
+            uri={selectedImage}
+            onClose={() => setImageViewerVisible(false)}
+          />
         </Modal>
 
         {/* Floating Scroll to Bottom Button */}
