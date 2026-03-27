@@ -11,11 +11,7 @@
     <!-- main background (rounded rect) -->
     <item>
         <shape android:shape="rectangle">
-            <gradient
-                android:startColor="#3A2E3438"
-                android:endColor="#2223282B"
-                android:angle="270" />
-            <corners android:radius="8dp" />
+          
             <size android:width="44dp" android:height="44dp" />
         </shape>
     </item>
