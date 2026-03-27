@@ -5,6 +5,7 @@ import {
   deleteAccount,
   listAccounts,
   updateAccount,
+  setDefaultAccount,
   type Account,
 } from "@/repos/accountRepo";
 import { formatMoney } from "@/utils/format";
@@ -17,6 +18,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -66,6 +68,8 @@ export default function WalletsScreen() {
   const [editingWallet, setEditingWallet] = useState<Account | null>(null);
   const [formName, setFormName] = useState("");
   const [formBalance, setFormBalance] = useState("");
+  const [isFormDefault, setIsFormDefault] = useState(false);
+  const [isInitiallyDefault, setIsInitiallyDefault] = useState(false);
 
   const loadWallets = useCallback(async () => {
     setLoading(true);
@@ -89,13 +93,19 @@ export default function WalletsScreen() {
     setEditingWallet(null);
     setFormName("");
     setFormBalance("");
+    setIsFormDefault(false);
+    setIsInitiallyDefault(false);
     setModalVisible(true);
   };
 
   const handleEdit = (wallet: Account) => {
+    const isDefault =
+      wallet.created_at === Math.min(...wallets.map((w) => w.created_at || 0));
     setEditingWallet(wallet);
     setFormName(wallet.name);
     setFormBalance(formatNumberForInput(wallet.balance_cached || 0));
+    setIsFormDefault(isDefault);
+    setIsInitiallyDefault(isDefault);
     setModalVisible(true);
   };
 
@@ -110,12 +120,18 @@ export default function WalletsScreen() {
           name: formName,
           balance: parseBalance(formBalance),
         });
+        if (isFormDefault && !isInitiallyDefault) {
+          await setDefaultAccount(editingWallet.id);
+        }
       } else {
-        await createAccount({
+        const newId = await createAccount({
           name: formName,
           balance: parseBalance(formBalance),
           includeInTotal: true,
         });
+        if (isFormDefault) {
+          await setDefaultAccount(newId);
+        }
       }
       setModalVisible(false);
       loadWallets();
@@ -285,6 +301,20 @@ export default function WalletsScreen() {
                 onChangeText={handleBalanceChange}
                 keyboardType={"number-pad"}
               />
+              <View style={styles.switchContainer}>
+                <Text style={[styles.label, { color: colors.text, marginTop: 0 }]}>
+                  {t("defaultWallet")}
+                </Text>
+                <View style={{ opacity: isInitiallyDefault ? 0.5 : 1 }}>
+                  <Switch
+                    value={isFormDefault}
+                    onValueChange={setIsFormDefault}
+                    disabled={isInitiallyDefault}
+                    trackColor={{ false: colors.divider, true: "#3B82F6" }}
+                    thumbColor={"#fff"}
+                  />
+                </View>
+              </View>
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={[styles.btnCancel, { borderColor: colors.divider }]}
@@ -400,6 +430,13 @@ const makeStyles = (c: any, bottomInset: number) =>
       paddingVertical: 9,
       fontSize: 14,
       marginBottom: 10,
+    },
+    switchContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 12,
+      marginBottom: 4,
     },
     modalActions: {
       flexDirection: "row",

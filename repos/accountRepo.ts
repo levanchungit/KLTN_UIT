@@ -65,7 +65,7 @@ export async function createAccount(input: {
   invalidateAccountsCache();
   
   try {
-    scheduleSyncDebounced(userId);
+    scheduleSyncDebounced(userId ?? undefined);
   } catch (e) {
     scheduleSyncDebounced();
   }
@@ -123,7 +123,7 @@ export async function updateAccount(
   invalidateAccountsCache();
   
   try {
-    scheduleSyncDebounced(userId);
+    scheduleSyncDebounced(userId ?? undefined);
   } catch (e) {
     scheduleSyncDebounced();
   }
@@ -157,6 +157,36 @@ export async function isDefaultAccount(id: string): Promise<boolean> {
   return defId === id;
 }
 
+export async function setDefaultAccount(id: string) {
+  const db = await openDb();
+  const userId = await getCurrentUserId();
+  
+  // Get current minimum created_at
+  const row = await db.getFirstAsync<{ min_created_at: number }>(
+    `SELECT MIN(created_at) as min_created_at FROM accounts WHERE user_id=?`,
+    [userId]
+  );
+  
+  let newCreatedAt = Date.now() / 1000;
+  if (row && row.min_created_at != null) {
+    newCreatedAt = row.min_created_at - 1;
+  }
+  
+  await db.runAsync(
+    `UPDATE accounts SET created_at=?, updated_at=strftime('%s','now') WHERE id=? AND user_id=?`,
+    [newCreatedAt, id, userId]
+  );
+  
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  
+  try {
+    scheduleSyncDebounced(userId ?? undefined);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+}
+
 export async function deleteAccount(id: string) {
   const db = await openDb();
   const userId = await getCurrentUserId();
@@ -187,7 +217,7 @@ export async function deleteAccount(id: string) {
   invalidateAccountsCache();
   
   try {
-    scheduleSyncDebounced(userId);
+    scheduleSyncDebounced(userId ?? undefined);
   } catch (e) {
     scheduleSyncDebounced();
   }
@@ -195,7 +225,7 @@ export async function deleteAccount(id: string) {
   refreshWidgetSilent();
   try {
     const s = await import("@/services/firestoreSync");
-    s.markRemoteDeleted("accounts", id, userId).catch((e) => console.warn(e));
+    s.markRemoteDeleted("accounts", id, userId ?? undefined).catch((e) => console.warn(e));
   } catch (e) {
     // ignore if firestore not available
   }
