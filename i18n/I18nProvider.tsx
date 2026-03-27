@@ -208,6 +208,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     csvAmount: "Số tiền",
     csvType: "Loại",
     csvCategory: "Danh mục",
+    csvAccount: "Tài khoản",
     csvNote: "Ghi chú",
     csvDate: "Ngày",
     // Budget
@@ -583,6 +584,7 @@ const translations: Record<SupportedLang, Record<string, string>> = {
     csvAmount: "Amount",
     csvType: "Type",
     csvCategory: "Category",
+    csvAccount: "Account",
     csvNote: "Note",
     csvDate: "Date",
     // Budget

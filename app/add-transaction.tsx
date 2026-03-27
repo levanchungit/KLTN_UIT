@@ -56,18 +56,16 @@ export default function AddTransactionScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
-    null
-  );
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<any>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isEditMode && txId) {
-      loadTransaction();
-    }
-  }, [txId]);
+    loadInitialData();
+  }, [txId, type]);
 
   // If launched with text param (from widget), try to parse amount and note
   useEffect(() => {
@@ -93,50 +91,36 @@ export default function AddTransactionScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.text]);
 
-  useEffect(() => {
-    loadCategories();
-  }, [type]);
-
-  const loadTransaction = async () => {
-    if (!txId) return;
+  // Removed duplicated loadCategories useEffect, bundled in loadInitialData
+  const loadInitialData = async () => {
     setLoading(true);
     try {
-      const tx = await getTxById(txId);
-      if (tx) {
-        setType(tx.type as TransactionType);
-        // Format amount with thousand separators
-        const formattedAmount = tx.amount.toLocaleString("vi-VN");
-        setAmount(formattedAmount);
-        setNote(tx.note || "");
-        setSelectedDate(new Date(tx.occurred_at * 1000));
-        // Category will be set after loadCategories
-      }
-    } catch (error) {
-      console.error("Error loading transaction:", error);
-      Alert.alert(t("error"), t("cannotLoadTransaction"));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const accs = await listAccounts();
+      setAccounts(accs);
+      const cats = await listCategories({ type });
+      setCategories(cats);
 
-  const loadCategories = async () => {
-    const cats = await listCategories({ type });
-    setCategories(cats);
+      let currentCat = selectedCategory;
+      let currentAcc = selectedAccount;
 
-    // If editing, find and set the category from transaction
-    if (isEditMode && txId) {
-      const tx = await getTxById(txId);
-      if (tx && tx.category_id) {
-        const cat = cats.find((c) => c.id === tx.category_id);
-        if (cat) {
-          setSelectedCategory(cat);
+      if (isEditMode && txId) {
+        const tx = await getTxById(txId);
+        if (tx) {
+          setType(tx.type as TransactionType);
+          setAmount(tx.amount.toLocaleString("vi-VN"));
+          setNote(tx.note || "");
+          setSelectedDate(new Date(tx.occurred_at * 1000));
+          currentCat = cats.find((c) => c.id === tx.category_id) || null;
+          currentAcc = accs.find((a: any) => a.id === tx.account_id) || null;
         }
       }
-    } else {
-      // Auto-select first category for new transaction
-      if (cats.length > 0 && !selectedCategory) {
-        setSelectedCategory(cats[0]);
-      }
+      
+      setSelectedCategory(currentCat || cats[0] || null);
+      setSelectedAccount(currentAcc || accs.find((a: any) => a.include_in_total === 1) || accs[0] || null);
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -163,11 +147,7 @@ export default function AddTransactionScreen() {
     }
 
     try {
-      const accounts = await listAccounts();
-      const defaultAccount =
-        accounts.find((a: any) => a.include_in_total === 1) || accounts[0];
-
-      if (!defaultAccount) {
+      if (!selectedAccount) {
         Alert.alert(t("error"), t("accountNotFound"));
         return;
       }
@@ -176,7 +156,7 @@ export default function AddTransactionScreen() {
         // Update existing transaction
         await updateTransaction({
           id: txId,
-          accountId: defaultAccount.id,
+          accountId: selectedAccount.id,
           categoryId: selectedCategory.id,
           type,
           amount: parsedAmount,
@@ -186,7 +166,7 @@ export default function AddTransactionScreen() {
       } else {
         // Create new transaction
         const txData = {
-          accountId: defaultAccount.id,
+          accountId: selectedAccount.id,
           categoryId: selectedCategory.id,
           amount: parsedAmount,
           note: note.trim(),
@@ -340,6 +320,30 @@ export default function AddTransactionScreen() {
       color: colors.text,
       borderWidth: 1,
       borderColor: colors.divider,
+    },
+    walletPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      marginRight: 10,
+      gap: 6,
+    },
+    walletPillSelected: {
+      backgroundColor: mode === "dark" ? "#1E3A8A" : "#EFF6FF",
+      borderColor: "#1D4ED8",
+    },
+    walletPillText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    walletPillTextSelected: {
+      color: "#1D4ED8",
     },
     categoryGrid: {
       flexDirection: "row",
@@ -580,6 +584,43 @@ export default function AddTransactionScreen() {
             numberOfLines={3}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* Account Selection */}
+        <View style={styles.section}>
+          <Text style={styles.label}>{t("walletName")}</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={{ paddingVertical: 4 }}
+          >
+            {accounts.map(acc => {
+              const isSelected = selectedAccount?.id === acc.id;
+              return (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[
+                    styles.walletPill,
+                    isSelected && styles.walletPillSelected
+                  ]}
+                  onPress={() => setSelectedAccount(acc)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons 
+                    name={getCategoryIcon(acc.icon) as any} 
+                    size={20} 
+                    color={isSelected ? "#1D4ED8" : colors.text} 
+                  />
+                  <Text style={[
+                    styles.walletPillText, 
+                    isSelected && styles.walletPillTextSelected
+                  ]}>
+                    {acc.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Category */}

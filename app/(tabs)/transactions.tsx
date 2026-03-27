@@ -977,10 +977,8 @@ export default function Transactions() {
         return;
       }
 
-      // CSV header (removed ID field)
-      const csvHeader = `${t("csvAmount")},${t("csvType")},${t(
-        "csvCategory"
-      )},${t("csvNote")},${t("csvDate")}\n`;
+      // CSV header include Account
+      const csvHeader = `${t("csvAmount")},${t("csvType")},${t("csvCategory")},${t("csvAccount")},${t("csvNote")},${t("csvDate")}\n`;
 
       // CSV rows
       const csvRows = allTransactions
@@ -994,8 +992,9 @@ export default function Transactions() {
           const type = tx.type === "expense" ? t("expense") : t("income");
           const amount = tx.amount.toString(); // Export as plain number without formatting
           const category = (tx.category_name || "").replace(/"/g, '""');
+          const account = (tx.account_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
-          return `${amount},"${type}","${category}","${note}","${date}"`;
+          return `${amount},"${type}","${category}","${account}","${note}","${date}"`;
         })
         .join("\n");
 

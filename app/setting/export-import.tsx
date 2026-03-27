@@ -2,6 +2,7 @@ import { useTheme } from "@/app/providers/ThemeProvider";
 import { db } from "@/db";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getCurrentUserId } from "@/utils/auth";
+import { scheduleSyncDebounced } from "@/services/syncTrigger";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { readAsStringAsync, writeAsStringAsync } from "expo-file-system/legacy";
@@ -72,10 +73,8 @@ export default function ExportImportSettings() {
         return;
       }
 
-      // CSV header (removed ID field - same as transactions tab)
-      const csvHeader = `${t("csvAmount")},${t("csvType")},${t(
-        "csvCategory"
-      )},${t("csvNote")},${t("csvDate")}\n`;
+      // CSV header include Account
+      const csvHeader = `${t("csvAmount")},${t("csvType")},${t("csvCategory")},${t("csvAccount")},${t("csvNote")},${t("csvDate")}\n`;
 
       // CSV rows
       const csvRows = transactions
@@ -89,8 +88,9 @@ export default function ExportImportSettings() {
           const type = tx.type === "income" ? t("income") : t("expense");
           const amount = tx.amount.toString(); // Export as plain number without formatting
           const category = (tx.category_name || "").replace(/"/g, '""');
+          const account = (tx.account_name || "").replace(/"/g, '""');
           const note = (tx.note || "").replace(/"/g, '""');
-          return `${amount},"${type}","${category}","${note}","${date}"`;
+          return `${amount},"${type}","${category}","${account}","${note}","${date}"`;
         })
         .join("\n");
 
@@ -202,12 +202,21 @@ export default function ExportImportSettings() {
 
           if (values.length < 5) continue;
 
-          // Extract values: Số tiền,Loại,Danh mục,Ghi chú,Ngày
           const amount = parseFloat(values[0].replace(/[^0-9.-]/g, ""));
           const type = values[1].includes("Thu") ? "income" : "expense";
           const categoryName = values[2].replace(/"/g, "");
-          const note = values[3].replace(/"/g, "");
-          const dateStr = values[4].replace(/"/g, "");
+          let accountName = "";
+          let note = "";
+          let dateStr = "";
+          
+          if (values.length >= 6) {
+            accountName = values[3].replace(/"/g, "");
+            note = values[4].replace(/"/g, "");
+            dateStr = values[5].replace(/"/g, "");
+          } else {
+            note = values[3].replace(/"/g, "");
+            dateStr = values[4].replace(/"/g, "");
+          }
 
           if (isNaN(amount)) {
             failed++;
@@ -292,12 +301,33 @@ export default function ExportImportSettings() {
             categoryId = categories[0]?.id || null;
           }
 
-          // Get default account
-          const account = await db.getFirstAsync<{ id: string }>(
-            `SELECT id FROM accounts WHERE user_id = ? LIMIT 1`,
-            [userId] as any
-          );
-          const accountId = account?.id || "acc_default";
+          // Find or create account
+          let accountId = "acc_default";
+          if (accountName) {
+            const accounts = await db.getAllAsync<{ id: string, name: string }>(
+              `SELECT id, name FROM accounts WHERE user_id = ?`,
+              [userId] as any
+            );
+            let matchedAcc = accounts.find((a: any) => a.name.toLowerCase() === accountName.toLowerCase());
+            
+            if (!matchedAcc) {
+              const accId = `acc_import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await db.runAsync(
+                `INSERT INTO accounts(id, user_id, name, currency_code, include_in_total, balance_cached, created_at, updated_at)
+                 VALUES(?, ?, ?, 'VND', 1, 0, strftime('%s','now'), strftime('%s','now'))`,
+                [accId, userId, accountName] as any
+              );
+              accountId = accId;
+            } else {
+              accountId = matchedAcc.id;
+            }
+          } else {
+            const defaultAcc = await db.getFirstAsync<{ id: string }>(
+              `SELECT id FROM accounts WHERE user_id = ? ORDER BY include_in_total DESC LIMIT 1`,
+              [userId] as any
+            );
+            if (defaultAcc) accountId = defaultAcc.id;
+          }
 
           // Generate ID
           const id = `tx_${Date.now()}_${Math.random()
@@ -325,6 +355,14 @@ export default function ExportImportSettings() {
         } catch (err) {
           console.error("Error importing line:", err);
           failed++;
+        }
+      }
+
+      if (imported > 0) {
+        try {
+          scheduleSyncDebounced(userId);
+        } catch (e) {
+          scheduleSyncDebounced(); // Fallback if sig mismatches
         }
       }
 
