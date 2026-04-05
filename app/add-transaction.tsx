@@ -14,16 +14,18 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 import CalendarPicker from "react-native-calendar-picker";
 import { Modal, Portal } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type TransactionType = "expense" | "income";
 
@@ -47,6 +49,7 @@ const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 export default function AddTransactionScreen() {
   const { colors, mode } = useTheme();
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams();
   const txId = params.id as string | undefined;
@@ -62,6 +65,14 @@ export default function AddTransactionScreen() {
   const [selectedAccount, setSelectedAccount] = useState<any>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ── Calculator state ──────────────────────────────────────────────────────
+  const [showCalc, setShowCalc] = useState(false);
+  // expression: biểu thức đang xây dựng, hiển thị ở dòng nhỏ trên
+  const [calcExpr, setCalcExpr] = useState("");
+  // calcResult: kết quả sau khi bấm "=", hiển thị dòng to đậm dưới, null khi chưa có
+  const [calcResult, setCalcResult] = useState<string | null>(null);
+  const calcSlideAnim = React.useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
     loadInitialData();
@@ -123,6 +134,167 @@ export default function AddTransactionScreen() {
       setLoading(false);
     }
   };
+
+  // ── Calculator helpers ────────────────────────────────────────────────────
+  const openCalc = () => {
+    const raw = amount.replace(/[^0-9]/g, "");
+    // Nếu đã có số tiền, nạp vào làm dòng biểu thức
+    setCalcExpr(raw || "");
+    setCalcResult(null);
+    setShowCalc(true);
+    Animated.spring(calcSlideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 70,
+      friction: 12,
+    }).start();
+  };
+
+  const closeCalc = () => {
+    Animated.timing(calcSlideAnim, {
+      toValue: 300,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => setShowCalc(false));
+  };
+
+  const applyCalcResult = () => {
+    // Ưu tiên lấy kết quả sau =, nếu chưa có thì nhập thẳng
+    const val = calcResult ?? calcExpr;
+    const num = parseFloat(val.replace(/[^0-9.]/g, ""));
+    if (!isNaN(num) && num > 0) {
+      setAmount(Math.round(num).toLocaleString("vi-VN"));
+    }
+    closeCalc();
+  };
+
+  const isOperator = (ch: string) => ["+", "-", "×", "÷", "%"].includes(ch);
+
+  const handleCalcKey = (key: string) => {
+    Vibration.vibrate(15);
+
+    // ─ CLEAR ─
+    if (key === "C") {
+      setCalcExpr("");
+      setCalcResult(null);
+      return;
+    }
+
+    // ─ BACKSPACE ─
+    if (key === "⌫") {
+      if (calcResult !== null) {
+        // Khi đang ở trạng thái kết quả, backspace xoá bỏ kết quả và đưa về cương
+        setCalcExpr("");
+        setCalcResult(null);
+      } else {
+        setCalcExpr((p) => p.slice(0, -1));
+      }
+      return;
+    }
+
+    // ─ EQUALS ─
+    if (key === "=") {
+      // Nếu đã có kết quả → bấm = lần 2: gán vào input và đóng
+      if (calcResult !== null && calcResult !== "Lỗi") {
+        applyCalcResult();
+        return;
+      }
+      const expr = calcExpr.trim();
+      if (!expr) return;
+      try {
+        const normalized = expr
+          .replace(/×/g, "*")
+          .replace(/÷/g, "/")
+          .replace(/%/g, "/100");
+        // eslint-disable-next-line no-new-func
+        const raw = Function(`"use strict"; return (${normalized})`)();
+        if (typeof raw === "number" && isFinite(raw)) {
+          setCalcResult(String(Math.round(raw * 1000) / 1000));
+        } else {
+          setCalcResult("Lỗi");
+        }
+      } catch {
+        setCalcResult("Lỗi");
+      }
+      return;
+    }
+
+    // ─ +/- Toggle sign ─
+    if (key === "+/-") {
+      if (calcResult !== null) {
+        const n = parseFloat(calcResult);
+        if (!isNaN(n)) {
+          const toggled = String(-n);
+          setCalcResult(toggled);
+          setCalcExpr(toggled);
+        }
+      } else {
+        // Toggle dấu số cuối cùng trong biểu thức
+        setCalcExpr((p) => {
+          const parts = p.split(/([+\-×÷%])/);
+          const last = parts[parts.length - 1];
+          if (!last) return p;
+          const n = parseFloat(last);
+          if (isNaN(n)) return p;
+          parts[parts.length - 1] = String(-n);
+          return parts.join("");
+        });
+      }
+      return;
+    }
+
+    // ─ Sau khi có kết quả (= đã bấm) ─
+    if (calcResult !== null) {
+      if (isOperator(key)) {
+        // Tiếp tục tính từ kết quả
+        setCalcExpr(calcResult + key);
+        setCalcResult(null);
+      } else {
+        // Bắt đầu biểu thức mới
+        setCalcExpr(key);
+        setCalcResult(null);
+      }
+      return;
+    }
+
+    // ─ Không cho nhập nhiều dấu chấm thập phân ─
+    if (key === ".") {
+      // Tìm số cuối cùng sau operator
+      const parts = calcExpr.split(/[+\-×÷%]/);
+      const lastNum = parts[parts.length - 1];
+      if (lastNum.includes(".")) return;
+    }
+
+    // ─ Không cho 2 operator liền nhau ─
+    if (isOperator(key)) {
+      const last = calcExpr[calcExpr.length - 1];
+      if (!calcExpr || isOperator(last)) {
+        // Thay operator cuối bằng operator mới
+        if (isOperator(last)) {
+          setCalcExpr((p) => p.slice(0, -1) + key);
+        } else if (!calcExpr) {
+          // Bắt đầu với operator (ví dụ dấu trừ âm)
+          if (key === "-") setCalcExpr("-");
+        }
+        return;
+      }
+    }
+
+    setCalcExpr((p) => p + key);
+  };
+
+  // Format biểu thức để hiển thị đập (thêm khoảng cách quanh operator)
+  const formatExprDisplay = (expr: string) =>
+    expr.replace(/([+\-×÷%])/g, " $1 ").trim();
+
+  const calcKeys = [
+    ["C", "+/-", "%", "÷"],
+    ["7", "8", "9", "×"],
+    ["4", "5", "6", "-"],
+    ["1", "2", "3", "+"],
+    [".", "0", "⌫", "="],
+  ];
+
 
   const formatDate = (date: Date) => {
     const day = date.getDate();
@@ -438,6 +610,97 @@ export default function AddTransactionScreen() {
       fontWeight: "700",
       color: "#fff",
     },
+    // Calculator styles
+    calcOverlay: {
+      position: "absolute" as const,
+      top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+      zIndex: 999,
+    },
+    calcSheet: {
+      backgroundColor: mode === "dark" ? "#1F2937" : "#F9FAFB",
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: 12,
+      paddingBottom: Math.max(insets.bottom, 16),
+      paddingHorizontal: 16,
+    },
+    calcHandle: {
+      width: 40, height: 4,
+      backgroundColor: mode === "dark" ? "#4B5563" : "#D1D5DB",
+      borderRadius: 2,
+      alignSelf: "center" as const,
+      marginBottom: 12,
+    },
+    calcDisplayBox: {
+      alignItems: "flex-end" as const,
+      paddingHorizontal: 8,
+      paddingVertical: 12,
+      minHeight: 80,
+      justifyContent: "flex-end" as const,
+    },
+    calcExprText: {
+      fontSize: 18,
+      color: mode === "dark" ? "#9CA3AF" : "#6B7280",
+      marginBottom: 4,
+    },
+    calcResultText: {
+      fontSize: 42,
+      fontWeight: "700" as const,
+      color: colors.text,
+    },
+    calcRow: {
+      flexDirection: "row" as const,
+      gap: 10,
+      marginBottom: 10,
+    },
+    calcKey: {
+      flex: 1,
+      aspectRatio: 1,
+      borderRadius: 16,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      backgroundColor: mode === "dark" ? "#374151" : "#fff",
+      shadowColor: "#000",
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    calcKeyOp: {
+      backgroundColor: mode === "dark" ? "#4B5563" : "#E5E7EB",
+    },
+    calcKeyEquals: {
+      backgroundColor: "#F59E0B",
+    },
+    calcKeyText: {
+      fontSize: 22,
+      fontWeight: "600" as const,
+      color: colors.text,
+    },
+    calcKeyTextOp: {
+      color: "#10B981",
+    },
+    calcKeyTextEquals: {
+      color: "#fff",
+      fontSize: 26,
+    },
+    confirmBtn: {
+      backgroundColor: "#10B981",
+      borderRadius: 16,
+      paddingVertical: 14,
+      alignItems: "center" as const,
+      marginTop: 4,
+      flexDirection: "row" as const,
+      justifyContent: "center" as const,
+      gap: 8,
+    },
+    confirmBtnText: {
+      color: "#fff",
+      fontSize: 17,
+      fontWeight: "700" as const,
+    },
   });
 
   return (
@@ -538,36 +801,55 @@ export default function AddTransactionScreen() {
         {/* Amount */}
         <View style={styles.section}>
           <Text style={styles.label}>{t("amount")}</Text>
-          <View style={{ position: "relative" }}>
-            <TextInput
-              style={[styles.input, { paddingRight: 40 }]}
-              placeholder={t("enterAmount")}
-              placeholderTextColor={colors.subText}
-              value={amount}
-              onChangeText={(text) => {
-                // Format with commas
-                const num = text.replace(/[^0-9]/g, "");
-                if (num) {
-                  const formatted = parseInt(num).toLocaleString("vi-VN");
-                  setAmount(formatted);
-                } else {
-                  setAmount("");
-                }
-              }}
-              keyboardType="numeric"
-            />
-            <Text
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ flex: 1, position: "relative" }}>
+              <TextInput
+                style={[styles.input, { paddingRight: 40 }]}
+                placeholder={t("enterAmount")}
+                placeholderTextColor={colors.subText}
+                value={amount}
+                onChangeText={(text) => {
+                  // Format with commas
+                  const num = text.replace(/[^0-9]/g, "");
+                  if (num) {
+                    const formatted = parseInt(num).toLocaleString("vi-VN");
+                    setAmount(formatted);
+                  } else {
+                    setAmount("");
+                  }
+                }}
+                keyboardType="numeric"
+              />
+              <Text
+                style={{
+                  position: "absolute",
+                  right: 16,
+                  top: 14,
+                  fontSize: 15,
+                  color: colors.subText,
+                  fontWeight: "500",
+                }}
+              >
+                đ
+              </Text>
+            </View>
+            {/* Nút máy tính */}
+            <TouchableOpacity
+              onPress={openCalc}
               style={{
-                position: "absolute",
-                right: 16,
-                top: 14,
-                fontSize: 15,
-                color: colors.subText,
-                fontWeight: "500",
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.divider,
+                alignItems: "center",
+                justifyContent: "center",
               }}
+              activeOpacity={0.7}
             >
-              đ
-            </Text>
+              <MaterialCommunityIcons name="calculator-variant-outline" size={24} color="#10B981" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -606,11 +888,6 @@ export default function AddTransactionScreen() {
                   onPress={() => setSelectedAccount(acc)}
                   activeOpacity={0.7}
                 >
-                  <MaterialCommunityIcons 
-                    name={getCategoryIcon(acc.icon) as any} 
-                    size={20} 
-                    color={isSelected ? "#1D4ED8" : colors.text} 
-                  />
                   <Text style={[
                     styles.walletPillText, 
                     isSelected && styles.walletPillTextSelected
@@ -767,6 +1044,91 @@ export default function AddTransactionScreen() {
           </View>
         </Modal>
       </Portal>
+
+      {/* ── Calculator Bottom Sheet ── */}
+      {showCalc && (
+        <View style={styles.calcOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeCalc} />
+          <Animated.View
+            style={[
+              styles.calcSheet,
+              { transform: [{ translateY: calcSlideAnim }] },
+            ]}
+          >
+            <View style={styles.calcHandle} />
+
+            {/* Display */}
+            <View style={styles.calcDisplayBox}>
+              {/* Dòng trên: biểu thức đang nhập */}
+              <Text style={styles.calcExprText} numberOfLines={2} adjustsFontSizeToFit>
+                {calcExpr ? formatExprDisplay(calcExpr) : " "}
+              </Text>
+              {/* Dòng dưới to đậm: chỉ hiển sau khi bấm = */}
+              {calcResult !== null ? (
+                <Text style={styles.calcResultText} numberOfLines={1} adjustsFontSizeToFit>
+                  {calcResult === "Lỗi"
+                    ? "Lỗi"
+                    : Number(calcResult).toLocaleString("vi-VN")}
+                </Text>
+              ) : (
+                // Chưa bấm → hiển số đang nhập được format (chỉ khi là số thuần, không có operator)
+                <Text style={[styles.calcResultText, { color: calcExpr && !calcExpr.match(/[+\-×÷%]/) ? colors.text : colors.subText }]} numberOfLines={1} adjustsFontSizeToFit>
+                  {calcExpr && !calcExpr.match(/[+\-×÷%]/)
+                    ? Number(calcExpr).toLocaleString("vi-VN")
+                    : "0"}
+                </Text>
+              )}
+            </View>
+
+            {/* Keys */}
+            {calcKeys.map((row, ri) => (
+              <View key={ri} style={styles.calcRow}>
+                {row.map((key) => {
+                  const isOp = ["+", "-", "×", "÷", "%", "+/-", "C", "⌫"].includes(key);
+                  const isEq = key === "=";
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.calcKey,
+                        isOp && styles.calcKeyOp,
+                        isEq && styles.calcKeyEquals,
+                      ]}
+                      onPress={() => handleCalcKey(key)}
+                      activeOpacity={0.75}
+                    >
+                      {key === "⌫" ? (
+                        <MaterialCommunityIcons
+                          name="backspace-outline"
+                          size={22}
+                          color="#10B981"
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.calcKeyText,
+                            isOp && styles.calcKeyTextOp,
+                            isEq && styles.calcKeyTextEquals,
+                          ]}
+                        >
+                          {key}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+
+            {/* Hint: bấm = lần 2 để xác nhận */}
+            {calcResult !== null && calcResult !== "Lỗi" && (
+              <Text style={{ textAlign: "center", color: colors.subText, fontSize: 12, marginTop: 2, marginBottom: 4 }}>
+                Bấm <Text style={{ color: "#F59E0B", fontWeight: "700" }}>=</Text> lần nữa để xác nhận
+              </Text>
+            )}
+          </Animated.View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
