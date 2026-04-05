@@ -32,6 +32,7 @@ import {
   View,
 } from "react-native";
 import { PaperProvider } from "react-native-paper";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { GlobalOfflineToggle } from "@/components/GlobalOfflineToggle";
 // Suppress warnings in New Architecture and Expo Go limitations
 LogBox.ignoreLogs([
@@ -109,21 +110,23 @@ export default function RootLayout() {
   }
 
   return (
-    <I18nProvider>
-      <AppThemeProvider>
-        <NetworkManagerProvider>
-          <ModelTrainingProvider>
-            <AppTourProvider>
-              <UserProvider>
-                <PaperProvider>
-                  <RootLayoutNav />
-                </PaperProvider>
-              </UserProvider>
-            </AppTourProvider>
-          </ModelTrainingProvider>
-        </NetworkManagerProvider>
-      </AppThemeProvider>
-    </I18nProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <I18nProvider>
+        <AppThemeProvider>
+          <NetworkManagerProvider>
+            <ModelTrainingProvider>
+              <AppTourProvider>
+                <UserProvider>
+                  <PaperProvider>
+                    <RootLayoutNav />
+                  </PaperProvider>
+                </UserProvider>
+              </AppTourProvider>
+            </ModelTrainingProvider>
+          </NetworkManagerProvider>
+        </AppThemeProvider>
+      </I18nProvider>
+    </GestureHandlerRootView>
   );
 }
 

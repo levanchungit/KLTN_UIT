@@ -247,6 +247,12 @@ export async function runMigrations(db: SQLiteDatabase) {
     "INTEGER",
     `UPDATE transactions SET updated_at = COALESCE(updated_at, created_at, strftime('%s','now'))`
   );
+  await ensureColumn(
+    db,
+    "transactions",
+    "to_account_id",
+    "TEXT"
+  );
 
   await ensureColumn(db, "users", "username", "TEXT");
   await ensureColumn(db, "users", "password_hash", "TEXT");

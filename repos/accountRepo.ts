@@ -232,3 +232,162 @@ export async function deleteAccount(id: string) {
   // Lưu ý FK: nếu có bảng giao dịch tham chiếu accounts mà không ON DELETE CASCADE,
   // thao tác có thể fail → khi đó cân nhắc dùng soft-delete hoặc báo lỗi người dùng.
 }
+
+/**
+ * Chuyển tiền giữa hai ví trong cùng một tài khoản user.
+ * Cả hai balance_cached được cập nhật trong một SQLite transaction.
+ * @returns transfer record id
+ */
+export async function transferBetweenWallets({
+  fromAccountId,
+  toAccountId,
+  amount,
+  note,
+  occurredAt,
+}: {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number; // phải > 0
+  note?: string;
+  occurredAt: Date;
+}): Promise<string> {
+  if (fromAccountId === toAccountId) {
+    throw new Error("SAME_ACCOUNT");
+  }
+  if (amount <= 0) {
+    throw new Error("INVALID_AMOUNT");
+  }
+
+  const db = await openDb();
+  const userId = await getCurrentUserId();
+
+  // Kiểm tra số dư ví nguồn
+  const fromAcc = await db.getFirstAsync<Account>(
+    `SELECT id, balance_cached FROM accounts WHERE id=? AND user_id=?`,
+    [fromAccountId, userId]
+  );
+  if (!fromAcc) throw new Error("FROM_ACCOUNT_NOT_FOUND");
+  if (fromAcc.balance_cached < amount) throw new Error("INSUFFICIENT_BALANCE");
+
+  const toAcc = await db.getFirstAsync<Account>(
+    `SELECT id FROM accounts WHERE id=? AND user_id=?`,
+    [toAccountId, userId]
+  );
+  if (!toAcc) throw new Error("TO_ACCOUNT_NOT_FOUND");
+
+  const transferId = "tr_" + Math.random().toString(36).slice(2, 10);
+  const occurredSec = Math.floor(occurredAt.getTime() / 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Thực hiện trong một transaction SQLite
+  await db.withTransactionAsync(async () => {
+    // Trừ tiền ví nguồn
+    await db.runAsync(
+      `UPDATE accounts SET balance_cached = balance_cached - ?, updated_at=? WHERE id=? AND user_id=?`,
+      [Math.trunc(amount), nowSec, fromAccountId, userId]
+    );
+    // Cộng tiền ví đích
+    await db.runAsync(
+      `UPDATE accounts SET balance_cached = balance_cached + ?, updated_at=? WHERE id=? AND user_id=?`,
+      [Math.trunc(amount), nowSec, toAccountId, userId]
+    );
+    // Ghi lịch sử chuyển tiền
+    await db.runAsync(
+      `INSERT INTO transactions(id,user_id,account_id,to_account_id,category_id,type,amount,note,occurred_at,updated_at)
+       VALUES(?,?,?,?,NULL,'transfer',?,?,?,?)`,
+      [
+        transferId,
+        userId,
+        fromAccountId,
+        toAccountId,
+        Math.trunc(amount),
+        note ?? null,
+        occurredSec,
+        nowSec,
+      ]
+    );
+  });
+
+  // Invalidate cache & sync
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  try {
+    scheduleSyncDebounced(userId ?? undefined);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+  refreshWidgetSilent();
+
+  return transferId;
+}
+
+/** Lấy danh sách lịch sử chuyển tiền (type = 'transfer') */
+export async function listTransfers(): Promise<
+  {
+    id: string;
+    amount: number;
+    note: string | null;
+    occurred_at: number;
+    from_account_id: string;
+    from_account_name: string;
+    to_account_id: string | null;
+    to_account_name: string | null;
+  }[]
+> {
+  const db = await openDb();
+  const userId = await getCurrentUserId();
+  return db.getAllAsync(
+    `SELECT t.id, t.amount, t.note, t.occurred_at,
+            t.account_id AS from_account_id,
+            a.name AS from_account_name,
+            t.to_account_id,
+            a2.name AS to_account_name
+     FROM transactions t
+     JOIN accounts a ON a.id = t.account_id
+     LEFT JOIN accounts a2 ON a2.id = t.to_account_id
+     WHERE t.user_id=? AND t.type='transfer'
+     ORDER BY t.occurred_at DESC`,
+    [userId]
+  );
+}
+
+/** Xóa một lịch sử chuyển tiền và hoàn lại số dư cho 2 ví */
+export async function deleteTransfer(id: string) {
+  const db = await openDb();
+  const userId = await getCurrentUserId();
+
+  const tx = await db.getFirstAsync<any>(
+    "SELECT id, amount, account_id, to_account_id FROM transactions WHERE id=? AND user_id=? AND type='transfer'",
+    [id, userId]
+  );
+  if (!tx) throw new Error("TRANSFER_NOT_FOUND");
+
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  await db.withTransactionAsync(async () => {
+    // revert from account: cộng lại tiền cho ví nguồn
+    await db.runAsync(
+      "UPDATE accounts SET balance_cached = balance_cached + ?, updated_at=? WHERE id=? AND user_id=?",
+      [tx.amount, nowSec, tx.account_id, userId]
+    );
+    // revert to account: trừ lại tiền khỏi ví đích
+    if (tx.to_account_id) {
+      await db.runAsync(
+        "UPDATE accounts SET balance_cached = balance_cached - ?, updated_at=? WHERE id=? AND user_id=?",
+        [tx.amount, nowSec, tx.to_account_id, userId]
+      );
+    }
+    // xóa giao dịch
+    await db.runAsync("DELETE FROM transactions WHERE id=?", [id]);
+  });
+
+  // Invalidate cache & sync
+  const { invalidateAccountsCache } = await import("@/services/cacheService");
+  invalidateAccountsCache();
+  try {
+    scheduleSyncDebounced(userId ?? undefined);
+  } catch (e) {
+    scheduleSyncDebounced();
+  }
+  refreshWidgetSilent();
+}

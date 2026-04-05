@@ -184,6 +184,34 @@ export default function WalletsScreen() {
         style={styles.list}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        <View style={styles.summaryContainer}>
+          <Text style={[styles.totalLabel, { color: colors.subText }]}>Total:</Text>
+          <Text style={[styles.totalAmount, { color: colors.text }]}>
+            {formatMoney(wallets.reduce((acc, w) => acc + (w.balance_cached || 0), 0))}
+          </Text>
+          <View style={styles.transferActionsRow}>
+            <TouchableOpacity 
+               style={styles.transferActionItem}
+               onPress={() => router.push({ pathname: "/setting/wallet-transfer" as any, params: { tab: "history" } })}
+            >
+              <View style={[styles.transferIconCircle, { backgroundColor: "#6B7280" }]}>
+                <MaterialCommunityIcons name="history" size={24} color="#fff" />
+              </View>
+              <Text style={[styles.transferActionText, { color: colors.subText }]}>{t("transferHistory")}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+               style={styles.transferActionItem}
+               onPress={() => router.push({ pathname: "/setting/wallet-transfer" as any, params: { tab: "form" } })}
+            >
+              <View style={[styles.transferIconCircle, { backgroundColor: "#54A282" }]}>
+                <MaterialCommunityIcons name="swap-horizontal" size={24} color="#fff" />
+              </View>
+              <Text style={[styles.transferActionText, { color: colors.subText }]}>{t("newTransfer")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {loading && (
           <Text style={[styles.emptyText, { color: colors.subText }]}>
             {t("loading")}
@@ -355,6 +383,41 @@ const makeStyles = (c: any, bottomInset: number) =>
       textAlign: "center",
       marginTop: 40,
       fontSize: 16,
+    },
+    summaryContainer: {
+      alignItems: "center",
+      marginBottom: 20,
+      paddingTop: 10,
+    },
+    totalLabel: {
+      fontSize: 16,
+      marginBottom: 4,
+    },
+    totalAmount: {
+      fontSize: 32,
+      fontWeight: "700",
+      marginBottom: 20,
+    },
+    transferActionsRow: {
+      flexDirection: "row",
+      width: "100%",
+      justifyContent: "center",
+      gap: 40,
+    },
+    transferActionItem: {
+      alignItems: "center",
+    },
+    transferIconCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 8,
+    },
+    transferActionText: {
+      fontSize: 13,
+      fontWeight: "500",
     },
     item: {
       flexDirection: "row",
