@@ -43,7 +43,7 @@ const getCacheDir = () => {
   }
 };
 
-type FilterType = "all" | "day" | "week" | "month" | "year" | "custom";
+type FilterType = "all" | "day" | "week" | "month" | "year" | "custom" | "range";
 
 const VI_MONTHS = [
   "tháng 1",
@@ -95,6 +95,8 @@ export default function CategoryDetail() {
   const categoryName = params.categoryName as string;
   const categoryIcon = params.categoryIcon as string | undefined;
   const categoryColor = params.categoryColor as string | undefined;
+  const paramFilterStartSec = params.filterStartSec ? Number(params.filterStartSec) : null;
+  const paramFilterEndSec = params.filterEndSec ? Number(params.filterEndSec) : null;
 
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +104,9 @@ export default function CategoryDetail() {
   const [loadedDays, setLoadedDays] = useState(0);
 
   // Filter state
-  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [filterType, setFilterType] = useState<FilterType>(
+    paramFilterStartSec && paramFilterEndSec ? "range" : "all"
+  );
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [filterStartDate, setFilterStartDate] = useState<Date>(new Date());
@@ -143,7 +147,16 @@ export default function CategoryDetail() {
       let from: Date;
       let to: Date;
 
-      if (filterType === "all") {
+      if (filterType === "range" && paramFilterStartSec && paramFilterEndSec) {
+        // Dùng khoảng thời gian từ dashboard, endSec là exclusive nên trừ 1
+        try {
+          const rows = await listBetween(paramFilterStartSec, paramFilterEndSec - 1);
+          return groupByDay(rows.filter((r) => r.category_id === categoryId));
+        } catch (e) {
+          console.warn("listBetween error", e);
+          return [];
+        }
+      } else if (filterType === "all") {
         to = startOfDay(new Date());
         to.setDate(to.getDate() - fromOffsetDays);
         to.setHours(23, 59, 59, 999);
@@ -198,7 +211,7 @@ export default function CategoryDetail() {
         return [];
       }
     },
-    [groupByDay, filterType, filterStartDate, filterEndDate, categoryId]
+    [groupByDay, filterType, filterStartDate, filterEndDate, categoryId, paramFilterStartSec, paramFilterEndSec]
   );
 
   const loadInitial = useCallback(async () => {
@@ -219,6 +232,7 @@ export default function CategoryDetail() {
   );
 
   const loadMore = useCallback(async () => {
+    // Chỉ hỗ trợ load thêm ở chế độ "all" (cuộn ngược về quá khứ)
     if (filterType !== "all") return;
     if (loadingMoreRef.current) return;
     if (loadedDays >= MAX_PAST_DAYS) return;
@@ -434,6 +448,7 @@ export default function CategoryDetail() {
               month: t("month"),
               year: t("year"),
               custom: t("dateRange"),
+              range: "Theo bộ lọc",
             };
 
             return (
@@ -625,6 +640,33 @@ export default function CategoryDetail() {
         </View>
       )}
 
+      {/* Dashboard range filter banner */}
+      {filterType === "range" && paramFilterStartSec && paramFilterEndSec && (() => {
+        const fmt = (sec: number) =>
+          new Date(sec * 1000).toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" });
+        const rangeLabel = `${fmt(paramFilterStartSec)} - ${fmt(paramFilterEndSec - 1)}`;
+        return (
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: "#EFF6FF",
+              borderBottomWidth: 1,
+              borderBottomColor: "#BFDBFE",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <Ionicons name="calendar-outline" size={16} color="#3B82F6" />
+            <Text style={{ fontSize: 14, color: "#1D4ED8", fontWeight: "600" }}>
+              {rangeLabel}
+            </Text>
+          </View>
+        );
+      })()}
+
       <SectionList
         sections={sections
           .map((section) => ({
@@ -711,8 +753,7 @@ export default function CategoryDetail() {
         refreshing={refreshing}
         onRefresh={loadInitial}
         onEndReached={() => {
-          if (filterType !== "all") return;
-          if (!loadingMoreRef.current && onEndMomentumFired.current) {
+          if (filterType === "all" && !loadingMoreRef.current && onEndMomentumFired.current) {
             loadMore();
           }
         }}

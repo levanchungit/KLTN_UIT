@@ -64,6 +64,41 @@ export async function listCategories(opts?: {
   );
 }
 
+export async function listCategoriesByRecentUse(opts?: {
+  type?: "expense" | "income";
+}): Promise<Category[]> {
+  const db = await openDb();
+  const userId = await getCurrentUserId();
+
+  const where: string[] = [];
+  const vals: any[] = [];
+
+  if (opts?.type) {
+    where.push("c.type=?");
+    vals.push(opts.type);
+  }
+  if (userId) {
+    where.push("c.user_id=?");
+    vals.push(userId);
+  }
+  
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  return db.getAllAsync<Category>(
+    `SELECT c.id, c.user_id, c.name, c.type, c.icon, c.color, c.parent_id,
+            COALESCE(
+              (SELECT MAX(t.occurred_at) FROM transactions t WHERE t.category_id = c.id),
+              c.updated_at,
+              c.created_at,
+              0
+            ) AS last_used
+     FROM categories c
+     ${whereSql}
+     ORDER BY last_used DESC, c.name ASC`,
+    vals
+  );
+}
+
 export async function getCategoryById(id: string) {
   const db = await openDb();
   const userId = await getCurrentUserId();

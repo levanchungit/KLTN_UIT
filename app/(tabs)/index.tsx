@@ -1381,6 +1381,8 @@ export default function DashboardScreen() {
                           categoryName: it.category,
                           categoryIcon: it.iconName,
                           categoryColor: it.color,
+                          filterStartSec: String(startSec),
+                          filterEndSec: String(endSec),
                         },
                       });
                     }

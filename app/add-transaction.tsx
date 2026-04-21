@@ -1,7 +1,7 @@
 import { useTheme } from "@/app/providers/ThemeProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { listAccounts } from "@/repos/accountRepo";
-import { listCategories, type Category } from "@/repos/categoryRepo";
+import { listCategoriesByRecentUse, type Category } from "@/repos/categoryRepo";
 import {
   addExpense,
   addIncome,
@@ -108,7 +108,7 @@ export default function AddTransactionScreen() {
     try {
       const accs = await listAccounts();
       setAccounts(accs);
-      const cats = await listCategories({ type });
+      const cats = await listCategoriesByRecentUse({ type });
       setCategories(cats);
 
       let currentCat = selectedCategory;
