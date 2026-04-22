@@ -63,12 +63,16 @@ export async function createAccount(input: {
   // ⚡ PERFORMANCE: Invalidate cache after creating account
   const { invalidateAccountsCache } = await import("@/services/cacheService");
   invalidateAccountsCache();
-  
+
   try {
     scheduleSyncDebounced(userId ?? undefined);
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Đồng bộ balance_cached lên Firebase ngay lập tức (fire-and-forget)
+  import("@/services/firestoreSync")
+    .then((s) => s.syncWalletBalances(userId ?? undefined))
+    .catch((e) => console.warn("syncWalletBalances failed:", e));
   // Refresh widget balance
   refreshWidgetSilent();
   return id;
@@ -121,12 +125,16 @@ export async function updateAccount(
   // ⚡ PERFORMANCE: Invalidate cache after updating account
   const { invalidateAccountsCache } = await import("@/services/cacheService");
   invalidateAccountsCache();
-  
+
   try {
     scheduleSyncDebounced(userId ?? undefined);
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Đồng bộ balance_cached lên Firebase ngay lập tức (fire-and-forget)
+  import("@/services/firestoreSync")
+    .then((s) => s.syncWalletBalances(userId ?? undefined))
+    .catch((e) => console.warn("syncWalletBalances failed:", e));
   // Refresh widget balance
   refreshWidgetSilent();
 }
@@ -316,6 +324,10 @@ export async function transferBetweenWallets({
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Đồng bộ balance_cached sau chuyển tiền (fire-and-forget)
+  import("@/services/firestoreSync")
+    .then((s) => s.syncWalletBalances(userId ?? undefined))
+    .catch((e) => console.warn("syncWalletBalances failed:", e));
   refreshWidgetSilent();
 
   return transferId;
@@ -389,5 +401,9 @@ export async function deleteTransfer(id: string) {
   } catch (e) {
     scheduleSyncDebounced();
   }
+  // Đồng bộ balance_cached sau xóa chuyển tiền (fire-and-forget)
+  import("@/services/firestoreSync")
+    .then((s) => s.syncWalletBalances(userId ?? undefined))
+    .catch((e) => console.warn("syncWalletBalances failed:", e));
   refreshWidgetSilent();
 }

@@ -8,6 +8,7 @@ import {
   setDefaultAccount,
   type Account,
 } from "@/repos/accountRepo";
+import { syncWalletBalances } from "@/services/firestoreSync";
 import { formatMoney } from "@/utils/format";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -133,6 +134,10 @@ export default function WalletsScreen() {
           await setDefaultAccount(newId);
         }
       }
+      // Đồng bộ số dư ví lên Firebase ngay lập tức (fire-and-forget)
+      syncWalletBalances().catch((e) =>
+        console.warn("syncWalletBalances after save failed:", e)
+      );
       setModalVisible(false);
       loadWallets();
     } catch (error) {

@@ -547,11 +547,8 @@ export async function syncAccounts(userId?: string, since?: number) {
     rUid = localUid;
   }
 
-  // Compute authoritative balances from transactions and prefer those when pushing
-  const computed = await computeAccountBalances(localUid);
-
-  // Load local accounts; if `since` provided, limit to changed rows
-  let accSql = `SELECT id, name, icon, color, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`;
+  // balance_cached trong SQLite là source-of-truth (user chủ động set hoặc transfer)
+  let accSql = `SELECT id, name, icon, color, balance_cached, include_in_total, created_at, updated_at FROM accounts WHERE user_id=?`;
   const accArgs: any[] = [localUid];
   if (since && Number.isFinite(since) && since > 0) {
     accSql += ` AND (updated_at > ? OR created_at > ?)`;
@@ -567,8 +564,8 @@ export async function syncAccounts(userId?: string, since?: number) {
       name: a.name,
       icon: a.icon ?? null,
       color: a.color ?? null,
-      // Use computed balance derived from transactions so remote reflects transaction history
-      balance_cached: toNum(computed[a.id]) ?? 0,
+      // Dùng balance_cached trực tiếp (source-of-truth)
+      balance_cached: toNum(a.balance_cached) ?? 0,
       include_in_total: a.include_in_total ? 1 : 0,
       created_at: toNum(a.created_at),
       updated_at: toNum(a.updated_at),
@@ -1087,6 +1084,17 @@ export async function syncAllToFirestore(userId?: string): Promise<boolean> {
         console.error("Lỗi đồng bộ transactions:", e?.message ?? e);
       }
 
+      // 2b. ⚠️ QUAN TRỌNG: Sau khi INSERT transactions, SQLite triggers
+      // (trg_tx_after_insert / trg_tx_after_delete) đã tự động cộng/trừ
+      // balance_cached theo từng giao dịch. Điều này CORRUPT số dư đã restore
+      // từ Firebase ở bước syncAccountsPullAndPush.
+      // Giải pháp: restore lại balance_cached từ Firebase (source-of-truth).
+      try {
+        await restoreAccountBalancesFromFirebase(localUid, authUid);
+      } catch (e: any) {
+        console.warn("Lỗi khôi phục balance từ Firebase:", e?.message ?? e);
+      }
+
       // 3. Budgets (phụ thuộc categories)
       try {
         await syncBudgetsPullAndPush(localUid, authUid, sinceBudgets);
@@ -1095,6 +1103,7 @@ export async function syncAllToFirestore(userId?: string): Promise<boolean> {
       }
 
       console.log("Đồng bộ: Hoàn tất pull từ Firebase");
+
     } else {
       // remote empty -> push local to remote (full push)
       console.log("Đồng bộ: Push data lên Firebase...");
@@ -1461,14 +1470,14 @@ async function syncAccountsPullAndPush(
 
     const localUpdated = Number(local.updated_at) || 0;
     if (remoteUpdated > localUpdated) {
-      // Do not overwrite local `balance_cached` from remote — local balance should be
-      // authoritative via transaction history. Update other metadata only.
+      // Remote mới hơn → cập nhật cả balance_cached từ remote về local
       await db.runAsync(
-        `UPDATE accounts SET name=?, icon=?, color=?, include_in_total=?, updated_at=? WHERE id=? AND user_id=?`,
+        `UPDATE accounts SET name=?, icon=?, color=?, balance_cached=?, include_in_total=?, updated_at=? WHERE id=? AND user_id=?`,
         [
           safeStr(data.name),
           safeStr(data.icon),
           safeStr(data.color),
+          toNum(data.balance_cached) ?? local.balance_cached ?? 0,
           data.include_in_total ? 1 : 0,
           remoteUpdated || null,
           id,
@@ -1480,10 +1489,9 @@ async function syncAccountsPullAndPush(
     }
   }
 
-  // Compute balances to use when pushing local accounts
-  const computed = await computeAccountBalances(localUid);
-  // Only push local rows changed since `since` if provided; otherwise push missing locals
-  let localsSql = `SELECT id,name,icon,color,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`;
+  // Push accounts chưa có trên remote hoặc local mới hơn
+  // Dùng balance_cached trực tiếp từ SQLite (source-of-truth)
+  let localsSql = `SELECT id,name,icon,color,balance_cached,include_in_total,created_at,updated_at FROM accounts WHERE user_id=?`;
   const localsArgs: any[] = [localUid];
   if (since && Number.isFinite(since) && since > 0) {
     localsSql += ` AND (updated_at > ? OR created_at > ?)`;
@@ -1502,7 +1510,7 @@ async function syncAccountsPullAndPush(
           name: l.name,
           icon: l.icon ?? null,
           color: l.color ?? null,
-          balance_cached: toNum(computed[l.id]) ?? 0,
+          balance_cached: toNum(l.balance_cached) ?? 0,
           include_in_total: l.include_in_total ? 1 : 0,
           created_at: toNum(l.created_at),
           updated_at: toNum(l.updated_at),
@@ -1522,7 +1530,7 @@ async function syncAccountsPullAndPush(
         name: p.row.name,
         icon: p.row.icon ?? null,
         color: p.row.color ?? null,
-        balance_cached: toNum(computed[p.id]) ?? 0,
+        balance_cached: toNum(p.row.balance_cached) ?? 0,
         include_in_total: p.row.include_in_total ? 1 : 0,
         created_at: toNum(p.row.created_at),
         updated_at: toNum(p.row.updated_at),
@@ -1767,6 +1775,155 @@ async function syncTransactionsPullAndPush(
 }
 
 /**
+ * Khôi phục balance_cached từ Firebase về SQLite local.
+ * Gọi sau khi pull transactions để reset số dư bị SQLite triggers làm sai.
+ *
+ * Lý do cần hàm này:
+ *   Các trigger (trg_tx_after_insert, trg_tx_after_delete, trg_tx_after_update)
+ *   được gắn trên bảng `transactions`. Khi pull transactions từ Firebase và
+ *   INSERT từng giao dịch, trigger CỘNG/TRỪ amount vào balance_cached của account.
+ *   Nhưng giá trị balance_cached trong Firebase ĐÃ TÍNH ĐỦ các giao dịch này rồi
+ *   → mỗi giao dịch bị tính 2 lần → sai.
+ *
+ *   Giải pháp: sau khi pull transactions xong, ghi đè balance_cached = giá trị
+ *   trong Firebase (source-of-truth đã được push bởi syncWalletBalances).
+ */
+async function restoreAccountBalancesFromFirebase(
+  localUid: string,
+  rUid: string
+): Promise<void> {
+  const { fdb, firestore } = await _getFirestore();
+  const colRef = firestore.collection(fdb, `users/${rUid}/accounts`);
+  const snap = await firestore.getDocs(colRef);
+
+  let restored = 0;
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    if (data._deleted) continue;
+
+    const id = safeStr(data.id ?? doc.id);
+    const remoteBalance = toNum(data.balance_cached);
+    if (!id || remoteBalance === null) continue;
+
+    // Ghi đè balance_cached bằng giá trị Firebase — KHÔNG dùng updated_at
+    // để quyết định vì trigger đã thay đổi updated_at của account.
+    await db.runAsync(
+      `UPDATE accounts SET balance_cached=? WHERE id=? AND user_id=?`,
+      [remoteBalance, id, localUid]
+    );
+    console.log(
+      `restoreAccountBalances: account ${id} → balance_cached=${remoteBalance}`
+    );
+    restored++;
+  }
+  console.log(
+    `restoreAccountBalances: đã khôi phục ${restored} ví từ Firebase.`
+  );
+}
+
+/**
+ * Đồng bộ số dư ví (balance_cached) từ local SQLite lên Firebase.
+ * Chỉ đồng bộ ví của user đang đăng nhập (localUid).
+ * Luôn dùng balance_cached trực tiếp từ SQLite — đây là source-of-truth.
+ *
+ * Tự init Firestore nếu chưa init (không phụ thuộc vào _layout.tsx).
+ * Bypass cooldown 30 giây vì đây là hành động chủ động của user.
+ */
+export async function syncWalletBalances(userId?: string): Promise<void> {
+  const localUid = userId ?? (await getCurrentUserId());
+  if (!localUid) {
+    console.warn("syncWalletBalances: không có user đăng nhập, bỏ qua.");
+    return;
+  }
+
+  // Tự init Firestore nếu chưa init (trường hợp gọi sớm trước _layout)
+  if (!_initialized) {
+    try {
+      const Constants = (await import("expo-constants")).default;
+      const cfg = (Constants.expoConfig as any)?.extra?.FIREBASE_CONFIG;
+      if (!cfg) {
+        console.warn("syncWalletBalances: không có FIREBASE_CONFIG, bỏ qua.");
+        return;
+      }
+      await initFirestore(cfg);
+      console.log("syncWalletBalances: đã tự init Firestore.");
+    } catch (initErr) {
+      console.warn("syncWalletBalances: init Firestore thất bại:", initErr);
+      return;
+    }
+  }
+
+  let fdb: any, firestore: any;
+  try {
+    ({ fdb, firestore } = await _getFirestore());
+  } catch (e) {
+    console.warn("syncWalletBalances: _getFirestore thất bại:", e);
+    return;
+  }
+
+  // Lấy Firebase Auth UID
+  let rUid: string;
+  try {
+    rUid = await getAuthUid();
+  } catch (e) {
+    console.warn("syncWalletBalances: chưa đăng nhập Firebase, bỏ qua.");
+    return;
+  }
+
+  // Chỉ lấy accounts thuộc user đang login
+  const accs = await db.getAllAsync<any>(
+    `SELECT id, name, icon, color, balance_cached, include_in_total, created_at, updated_at
+     FROM accounts WHERE user_id=?`,
+    [localUid]
+  );
+
+  if (!accs || accs.length === 0) {
+    console.log("syncWalletBalances: không có ví nào, bỏ qua.");
+    return;
+  }
+
+  const batch = firestore.writeBatch(fdb);
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const a of accs) {
+    // Dùng balance_cached trực tiếp từ SQLite (source-of-truth).
+    // KHÔNG recompute từ transactions vì addExpense/addIncome
+    // không update balance_cached trong bảng accounts.
+    const balance = toNum(a.balance_cached) ?? 0;
+
+    const ref = firestore.doc(fdb, `users/${rUid}/accounts/${a.id}`);
+    batch.set(
+      ref,
+      {
+        id: a.id,
+        name: a.name,
+        icon: a.icon ?? null,
+        color: a.color ?? null,
+        balance_cached: balance,
+        include_in_total: a.include_in_total ? 1 : 0,
+        created_at: toNum(a.created_at),
+        updated_at: toNum(a.updated_at),
+        _synced_at: now,
+      },
+      { merge: true }
+    );
+    console.log(
+      `syncWalletBalances: ví "${a.name}" (${a.id}) balance=${balance}`
+    );
+  }
+
+  try {
+    await batch.commit();
+    console.log(
+      `syncWalletBalances: ✅ đã push ${accs.length} ví của user ${localUid} lên Firebase.`
+    );
+  } catch (commitErr) {
+    console.warn("syncWalletBalances: batch.commit thất bại:", commitErr);
+    throw commitErr;
+  }
+}
+
+/**
  * Kiểm tra xem Firebase có categories cho user này không
  * Dùng để tránh tạo trùng khi xóa app và cài lại
  */
@@ -1867,6 +2024,7 @@ export default {
   syncTransactions,
   syncBudgets,
   syncAllToFirestore,
+  syncWalletBalances,
   hasRemoteCategories,
   pullCategoriesOnly,
 };
